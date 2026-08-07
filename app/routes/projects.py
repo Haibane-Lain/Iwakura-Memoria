@@ -80,7 +80,7 @@ def put_goal(project_id: str, payload: GoalPatch):
 
 
 @router.get("/{project_id}/export")
-def export_project(project_id: str):
+def export_project_get(project_id: str):
     try:
         data = projects_service.export_zip(project_id)
     except FileNotFoundError as exc:
@@ -89,5 +89,41 @@ def export_project(project_id: str):
     return Response(
         data,
         media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class ExportRequest(BaseModel):
+    format: str = "zip"
+    folders: list[str] | None = None
+
+
+@router.post("/{project_id}/export")
+def export_project_post(project_id: str, body: ExportRequest):
+    try:
+        fmt = body.format.lower()
+        if fmt == "zip":
+            data = projects_service.export_zip(project_id, body.folders)
+            filename = f"{project_id}-writing.zip"
+            media = "application/zip"
+        elif fmt == "docx":
+            data = projects_service.export_docx(project_id, body.folders)
+            filename = f"{project_id}-writing.docx"
+            media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        elif fmt == "pdf":
+            data = projects_service.export_pdf(project_id, body.folders)
+            filename = f"{project_id}-writing.pdf"
+            media = "application/pdf"
+        elif fmt == "epub":
+            data = projects_service.export_epub(project_id, body.folders)
+            filename = f"{project_id}-writing.epub"
+            media = "application/epub+zip"
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown format: {fmt}")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return Response(
+        data,
+        media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

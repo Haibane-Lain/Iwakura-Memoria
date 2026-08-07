@@ -2,6 +2,24 @@ export function encodePath(id) {
   return id.split("/").map(encodeURIComponent).join("/");
 }
 
+export async function triggerDownload(resp) {
+  const blob = await resp.blob();
+  const disposition = resp.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+  let filename = "download";
+  if (match && match[1]) {
+    filename = match[1].replace(/['"]/g, "");
+  }
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
 async function request(method, url, body) {
   const opts = { method, headers: {} };
   if (body !== undefined) {
@@ -48,6 +66,25 @@ export const api = {
     setGoal: (id, wordsPerDay, enabled) =>
       api.put(`/api/projects/${encodePath(id)}/goal`, { wordsPerDay, enabled }),
     exportUrl: (id) => `/api/projects/${encodePath(id)}/export`,
+    export: async (id, payload) => {
+      const url = `/api/projects/${encodePath(id)}/export`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        let detail = `${res.status} ${res.statusText}`;
+        try {
+          const data = await res.json();
+          if (data.detail) detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+      return res;
+    },
     stats: (id) => api.get(`/api/projects/${encodePath(id)}/stats`),
     wiki: (id) => api.get(`/api/projects/${encodePath(id)}/wiki`),
   },

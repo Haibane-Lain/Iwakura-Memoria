@@ -1378,6 +1378,95 @@ a {
   background: var(--accent-soft);
 }
 
+/* ---------- Export dialog ---------- */
+
+.export-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  margin-top: 14px;
+}
+
+.export-folder-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+}
+
+.export-check-row {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.export-check-row:last-child {
+  border-bottom: none;
+}
+
+.export-check-all {
+  background: var(--bg-alt);
+  font-weight: 600;
+}
+
+.export-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.export-check-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.export-format-section {
+  margin-bottom: 8px;
+}
+
+.export-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.export-radio-label:hover {
+  background: var(--bg-alt);
+}
+
+.export-radio-label input[type="radio"] {
+  accent-color: var(--accent);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.export-radio-text strong {
+  font-weight: 600;
+}
+
+.export-status {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-right: auto;
+}
+
 /* ---------- Toasts ---------- */
 
 .toast-host {

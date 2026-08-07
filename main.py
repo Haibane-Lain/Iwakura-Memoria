@@ -12,6 +12,7 @@ import threading
 import time
 import urllib.request
 from ctypes import wintypes
+from pathlib import Path
 
 import uvicorn
 
@@ -138,6 +139,49 @@ class _WindowApi:
         hwnd = ctypes.windll.user32.GetForegroundWindow()
         ctypes.windll.user32.ReleaseCapture()
         ctypes.windll.user32.SendMessageW(hwnd, WM_NCLBUTTONDOWN, hit, 0)
+
+    def export_with_dialog(self, project_id: str, fmt: str, folders: list[str] | None = None) -> dict:
+        """Generate export and prompt user for save location. Returns {ok, cancelled?, path?}."""
+        from webview import FileDialog
+
+        from app.services.projects import export_zip, export_docx, export_pdf, export_epub
+
+        ext_map: dict[str, str] = {"zip": ".zip", "docx": ".docx", "pdf": ".pdf", "epub": ".epub"}
+        type_map: dict[str, str] = {
+            "zip": "ZIP archive (*.zip)",
+            "docx": "Word Document (*.docx)",
+            "pdf": "PDF file (*.pdf)",
+            "epub": "EPUB e-book (*.epub)",
+        }
+        ext = ext_map.get(fmt, ".zip")
+        ftype = type_map.get(fmt, "All files (*.*)")
+
+        import webview
+        result = webview.active_window().create_file_dialog(
+            dialog_type=FileDialog.SAVE,
+            save_filename=f"{project_id}-writing{ext}",
+            file_types=(ftype,),
+        )
+        if not result:
+            return {"ok": False, "cancelled": True}
+        filepath = result[0] if isinstance(result, (list, tuple)) else str(result)
+
+        try:
+            if fmt == "zip":
+                data = export_zip(project_id, folders)
+            elif fmt == "docx":
+                data = export_docx(project_id, folders)
+            elif fmt == "pdf":
+                data = export_pdf(project_id, folders)
+            elif fmt == "epub":
+                data = export_epub(project_id, folders)
+            else:
+                return {"ok": False, "error": f"Unknown format: {fmt}"}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+        Path(filepath).write_bytes(data)
+        return {"ok": True, "path": filepath}
 
     def close(self) -> None:
         import webview

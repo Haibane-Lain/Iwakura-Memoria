@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import * as router from "./router.js";
 import * as theme from "./themes.js";
+import { renderExportDialog } from "./project.js";
 import { el, toast, promptDialog, confirmDialog, formatNumber } from "./ui.js";
 
 async function createProject() {
@@ -68,10 +69,12 @@ function projectCard(project) {
               router.navigate("project", { id: project.id });
             },
           }, "Open"),
-          el("a", {
+          el("button", {
             class: "icon-btn",
-            href: api.projects.exportUrl(project.id),
-            onclick: (e) => e.stopPropagation(),
+            onclick: (e) => {
+              e.stopPropagation();
+              renderExportDialog(project.id);
+            },
           }, "Export"),
           el("button", {
             class: "icon-btn danger",
