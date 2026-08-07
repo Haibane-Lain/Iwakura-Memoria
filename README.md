@@ -1,4 +1,4 @@
-# Lain's Writing Tools
+# Iwakura Memoria
 
 A local, single-user web app for long-form fiction and worldbuilding.
 Write in a WYSIWYG editor, keep an Obsidian-style wiki of notes per project,

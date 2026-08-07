@@ -20,7 +20,7 @@ MAX_REQUEST_BYTES = 10 * 1024 * 1024
 
 def create_app() -> FastAPI:
     config.ensure_dirs()
-    app = FastAPI(title="Lain's Writing Tools", docs_url="/api/docs", openapi_url="/api/openapi.json")
+    app = FastAPI(title="Iwakura Memoria", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
     @app.middleware("http")
     async def _limit_body_size(request: Request, call_next):

@@ -1,1 +1,1 @@
-"""Lain's Writing Tools - application package."""
+"""Iwakura Memoria - application package."""

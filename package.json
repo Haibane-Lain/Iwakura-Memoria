@@ -2,7 +2,7 @@
   "name": "lains-writing-tools-client",
   "private": true,
   "version": "0.1.0",
-  "description": "Frontend bundle for Lain's Writing Tools",
+  "description": "Frontend bundle for Iwakura Memoria",
   "type": "module",
   "scripts": {
     "build": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap",

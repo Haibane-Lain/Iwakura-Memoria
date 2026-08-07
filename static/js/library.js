@@ -117,7 +117,7 @@ async function render() {
     el("div", { class: "topbar" }, [
       el("a", { class: "brand", href: "#/" }, [
         el("span", { class: "dot" }),
-        el("span", {}, "Lain's Writing Tools"),
+        el("span", {}, "Iwakura Memoria"),
       ]),
       el("div", { class: "topbar-spacer" }),
       theme.themeSelect(),

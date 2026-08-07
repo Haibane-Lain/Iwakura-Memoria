@@ -1,4 +1,4 @@
-"""Lain's Writing Tools - entry point.
+"""Iwakura Memoria - entry point.
 
 Starts the FastAPI server and opens the app in a native desktop window
 (via pywebview) or falls back to the system browser.
@@ -212,7 +212,7 @@ def _run_desktop() -> None:
         import webview
 
         webview.create_window(
-            "Lain's Writing Tools",
+            "Iwakura Memoria",
             URL,
             width=1200,
             height=800,
