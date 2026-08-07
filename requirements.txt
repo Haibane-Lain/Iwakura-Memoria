@@ -8,3 +8,4 @@ pywebview
 fpdf2>=2.8
 markdown>=3.7
 EbookLib>=0.18
+pyyaml>=6.0

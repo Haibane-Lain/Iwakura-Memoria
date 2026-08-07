@@ -75,7 +75,7 @@ def save(project_id: str, session: dict[str, Any]) -> None:
     session["updatedAt"] = _now()
     path = _path(project_id, session["sessionId"])
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
+    config._write_atomic(path, json.dumps(session, ensure_ascii=False, indent=2))
 
 
 def load(project_id: str, session_id: str) -> dict[str, Any] | None:

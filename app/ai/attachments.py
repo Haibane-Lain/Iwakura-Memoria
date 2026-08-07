@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app import config
 from app.ai import sessions
 
 ALLOWED_EXTS = {".pdf", ".docx", ".txt", ".md"}
@@ -53,8 +54,9 @@ def _load_metadata(project_id: str, session_id: str) -> list[dict[str, Any]]:
 
 def _save_metadata(project_id: str, session_id: str, items: list[dict[str, Any]]) -> None:
     _dir(project_id, session_id).mkdir(parents=True, exist_ok=True)
-    _metadata_path(project_id, session_id).write_text(
-        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
+    config._write_atomic(
+        _metadata_path(project_id, session_id),
+        json.dumps(items, ensure_ascii=False, indent=2),
     )
 
 
@@ -125,7 +127,7 @@ def add(project_id: str, session_id: str, filename: str, raw: bytes) -> dict[str
         text = ""
         error = f"Could not extract text: {exc}"
     text = text[:MAX_EXTRACT_CHARS]
-    (d / f"{aid}.txt").write_text(text, encoding="utf-8")
+    config._write_atomic(d / f"{aid}.txt", text)
     item = {
         "id": aid,
         "name": Path(filename or "attachment").name,

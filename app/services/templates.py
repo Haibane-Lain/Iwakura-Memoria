@@ -71,8 +71,8 @@ def _seed(project_id: str) -> None:
     for tpl in DEFAULT_TEMPLATES:
         path = tdir / f"{tpl['id']}.json"
         if not path.exists():
-            path.write_text(
-                json.dumps(tpl, ensure_ascii=False, indent=2), encoding="utf-8"
+            config._write_atomic(
+                path, json.dumps(tpl, ensure_ascii=False, indent=2)
             )
 
 
@@ -106,7 +106,7 @@ def create_template(
     if path.exists():
         raise TemplateError(f"Template '{name}' already exists")
     data = {"id": tpl_id, "name": name, "type": tpl_id, "sections": sections}
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    config._write_atomic(path, json.dumps(data, ensure_ascii=False, indent=2))
     return data
 
 
@@ -125,7 +125,7 @@ def update_template(
         data["name"] = name.strip()
     if sections is not None:
         data["sections"] = [s.strip() for s in sections if s and s.strip()]
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    config._write_atomic(path, json.dumps(data, ensure_ascii=False, indent=2))
     return data
 
 

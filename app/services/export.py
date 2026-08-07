@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import yaml
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -19,18 +18,6 @@ from app.services import documents as documents_service
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-
-
-def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    m = _FRONTMATTER_RE.match(text)
-    if m:
-        try:
-            meta = yaml.safe_load(m.group(1)) or {}
-        except yaml.YAMLError:
-            meta = {}
-        body = text[m.end():]
-        return dict(meta), body
-    return {}, text
 
 
 def md_to_html(body: str) -> str:
@@ -146,7 +133,7 @@ def collect_documents(project_id: str, folder_ids: list[str] | None) -> list[tup
     result: list[tuple[str, str, str]] = []
     for path, folder_name in _iter_md_files(folder, folder_ids):
         raw = path.read_text(encoding="utf-8", errors="replace")
-        meta, body = parse_frontmatter(raw)
+        meta, body = documents_service.parse_frontmatter(raw)
         title = meta.get("title") or documents_service._display_name(path.stem).replace("-", " ").title()
         title = str(title) if title is not None else "Untitled"
         result.append((folder_name, title, body.strip()))

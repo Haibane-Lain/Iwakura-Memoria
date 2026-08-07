@@ -7,6 +7,7 @@ Data lives in the project's ``data/`` directory:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +68,14 @@ def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
     merged = dict(DEFAULT_SETTINGS)
     merged.update(settings)
     ensure_dirs()
-    get_settings_path().write_text(
-        json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8"
+    _write_atomic(
+        get_settings_path(),
+        json.dumps(merged, ensure_ascii=False, indent=2),
     )
     return merged
+
+
+def _write_atomic(path: Path, content: str) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(tmp, path)

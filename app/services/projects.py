@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sys
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,61 @@ from app import config
 from app.services import documents as documents_service
 
 DICTIONARY_FILENAME = "dictionary.json"
+
+
+def _find_pdf_fonts():
+    system = sys.platform
+    if system == "win32":
+        fonts = {
+            "serif": (
+                r"C:\Windows\Fonts\georgia.ttf",
+                r"C:\Windows\Fonts\georgiab.ttf",
+                r"C:\Windows\Fonts\georgiai.ttf",
+                r"C:\Windows\Fonts\georgiaz.ttf",
+            ),
+            "mono": (r"C:\Windows\Fonts\cour.ttf",),
+        }
+    elif system == "darwin":
+        fonts = {
+            "serif": (
+                "/System/Library/Fonts/Supplemental/Georgia.ttf",
+                "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
+                "/System/Library/Fonts/Supplemental/Georgia Italic.ttf",
+                "/System/Library/Fonts/Supplemental/Georgia Bold Italic.ttf",
+            ),
+            "mono": ("/System/Library/Fonts/Supplemental/Courier New.ttf",),
+        }
+    else:
+        fonts = {"serif": None, "mono": None}
+        serif_candidates = [
+            ("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf"),
+            ("/usr/share/fonts/TTF/DejaVuSerif.ttf",
+             "/usr/share/fonts/TTF/DejaVuSerif-Bold.ttf",
+             "/usr/share/fonts/TTF/DejaVuSerif-Italic.ttf",
+             "/usr/share/fonts/TTF/DejaVuSerif-BoldItalic.ttf"),
+        ]
+        for c in serif_candidates:
+            if all(Path(p).exists() for p in c):
+                fonts["serif"] = c
+                break
+        mono_candidates = [
+            ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",),
+            ("/usr/share/fonts/TTF/DejaVuSansMono.ttf",),
+        ]
+        for c in mono_candidates:
+            if all(Path(p).exists() for p in c):
+                fonts["mono"] = c
+                break
+
+    resolved = {"serif": None, "mono": None}
+    if fonts["serif"] is not None and all(Path(p).exists() for p in fonts["serif"]):
+        resolved["serif"] = fonts["serif"]
+    if fonts["mono"] is not None and all(Path(p).exists() for p in fonts["mono"]):
+        resolved["mono"] = fonts["mono"]
+    return resolved
 
 
 def _slugify(name: str) -> str:
@@ -51,8 +107,9 @@ def _read_meta(path: Path) -> dict[str, Any]:
 
 
 def _write_meta(project: Path, meta: dict[str, Any]) -> None:
-    (project / config.PROJECT_META_FILENAME).write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    config._write_atomic(
+        project / config.PROJECT_META_FILENAME,
+        json.dumps(meta, ensure_ascii=False, indent=2),
     )
 
 
@@ -188,8 +245,9 @@ def update_dictionary(project_id: str, words: list[str]) -> dict[str, Any]:
             seen.add(clean.lower())
             unique.append(clean)
     dict_path = folder / DICTIONARY_FILENAME
-    dict_path.write_text(
-        json.dumps({"words": unique}, ensure_ascii=False, indent=2), encoding="utf-8"
+    config._write_atomic(
+        dict_path,
+        json.dumps({"words": unique}, ensure_ascii=False, indent=2),
     )
     return {"words": unique}
 
@@ -310,11 +368,14 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
 
-    pdf.add_font("Serif", "", r"C:\Windows\Fonts\georgia.ttf", uni=True)
-    pdf.add_font("Serif", "B", r"C:\Windows\Fonts\georgiab.ttf", uni=True)
-    pdf.add_font("Serif", "I", r"C:\Windows\Fonts\georgiai.ttf", uni=True)
-    pdf.add_font("Serif", "BI", r"C:\Windows\Fonts\georgiaz.ttf", uni=True)
-    pdf.add_font("Mono", "", r"C:\Windows\Fonts\cour.ttf", uni=True)
+    fonts = _find_pdf_fonts()
+    if fonts["serif"]:
+        pdf.add_font("Serif", "", fonts["serif"][0], uni=True)
+        pdf.add_font("Serif", "B", fonts["serif"][1], uni=True)
+        pdf.add_font("Serif", "I", fonts["serif"][2], uni=True)
+        pdf.add_font("Serif", "BI", fonts["serif"][3], uni=True)
+    if fonts["mono"]:
+        pdf.add_font("Mono", "", fonts["mono"][0], uni=True)
 
     pdf.set_font("Serif", "B", 22)
     pdf.cell(0, 14, project_title, new_x="LMARGIN", new_y="NEXT", align="C")

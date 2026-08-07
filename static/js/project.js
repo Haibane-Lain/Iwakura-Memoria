@@ -2729,10 +2729,12 @@ async function init(params) {
     if (state.dirty) {
       const md = state.editorCtrl && state.editorCtrl.getMarkdown();
       if (md && state.currentDocId) {
-        navigator.sendBeacon(
-          `/api/projects/${encodePath(state.project.id)}/documents/${encodePath(state.currentDocId)}`,
-          new Blob([JSON.stringify({ content: md })], { type: "application/json" })
-        );
+        fetch(`/api/projects/${encodePath(state.project.id)}/documents/${encodePath(state.currentDocId)}`, {
+          method: "PUT",
+          keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: md }),
+        });
       }
     }
   });

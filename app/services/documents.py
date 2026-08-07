@@ -13,6 +13,8 @@ Within a folder, documents are ordered by a numeric ``NN-`` filename prefix.
 from __future__ import annotations
 
 import json
+import yaml
+
 import re
 import shutil
 from datetime import datetime
@@ -60,16 +62,15 @@ def count_words(text: str, mode: str = "auto") -> int:
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    match = _FRONTMATTER_RE.match(text)
-    if not match:
-        return {}, text
-    meta: dict[str, Any] = {}
-    for line in match.group(1).splitlines():
-        if ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        meta[key.strip().lower()] = value.strip().strip('"\'')
-    return meta, text[match.end() :]
+    m = _FRONTMATTER_RE.match(text)
+    if m:
+        try:
+            meta = yaml.safe_load(m.group(1)) or {}
+        except yaml.YAMLError:
+            meta = {}
+        body = text[m.end():]
+        return dict(meta), body
+    return {}, text
 
 
 def _headings(body: str) -> list[str]:
@@ -456,7 +457,8 @@ def create_document(
     target = _ensure_unique(target_dir, target_dir / f"{next_index:02d}-{slug}.md")
     doc_kind = kind if kind in ("chapter", "note") else "note"
     body = content or ""
-    target.write_text(
+    config._write_atomic(
+        target,
         build_frontmatter(
             {
                 "title": title.strip() or slug,
@@ -464,7 +466,6 @@ def create_document(
             }
         )
         + body,
-        encoding="utf-8",
     )
     doc_id = target.relative_to(project_folder).as_posix()[: -len(".md")]
     _record_save(project_id, doc_id, 0)
@@ -592,7 +593,7 @@ def save_document(
     old_words = count_words(raw, mode)
 
     frontmatter = build_frontmatter(old_meta)
-    path.write_text(frontmatter + content, encoding="utf-8")
+    config._write_atomic(path, frontmatter + content)
 
     new_words = count_words(content, mode)
     _record_save(project_id, doc_id, new_words - old_words)
@@ -673,7 +674,7 @@ def update_style(
             if zoom is not None:
                 meta["zoom"] = int(zoom)
 
-    path.write_text(build_frontmatter(meta) + body, encoding="utf-8")
+    config._write_atomic(path, build_frontmatter(meta) + body)
     return get_document(project_id, doc_id, mode)
 
 
@@ -687,7 +688,7 @@ def rename_document(
     raw = path.read_text(encoding="utf-8")
     meta, body = parse_frontmatter(raw)
     meta["title"] = new_title.strip() or meta.get("title", "Untitled")
-    path.write_text(build_frontmatter(meta) + body, encoding="utf-8")
+    config._write_atomic(path, build_frontmatter(meta) + body)
     return get_document(project_id, doc_id, mode)
 
 
