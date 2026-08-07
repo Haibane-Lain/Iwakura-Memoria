@@ -2,6 +2,18 @@ import * as theme from "./themes.js";
 import * as router from "./router.js";
 import * as library from "./library.js";
 import * as project from "./project.js";
+import { toast } from "./ui.js";
+
+window.addEventListener("error", function (e) {
+  if (e.error) {
+    toast(e.error.message || "An unexpected error occurred", "error");
+  }
+});
+
+window.addEventListener("unhandledrejection", function (e) {
+  var msg = (e.reason && e.reason.message) || String(e.reason) || "An unexpected error occurred";
+  toast(msg, "error");
+});
 
 async function boot() {
   await theme.load();

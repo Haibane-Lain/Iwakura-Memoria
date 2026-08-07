@@ -7,6 +7,7 @@ deferred tool calls needed to resume the loop after the user decides.
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any
 
 from app.ai import providers, sessions, tools
@@ -194,6 +195,7 @@ def _run_loop(
     session: dict[str, Any],
     messages: list[dict[str, Any]],
     callback: StepCallback | None = None,
+    cancelled: threading.Event | None = None,
 ) -> dict[str, Any]:
     """Run the agent loop. Returns done/pending result, mutating ``messages``."""
     scope = session.get("scope")
@@ -204,6 +206,14 @@ def _run_loop(
     new_read_ids: list[str] = []
     iterations = 0
     while True:
+        if cancelled and cancelled.is_set():
+            return {
+                "done": True,
+                "reply": "",
+                "actions": actions,
+                "usage": usage,
+                "readIds": new_read_ids,
+            }
         if iterations >= MAX_ITERATIONS:
             return {
                 "done": True,
@@ -357,6 +367,7 @@ def chat(
     session: dict[str, Any],
     user_message: str,
     callback: StepCallback | None = None,
+    cancelled: threading.Event | None = None,
 ) -> dict[str, Any]:
     session["history"] = (session.get("history") or []) + [
         {"role": "user", "content": user_message}
@@ -368,7 +379,7 @@ def chat(
         except Exception:  # noqa: BLE001 — auto-compress is best-effort
             pass
         messages = _build_messages(session, "")
-    result = _run_loop(project_id, session, messages, callback=callback)
+    result = _run_loop(project_id, session, messages, callback=callback, cancelled=cancelled)
     if result.get("readIds"):
         seen = set(session.get("readSet") or [])
         seen.update(str(r) for r in result["readIds"])

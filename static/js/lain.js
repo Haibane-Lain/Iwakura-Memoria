@@ -39,35 +39,8 @@ function esc(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function inlineMd(s) {
-  return esc(s)
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
-}
-
 function mdToHTML(text) {
-  const out = [];
-  let list = null;
-  const flush = () => {
-    if (list) {
-      out.push(`<ul>${list.join("")}</ul>`);
-      list = null;
-    }
-  };
-  for (const raw of String(text || "").split("\n")) {
-    const line = raw.trim();
-    const m = line.match(/^[-*]\s+(.*)$/);
-    if (m) {
-      (list = list || []).push(`<li>${inlineMd(m[1])}</li>`);
-      continue;
-    }
-    flush();
-    if (!line) continue;
-    out.push(`<p>${inlineMd(line)}</p>`);
-  }
-  flush();
-  return out.join("");
+  return window.marked.parse(String(text || ""), { breaks: true });
 }
 
 function covers(o, r) {

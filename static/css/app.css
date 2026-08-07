@@ -93,7 +93,7 @@ body {
 }
 
 .win-close:hover {
-  background: #e81123;
+  background: var(--danger);
   color: #fff;
 }
 
@@ -2204,8 +2204,8 @@ a {
 }
 
 .lain-diff-del {
-  color: #e05b5b;
-  background: rgba(224, 91, 91, 0.12);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
   text-decoration: line-through;
 }
 
@@ -2320,7 +2320,7 @@ a {
 }
 
 .lain-attach-warn {
-  color: #d9a514;
+  color: var(--warn);
 }
 
 .lain-attach-x {

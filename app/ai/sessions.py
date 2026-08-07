@@ -68,6 +68,7 @@ def create(project_id: str) -> dict[str, Any]:
         "agentState": None,
     }
     save(project_id, session)
+    _cleanup(project_id)
     return session
 
 
@@ -142,7 +143,6 @@ def list_sessions(project_id: str) -> list[dict[str, Any]]:
                 "hasPending": bool(session.get("agentState") and session["agentState"].get("pending")),
             }
         )
-    _cleanup(project_id)
     return results
 
 

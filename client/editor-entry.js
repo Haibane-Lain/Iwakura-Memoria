@@ -613,6 +613,8 @@ window.LainEditor = {
         editor.view.dispatch(tr);
       },
       destroy() {
+        clearTimeout(_grammarTimer);
+        _grammarView = null;
         editor.destroy();
       },
       getMarkdown() {

@@ -121,10 +121,11 @@ async def stream_chat(
     queue: asyncio.Queue = asyncio.Queue()
     callback = _StreamCallback(queue, loop)
     holder: dict[str, Any] = {}
+    cancelled = threading.Event()
 
     def _run() -> None:
         try:
-            result = agent.chat(project_id, session, user_message, callback=callback)
+            result = agent.chat(project_id, session, user_message, callback=callback, cancelled=cancelled)
             holder["result"] = result
             holder["error"] = None
         except Exception as exc:  # noqa: BLE001 — surfaced to the SSE stream
@@ -134,11 +135,15 @@ async def stream_chat(
 
     thread = threading.Thread(target=_run, name="lain-chat-stream", daemon=True)
     thread.start()
-    while True:
-        item = await queue.get()
-        if item is None:
-            break
-        yield item
+    try:
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+    finally:
+        if thread.is_alive():
+            cancelled.set()
     thread.join()
     if holder.get("error"):
         raise holder["error"]

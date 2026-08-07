@@ -25,7 +25,7 @@ CONFIRM_TOOLS = {
 
 READ_CONTENT_CAP = 8_000
 DIFF_LINE_CAP = 60
-TREE_TEXT_CAP = 8_000
+TREE_TEXT_CAP = 100_000
 
 
 class ToolError(Exception):
@@ -43,7 +43,7 @@ def _scope_ok(scope: list[str] | None, path: str) -> bool:
         return False
     for root in scope:
         if root == "":
-            if path != "worldbuilding" and not path.startswith("worldbuilding/"):
+            if not path.startswith("worldbuilding/"):
                 return True
         elif path == root or path.startswith(root + "/"):
             return True
@@ -73,7 +73,7 @@ def _tree_text(project_id: str, scope: list[str] | None, folder: str | None = No
     def prune(node: dict[str, Any]) -> dict[str, Any]:
         folders = []
         for f in node.get("folders", []):
-            if _scope_ok(scope, f["id"]) and (not folder or f["id"] == folder or f["id"].startswith(folder + "/")):
+            if _scope_ok(scope, f["id"]) and (not folder or f["id"] == folder or f["id"].startswith(folder + "/") or folder.startswith(f["id"] + "/")):
                 folders.append({"name": f["name"], "id": f["id"], **prune(f)})
         docs = [
             d for d in node.get("documents", [])

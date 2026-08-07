@@ -20,6 +20,7 @@
     "@tiptap/extension-underline": "^2.11.0",
     "@tiptap/pm": "^2.11.0",
     "@tiptap/starter-kit": "^2.11.0",
+    "marked": "^18.0.9",
     "tiptap-markdown": "^0.8.10"
   }
 }

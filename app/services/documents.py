@@ -13,10 +13,10 @@ Within a folder, documents are ordered by a numeric ``NN-`` filename prefix.
 from __future__ import annotations
 
 import json
-import yaml
-
 import re
 import shutil
+import threading
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +29,7 @@ _CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 _WORD_RE = re.compile(r"\S+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _PREFIX_RE = re.compile(r"^(\d+)-")
+_history_lock = threading.Lock()
 
 
 class DocumentError(ValueError):
@@ -145,6 +146,7 @@ def _project_folder(project_id: str) -> Path:
 
 
 def _validate_id(doc_id: str) -> str:
+    doc_id = doc_id.replace("\\", "/")
     if not isinstance(doc_id, str) or not _SAFE_ID_RE.match(doc_id):
         raise DocumentError("Invalid id")
     return doc_id
@@ -152,7 +154,7 @@ def _validate_id(doc_id: str) -> str:
 
 def _doc_path(folder: Path, doc_id: str) -> Path:
     doc_id = _validate_id(doc_id)
-    relative = doc_id if doc_id.endswith(".md") else doc_id + ".md"
+    relative = doc_id if doc_id.lower().endswith(".md") else doc_id + ".md"
     path = (folder / relative).resolve()
     if not str(path).startswith(str(folder.resolve())):
         raise DocumentError("Invalid document path")
@@ -195,7 +197,7 @@ def _display_name(name: str) -> str:
 def _entry_id(path: Path, project_folder: Path) -> str:
     """Id of any entry (folder or document) relative to the project."""
     rel = path.relative_to(project_folder).as_posix()
-    return rel[: -len(".md")] if path.is_file() and rel.endswith(".md") else rel
+    return rel[: -len(".md")] if path.is_file() and rel.lower().endswith(".md") else rel
 
 
 def _is_orderable_entry(path: Path, project_folder: Path) -> bool:
@@ -207,7 +209,7 @@ def _is_orderable_entry(path: Path, project_folder: Path) -> bool:
         if path.parent == project_folder and name.lower() == config.WIKI_DIRNAME:
             return False
         return True
-    return path.is_file() and path.suffix == ".md" and not name.startswith(".")
+    return path.is_file() and path.suffix.lower() == ".md" and not name.startswith(".")
 
 
 def _md_files(folder: Path) -> list[Path]:
@@ -280,7 +282,7 @@ def _children(
             }
             folders.append(node)
             entries.append({"kind": "folder", "id": node["id"]})
-        elif child.suffix == ".md" and not name.startswith("."):
+        elif child.suffix.lower() == ".md" and not name.startswith("."):
             doc_id = _entry_id(child, project_folder)
             doc = _doc_summary(project_folder, doc_id, mode)
             documents.append(doc)
@@ -414,8 +416,9 @@ def _record_save(project_id: str, doc_id: str, delta: int) -> None:
         "delta": delta,
         "at": _now(),
     }
-    with history.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with _history_lock:
+        with history.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def _next_index(directory: Path) -> int:
@@ -573,7 +576,7 @@ def _prune_empty(start: Path, stop: Path) -> None:
     parent = start
     while parent != stop and parent.is_dir() and not any(parent.iterdir()):
         if (
-            parent.name == config.STATS_DIRNAME
+            parent.name.lower() == config.STATS_DIRNAME
             or parent.name.lower() == config.WIKI_DIRNAME
         ):
             break
@@ -589,11 +592,11 @@ def save_document(
     if not path.exists():
         raise FileNotFoundError(f"Document '{doc_id}' not found")
     raw = path.read_text(encoding="utf-8")
-    old_meta, _ = parse_frontmatter(raw)
     old_words = count_words(raw, mode)
 
-    frontmatter = build_frontmatter(old_meta)
-    config._write_atomic(path, frontmatter + content)
+    fm_match = _FRONTMATTER_RE.match(raw)
+    body_start = fm_match.end() if fm_match else 0
+    config._write_atomic(path, raw[:body_start] + content)
 
     new_words = count_words(content, mode)
     _record_save(project_id, doc_id, new_words - old_words)
