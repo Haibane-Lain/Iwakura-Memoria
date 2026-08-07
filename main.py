@@ -72,6 +72,15 @@ def _wait_for_server(timeout: float = 10.0) -> bool:
     return False
 
 
+def _start_grammar() -> None:
+    """Start the bundled LanguageTool server (best-effort, non-blocking)."""
+    from app.services.grammar import start_lt_server
+    try:
+        start_lt_server()
+    except Exception as exc:
+        print(f"[Grammar] LanguageTool not available: {exc}", file=sys.stderr)
+
+
 def _start_server() -> threading.Thread:
     """Start uvicorn in a daemon thread. Returns the thread."""
     app = create_app()
@@ -88,6 +97,7 @@ def _start_server() -> threading.Thread:
 def _run_browser() -> None:
     """Original browser-launch path (--browser flag)."""
     app = create_app()
+    threading.Timer(0.5, lambda: _start_grammar()).start()
     threading.Timer(1.2, lambda: __import__("webbrowser").open(URL)).start()
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 
@@ -195,6 +205,8 @@ def _run_desktop() -> None:
     if not _wait_for_server():
         print("Server failed to start.", file=sys.stderr)
         sys.exit(1)
+
+    threading.Thread(target=_start_grammar, daemon=True).start()
 
     try:
         import webview

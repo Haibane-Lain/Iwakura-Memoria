@@ -1521,6 +1521,28 @@ const TOOLBAR = [
 
 let toolbarButtons = [];
 
+let _grammarToggleBtn = null;
+
+function grammarToggle() {
+  const btn = el("button", {
+    class: "tool-btn",
+    title: "Toggle grammar check",
+    onclick: async () => {
+      const enabled = !state.settings.grammarEnabled;
+      state.settings.grammarEnabled = enabled;
+      btn.classList.toggle("grammar-on", enabled);
+      btn.classList.toggle("grammar-off", !enabled);
+      if (state.editorCtrl) state.editorCtrl.setGrammarEnabled(enabled);
+      try {
+        await api.settings.update({ grammarEnabled: enabled });
+      } catch { /* ignore */ }
+    },
+  }, "✓");
+  btn.classList.add(state.settings.grammarEnabled ? "grammar-on" : "grammar-off");
+  _grammarToggleBtn = btn;
+  return btn;
+}
+
 function toolbar() {
   const bar = el("div", { class: "editor-toolbar" });
   toolbarButtons = [];
@@ -1540,6 +1562,8 @@ function toolbar() {
     toolbarButtons.push({ def, btn });
   }
   bar.append(
+    el("div", { class: "toolbar-sep" }),
+    grammarToggle(),
     el("div", { class: "toolbar-sep" }),
     fontSelect("context"),
     sizeSelect("context"),
@@ -1710,6 +1734,7 @@ async function renderEditorTab(doc, { wiki }) {
     onWikilinkClick,
     showNav: wiki,
   });
+  state.editorCtrl.setGrammarEnabled(state.settings.grammarEnabled);
   state.editorCtrl.editor.on("transaction", () => { refreshToolbar(); refreshEditorContext(); });
   state.editorCtrl.editor.on("selectionUpdate", () => { refreshToolbar(); refreshEditorContext(); });
   refreshToolbar();
@@ -2500,6 +2525,7 @@ async function init(params) {
       editorSize: settings.editorSize || 18,
       editorAlign: settings.editorAlign || "left",
       editorZoom: settings.editorZoom || 100,
+      grammarEnabled: settings.grammarEnabled !== false,
     };
   } catch (err) {
     console.warn("settings unavailable", err);

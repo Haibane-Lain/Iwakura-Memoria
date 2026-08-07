@@ -21,6 +21,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "editorSize": 18,
     "editorAlign": "left",
     "editorZoom": 100,
+    "grammarEnabled": True,
     "ai": {},
 }
 

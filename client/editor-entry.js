@@ -152,6 +152,158 @@ const SectionStyles = Extension.create({
   },
 });
 
+/* ---------------- Grammar decorations ---------------- */
+
+const grammarPluginKey = new PluginKey("lain-grammar");
+let _grammarTimer = null;
+let _grammarView = null;
+let _grammarSkipping = false;
+let _grammarReplaceRange = null;
+let _lastDocOffsets = null;
+
+function _grammarHash(text) {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  }
+  return String(h);
+}
+
+function _grammarDocText(doc) {
+  let text = "";
+  const offsets = [];
+  doc.descendants((node, pos) => {
+    if (node.isText) {
+      const prev = offsets.length > 0 ? offsets[offsets.length - 1] : null;
+      if (!prev || prev.ltPos + prev.len !== text.length) {
+        offsets.push({ ltPos: text.length, docPos: pos });
+        offsets[offsets.length - 1].len = node.text.length;
+      } else {
+        prev.len += node.text.length;
+      }
+      text += node.text;
+      return false;
+    }
+    if (node.isBlock && offsets.length > 0) {
+      text += "\n";
+    }
+    return true;
+  });
+  return { text, offsets };
+}
+
+function _ltToDocPos(offsets, target) {
+  if (!offsets || !offsets.length) return Math.min(target, 999999);
+  let lo = 0, hi = offsets.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const o = offsets[mid];
+    if (target >= o.ltPos && (mid === offsets.length - 1 || target < offsets[mid + 1].ltPos)) {
+      return o.docPos + (target - o.ltPos);
+    }
+    if (target < o.ltPos) hi = mid - 1;
+    else lo = mid + 1;
+  }
+  const last = offsets[offsets.length - 1];
+  return last.docPos + last.len;
+}
+
+async function _grammarFetch(text) {
+  const resp = await fetch("/api/grammar/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, language: "en-US" }),
+  });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
+function _grammarUpdate(view, docText, matches) {
+  const offsets = docText.offsets;
+  const decos = [];
+  for (const m of matches) {
+    if (m.length <= 0) continue;
+    const from = _ltToDocPos(offsets, m.offset);
+    const to = _ltToDocPos(offsets, m.offset + m.length);
+    if (from < 0 || to <= from || to > view.state.doc.content.size) continue;
+    decos.push(
+      Decoration.inline(from, to, {
+        class: "grammar-error",
+        "data-grammar": JSON.stringify(m),
+      })
+    );
+  }
+  const set = DecorationSet.create(view.state.doc, decos);
+  const textHash = _grammarHash(docText.text);
+  _grammarSkipping = true;
+  view.dispatch(view.state.tr.setMeta("grammarDecorations", { set, textHash }));
+  _grammarSkipping = false;
+}
+
+function _grammarSchedule(view) {
+  if (!view || view.isDestroyed) return;
+  clearTimeout(_grammarTimer);
+  const pluginState = grammarPluginKey.getState(view.state);
+  if (!pluginState || !pluginState.enabled) return;
+  const docText = _grammarDocText(view.state.doc);
+  const hash = _grammarHash(docText.text);
+  if (hash === pluginState.textHash) return;
+  _lastDocOffsets = docText.offsets;
+  _grammarTimer = setTimeout(async () => {
+    try {
+      const data = await _grammarFetch(docText.text);
+      if (view.isDestroyed) return;
+      _grammarUpdate(view, docText, data.matches || []);
+    } catch {
+      /* grammar server unavailable */
+    }
+  }, 1500);
+}
+
+function makeGrammarPlugin() {
+  const plugin = new Plugin({
+    key: grammarPluginKey,
+    state: {
+      init: () => ({ set: DecorationSet.empty, enabled: true, textHash: "" }),
+      apply: (tr, value, _config, newState) => {
+        const enabled = tr.getMeta("grammarEnabled");
+        const newEnabled = enabled !== undefined ? enabled : value.enabled;
+        const incoming = tr.getMeta("grammarDecorations");
+        let set = incoming ? incoming.set : value.set;
+        if (tr.docChanged && !incoming) {
+          set = set.map(tr.mapping, tr.doc);
+          if (_grammarReplaceRange) {
+            set = set.remove(set.find(_grammarReplaceRange.from, _grammarReplaceRange.to));
+            _grammarReplaceRange = null;
+          }
+        }
+        const textHash = incoming ? incoming.textHash : (tr.docChanged ? "" : value.textHash);
+
+        if (tr.docChanged && newEnabled && !_grammarSkipping) {
+          _grammarSchedule(_grammarView);
+        }
+
+        return { set, enabled: newEnabled, textHash };
+      },
+    },
+    props: {
+      decorations(state) {
+        const v = this.getState(state);
+        return v ? v.set : DecorationSet.empty;
+      },
+    },
+    spec: { view: null },
+  });
+  return plugin;
+}
+
+const GrammarExtension = Extension.create({
+  name: "grammar",
+  addProseMirrorPlugins() {
+    return [makeGrammarPlugin()];
+  },
+});
+
 const FontSize = Mark.create({
   name: "fontSize",
   inclusive: false,
@@ -270,6 +422,80 @@ const StyledHeading = Heading.extend({
   },
 });
 
+/* ---------------- Grammar tooltip ---------------- */
+
+let _grammarTooltip = null;
+
+function _grammarHideTooltip() {
+  if (_grammarTooltip) {
+    _grammarTooltip.remove();
+    _grammarTooltip = null;
+  }
+}
+
+function _grammarShowTooltip(errorEl) {
+  _grammarHideTooltip();
+  const raw = errorEl.getAttribute("data-grammar");
+  if (!raw) return;
+  let match;
+  try { match = JSON.parse(raw); } catch { return; }
+
+  const tip = document.createElement("div");
+  tip.className = "grammar-tooltip";
+  const msg = document.createElement("div");
+  msg.className = "grammar-tooltip-msg";
+  msg.textContent = match.message;
+  tip.appendChild(msg);
+
+  if (match.replacements && match.replacements.length) {
+    const rl = document.createElement("div");
+    rl.className = "grammar-tooltip-reps";
+    for (const r of match.replacements.slice(0, 6)) {
+      const chip = document.createElement("button");
+      chip.className = "grammar-rep-chip";
+      chip.textContent = r;
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const view = _grammarView;
+        const offsets = _lastDocOffsets;
+        if (!view || view.isDestroyed || !offsets) return;
+        const from = _ltToDocPos(offsets, match.offset);
+        const to = _ltToDocPos(offsets, match.offset + match.length);
+        if (from < 0 || to > view.state.doc.content.size) return;
+        const tr = view.state.tr;
+        _grammarSkipping = true;
+        _grammarReplaceRange = { from, to };
+        tr.replaceWith(from, to, view.state.schema.text(r));
+        view.dispatch(tr);
+        _grammarSkipping = false;
+        _grammarHideTooltip();
+        _grammarSchedule(view);
+      });
+      rl.appendChild(chip);
+    }
+    tip.appendChild(rl);
+  }
+
+  document.body.appendChild(tip);
+
+  const rect = errorEl.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  let left = rect.left + rect.width / 2;
+  if (top + 160 > window.innerHeight) top = rect.top - tip.offsetHeight - 4;
+  if (left + 150 > window.innerWidth) left = window.innerWidth - 155;
+  if (left < 10) left = 10;
+  tip.style.top = top + "px";
+  tip.style.left = left + "px";
+
+  _grammarTooltip = tip;
+}
+
+document.addEventListener("click", (e) => {
+  if (_grammarTooltip && !e.target.closest(".grammar-error") && !e.target.closest(".grammar-tooltip")) {
+    _grammarHideTooltip();
+  }
+});
+
 function toMarkdown(editor) {
   let md = editor.storage.markdown.getMarkdown();
   md = md.replace(/\\\[/g, "[").replace(/\\\]/g, "]");
@@ -293,14 +519,24 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       FontFamily,
       ...(navWidget ? [NavBox.configure({ navWidget })] : []),
       SectionStyles,
+      GrammarExtension,
     ],
     content,
-    editorProps: {
-      attributes: { spellcheck: "true" },
-    },
+    editorProps: { attributes: {} },
     onUpdate: ({ editor }) => {
       if (onChange) onChange(toMarkdown(editor));
     },
+  });
+
+  _grammarView = editor.view;
+
+  editor.view.dom.addEventListener("click", (e) => {
+    const target = e.target.closest(".grammar-error");
+    if (target) {
+      e.preventDefault();
+      e.stopPropagation();
+      _grammarShowTooltip(target);
+    }
   });
 
   if (onWikilinkClick) {
@@ -358,6 +594,10 @@ window.LainEditor = {
       },
       insertWikilink(title) {
         this.insertText(`[[${title}]]`);
+      },
+      setGrammarEnabled(enabled) {
+        editor.view.dispatch(editor.state.tr.setMeta("grammarEnabled", !!enabled));
+        if (enabled) _grammarSchedule(_grammarView);
       },
       run(command) {
         const chain = editor.chain().focus();
