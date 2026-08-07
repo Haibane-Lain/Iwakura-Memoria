@@ -1,0 +1,149 @@
+/* Themes: color palettes defined through CSS variables on body[data-theme]. */
+
+:root {
+  --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-editor: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --transition: 0.15s ease;
+}
+
+body[data-theme="paper"] {
+  --bg: #f4f1ea;
+  --bg-alt: #e9e4d8;
+  --surface: #fffdf7;
+  --surface-2: #f7f3ea;
+  --surface-3: #efeadf;
+  --text: #26221c;
+  --text-dim: #6b645a;
+  --text-faint: #9a9286;
+  --accent: #7a4f2b;
+  --accent-soft: #efe3d2;
+  --editor-bg: #fffefb;
+  --border: #dcd4c4;
+  --shadow: 0 2px 10px rgba(60, 48, 30, 0.12);
+  --ok: #2f7d4f;
+  --warn: #b26a2c;
+  --danger: #b03a3a;
+  --selection: rgba(122, 79, 43, 0.22);
+}
+
+body[data-theme="ink"] {
+  --bg: #17181c;
+  --bg-alt: #1e2026;
+  --surface: #22242b;
+  --surface-2: #2a2d35;
+  --surface-3: #333742;
+  --text: #e8e6e0;
+  --text-dim: #a9a69c;
+  --text-faint: #6f6d64;
+  --accent: #c9a15f;
+  --accent-soft: #3a3427;
+  --editor-bg: #1c1e24;
+  --border: #343741;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  --ok: #6fbf8f;
+  --warn: #d29a5a;
+  --danger: #e26b6b;
+  --selection: rgba(201, 161, 95, 0.28);
+}
+
+body[data-theme="typewriter"] {
+  --bg: #efe6d4;
+  --bg-alt: #e4d8c2;
+  --surface: #f7efdf;
+  --surface-2: #eee3cc;
+  --surface-3: #e5d8bd;
+  --text: #3b3327;
+  --text-dim: #7c7059;
+  --text-faint: #a79a7f;
+  --accent: #8a5a2b;
+  --accent-soft: #e7d4b4;
+  --editor-bg: #faf3e3;
+  --border: #d6c5a3;
+  --shadow: 0 2px 10px rgba(90, 70, 40, 0.18);
+  --ok: #5c8a52;
+  --warn: #a86a2e;
+  --danger: #a94f4f;
+  --selection: rgba(138, 90, 43, 0.22);
+}
+
+body[data-theme="gothic"] {
+  --bg: #1a1719;
+  --bg-alt: #1f1b1e;
+  --surface: #242024;
+  --surface-2: #2d272b;
+  --surface-3: #373036;
+  --text: #e5e0dd;
+  --text-dim: #a89e97;
+  --text-faint: #6e6660;
+  --accent: #9b4a5a;
+  --accent-soft: #3a282f;
+  --editor-bg: #1e1a1c;
+  --border: #3a3237;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+  --ok: #6d9e6d;
+  --warn: #c4956a;
+  --danger: #c06060;
+  --selection: rgba(155, 74, 90, 0.28);
+}
+
+body[data-theme="horror"] {
+  --bg: #1c1816;
+  --bg-alt: #211c19;
+  --surface: #262118;
+  --surface-2: #302921;
+  --surface-3: #3b3328;
+  --text: #e4ded6;
+  --text-dim: #a3998e;
+  --text-faint: #696157;
+  --accent: #b5443a;
+  --accent-soft: #3d2824;
+  --editor-bg: #1f1a17;
+  --border: #3a3028;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  --ok: #5c8a5c;
+  --warn: #b8865a;
+  --danger: #cc4b4b;
+  --selection: rgba(181, 68, 58, 0.28);
+}
+
+body[data-theme="fantasy"] {
+  --bg: #f5ecd7;
+  --bg-alt: #ede0c4;
+  --surface: #fdf6e8;
+  --surface-2: #f4e6cc;
+  --surface-3: #ebdab8;
+  --text: #3d3322;
+  --text-dim: #8a7960;
+  --text-faint: #b8a88a;
+  --accent: #b8863e;
+  --accent-soft: #f0ddb8;
+  --editor-bg: #fef8ed;
+  --border: #d8c9a6;
+  --shadow: 0 2px 10px rgba(140, 110, 60, 0.15);
+  --ok: #5c8a4e;
+  --warn: #c48a3e;
+  --danger: #b84f4f;
+  --selection: rgba(184, 134, 62, 0.22);
+}
+
+body[data-theme="sci-fi"] {
+  --bg: #1a1f26;
+  --bg-alt: #1e232b;
+  --surface: #222832;
+  --surface-2: #2a303b;
+  --surface-3: #333a47;
+  --text: #d8dce4;
+  --text-dim: #8e96a3;
+  --text-faint: #5d6470;
+  --accent: #4ea8c8;
+  --accent-soft: #242f3a;
+  --editor-bg: #1c2128;
+  --border: #2e3540;
+  --shadow: 0 2px 12px rgba(0, 100, 150, 0.12);
+  --ok: #5ea890;
+  --warn: #c4a060;
+  --danger: #c86060;
+  --selection: rgba(78, 168, 200, 0.28);
+}
