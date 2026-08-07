@@ -160,6 +160,9 @@ let _grammarView = null;
 let _grammarSkipping = false;
 let _grammarReplaceRange = null;
 let _lastDocOffsets = null;
+let _lastDocText = null;
+let _grammarDictionaryWords = [];
+let _grammarAddToDictCallback = null;
 
 function _grammarHash(text) {
   let h = 0;
@@ -212,7 +215,7 @@ async function _grammarFetch(text) {
   const resp = await fetch("/api/grammar/check", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, language: "en-US" }),
+    body: JSON.stringify({ text, language: "en-US", dictionaryWords: _grammarDictionaryWords }),
   });
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
   return resp.json();
@@ -249,6 +252,7 @@ function _grammarSchedule(view) {
   const hash = _grammarHash(docText.text);
   if (hash === pluginState.textHash) return;
   _lastDocOffsets = docText.offsets;
+  _lastDocText = docText.text;
   _grammarTimer = setTimeout(async () => {
     try {
       const data = await _grammarFetch(docText.text);
@@ -281,6 +285,18 @@ function makeGrammarPlugin() {
 
         if (tr.docChanged && newEnabled && !_grammarSkipping) {
           _grammarSchedule(_grammarView);
+        }
+
+        if (tr.getMeta("forceGrammar") && newEnabled && _grammarView && !_grammarView.isDestroyed) {
+          clearTimeout(_grammarTimer);
+          _grammarTimer = setTimeout(async () => {
+            const docText = _grammarDocText(newState.doc);
+            try {
+              const data = await _grammarFetch(docText.text);
+              if (_grammarView.isDestroyed) return;
+              _grammarUpdate(_grammarView, docText, data.matches || []);
+            } catch { /* unavailable */ }
+          }, 300);
         }
 
         return { set, enabled: newEnabled, textHash };
@@ -476,6 +492,28 @@ function _grammarShowTooltip(errorEl) {
     tip.appendChild(rl);
   }
 
+  const matchedWord = (_lastDocText || "").substring(match.offset, match.offset + match.length).trim();
+  if (matchedWord && _grammarAddToDictCallback && matchedWord.length > 1) {
+    const alreadyIn = _grammarDictionaryWords.some((w) => w.toLowerCase() === matchedWord.toLowerCase());
+    const sep = document.createElement("div");
+    sep.className = "grammar-tooltip-sep";
+    tip.appendChild(sep);
+    const addBtn = document.createElement("button");
+    addBtn.className = "grammar-dict-btn";
+    if (alreadyIn) {
+      addBtn.textContent = `"${matchedWord}" in dictionary`;
+      addBtn.disabled = true;
+    } else {
+      addBtn.textContent = `Add "${matchedWord}" to dictionary`;
+      addBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _grammarAddToDictCallback(matchedWord);
+        _grammarHideTooltip();
+      });
+    }
+    tip.appendChild(addBtn);
+  }
+
   document.body.appendChild(tip);
 
   const rect = errorEl.getBoundingClientRect();
@@ -598,6 +636,15 @@ window.LainEditor = {
       setGrammarEnabled(enabled) {
         editor.view.dispatch(editor.state.tr.setMeta("grammarEnabled", !!enabled));
         if (enabled) _grammarSchedule(_grammarView);
+      },
+      setDictionaryWords(words) {
+        _grammarDictionaryWords = Array.isArray(words) ? words : [];
+        if (_grammarView && !_grammarView.isDestroyed) {
+          _grammarView.dispatch(_grammarView.state.tr.setMeta("forceGrammar", true));
+        }
+      },
+      setOnAddToDictionary(callback) {
+        _grammarAddToDictCallback = callback;
       },
       run(command) {
         const chain = editor.chain().focus();

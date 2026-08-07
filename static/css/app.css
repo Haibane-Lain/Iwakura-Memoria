@@ -87,6 +87,11 @@ body {
   color: var(--text);
 }
 
+.win-btn:active {
+  transform: scale(0.92);
+  transition: transform 0.08s;
+}
+
 .win-close:hover {
   background: #e81123;
   color: #fff;
@@ -97,12 +102,36 @@ body.has-titlebar {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: app-in 0.25s ease;
+}
+
+@keyframes app-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 body.has-titlebar #app {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+#app.anim-max {
+  animation: max-pop 0.22s ease;
+}
+
+#app.anim-restore {
+  animation: restore-pop 0.22s ease;
+}
+
+@keyframes max-pop {
+  from { opacity: 0.6; transform: scale(0.96); }
+  to   { opacity: 1;   transform: scale(1); }
+}
+
+@keyframes restore-pop {
+  from { opacity: 0.6; transform: scale(1.03); }
+  to   { opacity: 1;   transform: scale(1); }
 }
 
 .resize-handle {
@@ -367,6 +396,7 @@ a {
   font-size: 13px;
   color: var(--text-dim);
   border: 1px solid transparent;
+  transition: background var(--transition), color var(--transition);
 }
 
 .tab-btn:hover {
@@ -581,6 +611,7 @@ a {
 .main-scroll {
   flex: 1;
   overflow-y: auto;
+  transition: opacity 0.12s;
 }
 
 .main-scroll.no-scroll {
@@ -1106,6 +1137,187 @@ a {
 
 .grammar-rep-chip:hover {
   opacity: 0.8;
+}
+
+.grammar-tooltip-sep {
+  margin: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.grammar-dict-btn {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.grammar-dict-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.grammar-dict-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---------- Dictionary dialog ---------- */
+
+.modal-overlay.dict-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.dict-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dict-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dict-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dict-close {
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.dict-close:hover {
+  color: var(--text);
+}
+
+.dict-body {
+  padding: 10px 14px 4px;
+}
+
+.dict-add-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dict-add-input,
+.dict-search-input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
+.dict-add-input:focus,
+.dict-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dict-add-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.dict-word-list {
+  min-height: 34px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0 -14px;
+  padding: 0 14px;
+}
+
+.dict-word-row {
+  display: flex;
+  align-items: center;
+  padding: 3px 4px;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+
+.dict-word-row:hover {
+  background: var(--accent-soft);
+}
+
+.dict-word-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dict-word-remove {
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.dict-word-row:hover .dict-word-remove {
+  opacity: 1;
+}
+
+.dict-word-remove:hover {
+  color: #e74c3c;
+}
+
+.dict-empty {
+  font-size: 12px;
+  color: var(--text-faint);
+  padding: 8px 0;
+  text-align: center;
+}
+
+.dict-word-count {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 4px 0 2px;
 }
 
 /* ---------- Stats view ---------- */

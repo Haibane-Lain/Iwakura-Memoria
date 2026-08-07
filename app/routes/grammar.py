@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/grammar", tags=["grammar"])
 class CheckRequest(BaseModel):
     text: str
     language: str = "en-US"
+    dictionaryWords: list[str] | None = None
 
 
 @router.get("/status")
@@ -21,7 +22,7 @@ def grammar_status():
 
 @router.post("/check")
 def grammar_check(body: CheckRequest):
-    matches = grammar_service.check(body.text, body.language)
+    matches = grammar_service.check(body.text, body.language, body.dictionaryWords)
     if matches is None:
         raise HTTPException(status_code=503, detail="Grammar server not available")
     return {"matches": matches}

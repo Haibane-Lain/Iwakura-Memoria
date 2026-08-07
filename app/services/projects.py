@@ -12,6 +12,8 @@ from typing import Any
 from app import config
 from app.services import documents as documents_service
 
+DICTIONARY_FILENAME = "dictionary.json"
+
 
 def _slugify(name: str) -> str:
     """Return a filesystem-safe slug from a display name."""
@@ -161,6 +163,35 @@ def delete_project(project_id: str) -> None:
 
 def get_document_tree(project_id: str, scope: str = "write") -> dict[str, Any]:
     return documents_service.get_tree(project_id, scope=scope)
+
+
+def get_dictionary(project_id: str) -> dict[str, Any]:
+    pid = _safe_id(project_id)
+    folder = project_dir(pid)
+    dict_path = folder / DICTIONARY_FILENAME
+    try:
+        data = json.loads(dict_path.read_text(encoding="utf-8"))
+        words = data.get("words", [])
+    except (json.JSONDecodeError, OSError):
+        words = []
+    return {"words": words}
+
+
+def update_dictionary(project_id: str, words: list[str]) -> dict[str, Any]:
+    pid = _safe_id(project_id)
+    folder = project_dir(pid)
+    seen = set()
+    unique = []
+    for w in words:
+        clean = str(w).strip()
+        if clean and clean.lower() not in seen:
+            seen.add(clean.lower())
+            unique.append(clean)
+    dict_path = folder / DICTIONARY_FILENAME
+    dict_path.write_text(
+        json.dumps({"words": unique}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"words": unique}
 
 
 def export_zip(project_id: str, folder_ids: list[str] | None = None) -> bytes:

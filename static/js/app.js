@@ -18,6 +18,27 @@ function setupTitleBar() {
   let tries = 0;
   let maximized = false;
 
+  function _animateMaximize() {
+    const app = document.getElementById("app");
+    if (!app) return;
+    const cls = maximized ? "anim-max" : "anim-restore";
+    app.classList.remove("anim-max", "anim-restore");
+    void app.offsetWidth;
+    app.classList.add(cls);
+    app.addEventListener("animationend", function h() {
+      app.classList.remove("anim-max", "anim-restore");
+      app.removeEventListener("animationend", h);
+    });
+  }
+
+  function _doMaximize() {
+    window.pywebview.api.toggle_maximize();
+    maximized = !maximized;
+    document.getElementById("win-maximize").textContent = maximized ? "\u2750" : "\u25a1";
+    document.body.classList.toggle("maximized", maximized);
+    _animateMaximize();
+  }
+
   function init() {
     if (window.pywebview && window.pywebview.api) {
       bar.style.display = "flex";
@@ -37,22 +58,18 @@ function setupTitleBar() {
       });
 
       document.getElementById("win-maximize").addEventListener("click", function () {
-        window.pywebview.api.toggle_maximize();
-        maximized = !maximized;
-        document.getElementById("win-maximize").textContent = maximized ? "\u2750" : "\u25a1";
-        document.body.classList.toggle("maximized", maximized);
+        _doMaximize();
       });
 
       document.getElementById("win-close").addEventListener("click", function () {
-        window.pywebview.api.close();
+        document.body.style.transition = "opacity 0.12s";
+        document.body.style.opacity = "0";
+        setTimeout(function () { window.pywebview.api.close(); }, 120);
       });
 
       bar.addEventListener("dblclick", function (e) {
         if (e.target.closest("button")) return;
-        window.pywebview.api.toggle_maximize();
-        maximized = !maximized;
-        document.getElementById("win-maximize").textContent = maximized ? "\u2750" : "\u25a1";
-        document.body.classList.toggle("maximized", maximized);
+        _doMaximize();
       });
 
       document.addEventListener("keydown", function (e) {

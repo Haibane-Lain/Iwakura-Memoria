@@ -93,6 +93,26 @@ def export_project_get(project_id: str):
     )
 
 
+class DictionaryPatch(BaseModel):
+    words: list[str]
+
+
+@router.get("/{project_id}/dictionary")
+def get_dictionary(project_id: str):
+    try:
+        return projects_service.get_dictionary(project_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.put("/{project_id}/dictionary")
+def put_dictionary(project_id: str, body: DictionaryPatch):
+    try:
+        return projects_service.update_dictionary(project_id, body.words)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 class ExportRequest(BaseModel):
     format: str = "zip"
     folders: list[str] | None = None

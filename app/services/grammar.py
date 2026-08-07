@@ -98,8 +98,12 @@ def is_available() -> bool:
     return _client is not None and (_lt_process is None or _lt_process.poll() is None)
 
 
-def check(text: str, language: str = "en-US") -> list[dict[str, Any]] | None:
-    """Run grammar check. Returns list of match dicts, or None if unavailable."""
+def check(text: str, language: str = "en-US", dictionary_words: list[str] | None = None) -> list[dict[str, Any]] | None:
+    """Run grammar check. Returns list of match dicts, or None if unavailable.
+
+    If *dictionary_words* is provided, any match whose matched text
+    (case-insensitive) appears in the list is excluded from results.
+    """
     if not is_available():
         return None
     try:
@@ -112,11 +116,18 @@ def check(text: str, language: str = "en-US") -> list[dict[str, Any]] | None:
     except Exception:
         return None
 
+    ignore = {w.strip().lower() for w in (dictionary_words or []) if w.strip()}
+
     matches: list[dict[str, Any]] = []
     for m in data.get("matches", []):
+        offset = m.get("offset", 0)
+        length = m.get("length", 0)
+        matched_text = text[offset : offset + length]
+        if ignore and matched_text.lower() in ignore:
+            continue
         matches.append({
-            "offset": m.get("offset", 0),
-            "length": m.get("length", 0),
+            "offset": offset,
+            "length": length,
             "message": m.get("message", ""),
             "replacements": [r.get("value", "") for r in m.get("replacements", [])],
             "rule_id": (m.get("rule") or {}).get("id", ""),

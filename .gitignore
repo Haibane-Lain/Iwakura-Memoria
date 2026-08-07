@@ -4,3 +4,4 @@ data/
 static/dist/
 __pycache__/
 *.pyc
+LanguageTool 6.9/

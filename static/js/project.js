@@ -35,6 +35,7 @@ const state = {
   docStyle: {},
   currentSection: null,
   selectionActive: false,
+  dictionary: { words: [] },
 };
 
 let lainCtrl = null;
@@ -1543,6 +1544,15 @@ function grammarToggle() {
   return btn;
 }
 
+function dictionaryBtn() {
+  const btn = el("button", {
+    class: "tool-btn",
+    title: "Project dictionary",
+    onclick: () => renderDictionaryDialog(),
+  }, "Dict");
+  return btn;
+}
+
 function toolbar() {
   const bar = el("div", { class: "editor-toolbar" });
   toolbarButtons = [];
@@ -1564,6 +1574,7 @@ function toolbar() {
   bar.append(
     el("div", { class: "toolbar-sep" }),
     grammarToggle(),
+    dictionaryBtn(),
     el("div", { class: "toolbar-sep" }),
     fontSelect("context"),
     sizeSelect("context"),
@@ -1735,6 +1746,20 @@ async function renderEditorTab(doc, { wiki }) {
     showNav: wiki,
   });
   state.editorCtrl.setGrammarEnabled(state.settings.grammarEnabled);
+  state.editorCtrl.setDictionaryWords(state.dictionary.words || []);
+  state.editorCtrl.setOnAddToDictionary(async (word) => {
+    const words = state.dictionary.words || [];
+    if (words.some((w) => w.toLowerCase() === word.toLowerCase())) return;
+    words.push(word);
+    state.dictionary.words = words;
+    state.editorCtrl.setDictionaryWords(words);
+    try {
+      await api.projects.dictionary.update(state.project.id, words);
+    } catch {
+      /* ignore */
+    }
+    if (state.editorCtrl.editor) { state.editorCtrl.editor.view.dispatch(state.editorCtrl.editor.state.tr.setMeta("forceGrammar", true)); }
+  });
   state.editorCtrl.editor.on("transaction", () => { refreshToolbar(); refreshEditorContext(); });
   state.editorCtrl.editor.on("selectionUpdate", () => { refreshToolbar(); refreshEditorContext(); });
   refreshToolbar();
@@ -2105,6 +2130,128 @@ function statCard(label, value, sub) {
   ]);
 }
 
+/* ---------------- dictionary dialog ---------------- */
+
+const DICT_MODAL_SEL = ".modal-overlay.dict-modal";
+
+function renderDictionaryDialog() {
+  const existing = document.querySelector(DICT_MODAL_SEL);
+  if (existing) { existing.remove(); return; }
+
+  const words = state.dictionary.words || [];
+  let addInputEl, searchInputEl;
+
+  function _saveWords() {
+    state.dictionary.words = words;
+    state.editorCtrl.setDictionaryWords(words);
+    api.projects.dictionary.update(state.project.id, words).catch(() => {});
+    if (state.editorCtrl.editor) {
+      state.editorCtrl.editor.view.dispatch(state.editorCtrl.editor.state.tr.setMeta("forceGrammar", true));
+    }
+  }
+
+  function addWord() {
+    const w = addInputEl.value.trim();
+    if (!w) return;
+    if (words.some((x) => x.toLowerCase() === w.toLowerCase())) {
+      addInputEl.value = "";
+      return;
+    }
+    words.push(w);
+    addInputEl.value = "";
+    _saveWords();
+    refreshList();
+  }
+
+  function removeWord(w) {
+    const idx = words.indexOf(w);
+    if (idx < 0) return;
+    words.splice(idx, 1);
+    _saveWords();
+    refreshList();
+  }
+
+  function refreshList() {
+    const query = searchInputEl ? searchInputEl.value.trim().toLowerCase() : "";
+    const list = modal.querySelector(".dict-word-list");
+    const count = modal.querySelector(".dict-word-count");
+    if (!list) return;
+
+    const filtered = query
+      ? words.filter((w) => w.toLowerCase().includes(query))
+      : words;
+
+    const sorted = [...(filtered || [])].sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    );
+
+    list.replaceChildren();
+    if (words.length === 0) {
+      list.append(el("div", { class: "dict-empty" }, "No words yet."));
+    } else if (sorted.length === 0) {
+      list.append(el("div", { class: "dict-empty" }, "No matching words."));
+    } else {
+      for (const w of sorted) {
+        list.append(
+          el("div", { class: "dict-word-row" }, [
+            el("span", { class: "dict-word-text", title: w }, w),
+            el("button", {
+              class: "dict-word-remove",
+              title: "Remove",
+              onclick: () => removeWord(w),
+            }, "\u00d7"),
+          ])
+        );
+      }
+    }
+
+    if (count) {
+      count.textContent = words.length
+        ? `${words.length} word${words.length !== 1 ? "s" : ""}`
+        : "";
+    }
+  }
+
+  const overlay = el("div", { class: "modal-overlay dict-modal" }, [
+    el("div", { class: "dict-dialog" }, [
+      el("div", { class: "dict-header" }, [
+        el("h3", {}, "Dictionary"),
+        el("button", { class: "dict-close", onclick: () => overlay.remove() }, "\u00d7"),
+      ]),
+      el("div", { class: "dict-body" }, [
+        el("div", { class: "dict-add-row" }, [
+          addInputEl = el("input", {
+            type: "text",
+            class: "dict-add-input",
+            placeholder: "Add word\u2026",
+            onkeydown: (e) => { if (e.key === "Enter") addWord(); },
+          }),
+          el("button", { class: "primary dict-add-btn", onclick: addWord }, "Add"),
+        ]),
+        searchInputEl = el("input", {
+          type: "text",
+          class: "dict-search-input",
+          placeholder: "Search\u2026",
+          oninput: refreshList,
+        }),
+        el("div", { class: "dict-word-count" }),
+        el("div", { class: "dict-word-list" }),
+      ]),
+    ]),
+  ]);
+
+  const modal = overlay.querySelector(".dict-dialog");
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  refreshList();
+
+  setTimeout(() => { if (addInputEl) addInputEl.focus(); }, 100);
+}
+
 /* ---------------- export dialog ---------------- */
 
 const EXPORT_FORMATS = [
@@ -2465,6 +2612,9 @@ async function renderSettingsTab() {
 /* ---------------- tab switching ---------------- */
 
 async function switchTab(tab) {
+  const main = document.getElementById("main-content");
+  if (main) main.style.opacity = "0";
+
   if (tab === "write" || tab === "wiki") {
     await flushSave();
     const wiki = tab === "wiki";
@@ -2489,6 +2639,7 @@ async function switchTab(tab) {
       ? await api.docs.get(state.project.id, state.currentDocId)
       : null;
     renderEditorTab(doc, { wiki });
+    if (main) { requestAnimationFrame(() => { main.style.opacity = "1"; }); }
     return;
   }
   await flushSave();
@@ -2500,8 +2651,10 @@ async function switchTab(tab) {
   }
   if (tab === "stats") renderStatsTab();
   else if (tab === "settings") renderSettingsTab();
-  const main = document.getElementById("main-content");
-  if (main) main.classList.remove("no-scroll");
+  if (main) {
+    main.classList.remove("no-scroll");
+    requestAnimationFrame(() => { main.style.opacity = "1"; });
+  }
 }
 
 function setActiveTab(tab) {
@@ -2536,6 +2689,11 @@ async function init(params) {
     state.project = await api.projects.get(params.id);
     state.tree = await api.projects.tree(params.id, "write");
     state.wikiTree = await api.projects.tree(params.id, "wiki");
+    try {
+      state.dictionary = await api.projects.dictionary.get(params.id);
+    } catch {
+      state.dictionary = { words: [] };
+    }
   } catch (err) {
     const root = document.getElementById("app");
     root.replaceChildren(

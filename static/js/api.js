@@ -87,6 +87,10 @@ export const api = {
     },
     stats: (id) => api.get(`/api/projects/${encodePath(id)}/stats`),
     wiki: (id) => api.get(`/api/projects/${encodePath(id)}/wiki`),
+    dictionary: {
+      get: (id) => api.get(`/api/projects/${encodePath(id)}/dictionary`),
+      update: (id, words) => api.put(`/api/projects/${encodePath(id)}/dictionary`, { words }),
+    },
   },
 
   docs: {
