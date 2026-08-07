@@ -18,6 +18,110 @@ body {
   transition: background var(--transition), color var(--transition);
 }
 
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 33px;
+  flex-shrink: 0;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  -webkit-app-region: drag;
+  padding: 0 12px;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.title-bar-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+.title-bar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 46px;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.08s, color 0.08s;
+}
+
+.win-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.win-close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+body.has-titlebar {
+  --titlebar-h: 33px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body.has-titlebar #app {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.resize-handle {
+  position: fixed;
+  z-index: 40;
+  -webkit-app-region: no-drag;
+}
+
+.resize-n  { top: 0;    left: 0;    right: 0;   height: 5px; cursor: n-resize; }
+.resize-s  { bottom: 0; left: 0;    right: 0;   height: 5px; cursor: s-resize; }
+.resize-e  { top: 0;    right: 0;   bottom: 0;  width: 5px;  cursor: e-resize; }
+.resize-w  { top: 0;    left: 0;    bottom: 0;  width: 5px;  cursor: w-resize; }
+.resize-ne { top: 0;    right: 0;   width: 8px;  height: 8px; cursor: ne-resize; }
+.resize-nw { top: 0;    left: 0;    width: 8px;  height: 8px; cursor: nw-resize; }
+.resize-se { bottom: 0; right: 0;   width: 8px;  height: 8px; cursor: se-resize; }
+.resize-sw { bottom: 0; left: 0;    width: 8px;  height: 8px; cursor: sw-resize; }
+
+body.maximized .resize-handle { display: none; }
+
 button {
   font-family: inherit;
   font-size: inherit;
@@ -208,7 +312,7 @@ a {
 .workspace {
   display: grid;
   grid-template-columns: 280px 1fr;
-  height: calc(100vh - 52px);
+  height: calc(100vh - 52px - var(--titlebar-h, 0px));
 }
 
 .sidebar {

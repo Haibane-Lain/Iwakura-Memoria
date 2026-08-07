@@ -8,7 +8,23 @@
   <link rel="stylesheet" href="/css/app.css" />
 </head>
 <body data-theme="paper">
+  <div id="title-bar" class="title-bar pywebview-drag-region" style="display:none">
+    <div class="title-bar-title">Lain's Writing Tools</div>
+    <div class="title-bar-controls">
+      <button class="win-btn" id="win-minimize" title="Minimize">&#x2500;</button>
+      <button class="win-btn" id="win-maximize" title="Maximize">&#x25a1;</button>
+      <button class="win-btn win-close" id="win-close" title="Close">&#x2715;</button>
+    </div>
+  </div>
   <div id="app"></div>
+  <div class="resize-handle resize-n"  data-dir="n"  style="display:none"></div>
+  <div class="resize-handle resize-s"  data-dir="s"  style="display:none"></div>
+  <div class="resize-handle resize-e"  data-dir="e"  style="display:none"></div>
+  <div class="resize-handle resize-w"  data-dir="w"  style="display:none"></div>
+  <div class="resize-handle resize-ne" data-dir="ne" style="display:none"></div>
+  <div class="resize-handle resize-nw" data-dir="nw" style="display:none"></div>
+  <div class="resize-handle resize-se" data-dir="se" style="display:none"></div>
+  <div class="resize-handle resize-sw" data-dir="sw" style="display:none"></div>
 
   <script src="/dist/editor.bundle.js" defer></script>
   <script type="module" src="/js/app.js"></script>
