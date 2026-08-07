@@ -1,8 +1,10 @@
 # Iwakura Memoria
 
-A local, single-user web app for long-form fiction and worldbuilding.
-Write in a WYSIWYG editor, keep an Obsidian-style wiki of notes per project,
-track daily word counts and goals, and switch between color themes.
+A desktop application for long-form fiction and worldbuilding. Write in a
+WYSIWYG editor with real-time grammar checking, keep an Obsidian-style wiki,
+track daily word counts, and switch between themed palettes. The app runs
+natively via pywebview with a custom title bar, and falls back to a browser
+when launched with `--browser`.
 
 ## Quick start
 
@@ -10,8 +12,39 @@ track daily word counts and goals, and switch between color themes.
 python -m venv .venv                     # if you don't already have it
 .venv\Scripts\pip install -r requirements.txt
 npm install && npm run build             # builds the editor bundle
-python main.py                           # opens http://127.0.0.1:8000
+python main.py                           # desktop window (on Windows)
+python main.py --browser                 # or open in a browser tab
 ```
+
+Grammar checking requires **Java 17+** and a LanguageTool server. See the
+[Grammar](#grammar-checking) section below.
+
+## Features
+
+- **Native desktop window** — pywebview with Edge WebView2 backend, frameless
+  with a custom-themed title bar, maximize/restore/fullscreen, and edge resizing.
+- **WYSIWYG editor** — TipTap-based ProseMirror editor with markdown
+  round-tripping, wikilinks (`[[Target]]` / `[[Target|alias]]`), per-document
+  and per-section fonts/sizes/alignment, and zoom.
+- **Grammar checking** — Bundled LanguageTool 6.9 Java server, with
+  ProseMirror inline underlines, replacement corrections, and a per-project
+  ignore dictionary.
+- **Per-project dictionary** — Words you add to the dictionary are filtered
+  from grammar results across the entire project.
+- **Export** — Native save-as dialog for ZIP, DOCX, PDF, and EPUB. Select
+  which folders to include.
+- **AI assistant (Lain)** — DeepSeek-powered sidebar that helps organize your
+  project: list, read, create, rename, move, edit, and delete entries, all
+  server-enforced by scope. Destructive actions require user confirmation.
+- **Wiki system** — Dedicated `worldbuilding/` tree with templates (Character,
+  Location, Organization, Nation, Lore Concept), wikilink auto-resolution,
+  backlinks, and a Fandom-style navigation box.
+- **Themes** — Paper, Ink, Typewriter, Gothic, Horror, Fantasy, Sci-Fi.
+- **Stats** — Daily word counts, streak tracking, and configurable goals with
+  a progress bar and bar chart.
+- **Drag-and-drop sidebar** — Reorder, nest, and move chapters, notes, wiki
+  entries, and folders with visual drop zones.
+- **Autosave** — Configurable debounce; last-ditch save on tab close.
 
 ## How data is stored
 
@@ -20,9 +53,11 @@ scaffolding tree of **folders** and **documents**:
 
 ```
 data/
-  settings.json                    # global settings (theme, word count mode)
+  settings.json                    # global settings (theme, word count mode, grammar toggle, AI config)
+  ai-sessions/<project>/           # Lain chat session history
   <project>/
     project.json                   # title, daily goal, timestamps
+    dictionary.json                # per-project grammar ignore list
     stats/history.jsonl            # append-only log of word-count deltas
     templates/*.json               # lore templates (Character, Location, …)
     worldbuilding/                 # the Wiki tab's scaffolding root
@@ -54,9 +89,38 @@ by ordering; folders inside it are ordered like any others.
 
 The **Write tab** shows everything except `worldbuilding/`; the **Wiki tab**
 shows only `worldbuilding/`, so lore lives in its own separate scaffolding
-with the same folder features. The `stats/`, `templates/` and `worldbuilding/`
-paths (and `project.json`) are reserved. Legacy `chapters/` layouts are
-migrated automatically the first time a project is opened.
+with the same folder features. The `stats/`, `templates/`, `ai-sessions/` and
+`worldbuilding/` paths (and `project.json`, `dictionary.json`) are reserved.
+
+## Grammar checking
+
+A local LanguageTool 6.9 server runs on port 8081. Requires **Java 17+**.
+The server starts automatically at launch and shuts down when the app closes.
+
+- Enable or disable per session from the **toolbar toggle**.
+- Underlines appear inline in the editor with a 1.5s debounce.
+- Click an underline to see the error message and replacement suggestions.
+- Apply a replacement to automatically correct the text.
+- Click **Add to dictionary** to ignore a word across all documents in the
+  project (stored in the project's `dictionary.json`).
+- Open the **Dict** toolbar button to view, search, add, or remove dictionary
+  words.
+
+If you don't need grammar checking, toggle it off and the server won't start.
+You can also set `"grammarEnabled": false` in `data/settings.json`.
+
+## Export
+
+The **Export** button in the top bar opens a dialog where you can:
+
+- Select a format: **ZIP** (raw Markdown), **DOCX** (styled Word document),
+  **PDF**, or **EPUB**.
+- Choose which folders to include (deselect any you want to skip).
+- In desktop mode, a native save-as dialog opens so you pick the destination.
+- In browser mode, the file downloads directly.
+
+PDF export uses platform-specific serif/mono fonts (Georgia on
+Windows/macOS, DejaVu on Linux).
 
 ## Editing notes
 
@@ -84,13 +148,13 @@ migrated automatically the first time a project is opened.
 ## Backend layout
 
 ```
-main.py                 # entry point (uvicorn + open browser)
+main.py                    # entry point (pywebview window + uvicorn)
 app/
-  main.py               # FastAPI app factory, static serving
-  config.py             # paths + defaults
-  routes/               # projects, documents, wiki/stats, settings, ai
-  services/             # business logic (filesystem is the source of truth)
-  ai/                   # Lain: DeepSeek provider, tools, agent loop, sessions
+  main.py                  # FastAPI app factory, static serving
+  config.py                # paths + defaults
+  routes/                  # projects, documents, wiki/stats, settings, ai, grammar
+  services/                # business logic (filesystem is the source of truth)
+  ai/                      # Lain: DeepSeek provider, tools, agent loop, sessions
 ```
 
 The API is documented at `/api/docs` while the server is running.
@@ -122,17 +186,17 @@ improvements. Lain is **not** a ghost-writer: it won't write your prose.
 - After Lain changes anything, the sidebar tree, wiki backlinks, and the
   open document (if it was touched) refresh automatically.
 
-
 ## Frontend layout
 
 ```
 static/
   index.html
-  css/themes.css        # CSS-variable palettes (paper / ink / typewriter)
+  lib/marked.js            # Markdown renderer for Lain chat
+  css/themes.css           # CSS-variable palettes (7 themes)
   css/app.css
-  js/                   # api, router, ui, themes, library, project
-  dist/editor.bundle.js # TipTap bundle (built from client/)
-client/editor-entry.js  # TipTap source — edit, then `npm run build`
+  js/                      # api, router, ui, themes, library, project, lain
+  dist/editor.bundle.js    # TipTap bundle (built from client/)
+client/editor-entry.js     # TipTap source — edit, then `npm run build`
 ```
 
 ## Word counting
@@ -149,7 +213,7 @@ Text styling works at three levels — each falls back to the level above it:
 
 1. **Global defaults** — edited in **Settings → Editor defaults**. These are
    the app-wide fallback for every document.
-2. **Per document** — stored in the file's frontmatter (`font`, `size`,
+2. **Per document** — stored in the file's YAML frontmatter (`font`, `size`,
    `align`, `zoom`). Sections you've never touched use this.
 3. **Per section** — stored in the frontmatter `styles` map keyed by heading
    text, e.g. `styles: {"Appearance": {"size": 20, "align": "center"}}`.
