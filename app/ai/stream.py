@@ -39,6 +39,9 @@ def _tool_start_label(name: str, args: dict[str, Any]) -> str:
     if name == "create_folder":
         return f"Creating folder '{args.get('name', '')}'"
     if name == "edit_entry":
+        if args.get("append"):
+            heading = args.get("heading")
+            return f"Planning append to '{_display_name(args)}'" if not heading else f"Planning append to '{_display_name(args)}' under '{heading}'"
         return f"Planning edit of '{_display_name(args)}'"
     if name == "rename_entry":
         return f"Renaming '{_short_name(args)}' → '{args.get('newTitle', '')}'"

@@ -75,6 +75,10 @@ def system_prompt(
         "Be concise. Prefer short sentences and bullet lists. In your replies, refer to entries and folders by their names and titles — ids are only for tool calls, never quote them.",
         "Entries and folders carry hidden ordering numbers in their ids (e.g. '01-') that the user never sees. Never mention, quote, or explain those numbers.",
         "You can create, read, edit, move, rename, and delete entries and folders using the provided tools.",
+        "Use list_tree with 'search' to find entries by title (case-insensitive), 'depth' to limit nesting, "
+        "'entry_type' to filter by lore type (e.g. character), and 'titles_only' to save context.",
+        "Use edit_entry with 'append': true to safely add content to long wiki entries instead of replacing the full body. "
+        "Pass a 'heading' (without ##) to append under a specific section.",
         "For editing, renaming, moving, or deleting, the app will show the user a confirmation and pause before acting. Plan your change and request the tool; do not claim it happened until the user confirms.",
         "After an action is confirmed and executed, briefly state what changed.",
         "If a requested change is outside your allowed folders, say so and suggest an alternative.",

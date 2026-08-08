@@ -243,6 +243,7 @@ def _doc_summary(folder: Path, doc_id: str, mode: str = "auto") -> dict[str, Any
     return {
         "id": doc_id,
         "title": str(merged.get("title", "")),
+        "type": str(merged.get("type", "")),
         "kind": _doc_kind(raw),
         "words": count_words(body, mode),
         "updatedAt": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),

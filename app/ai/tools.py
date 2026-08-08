@@ -67,8 +67,17 @@ def _display_path(entry_id: str) -> str:
     )
 
 
-def _tree_text(project_id: str, scope: list[str] | None, folder: str | None = None) -> str:
+def _tree_text(
+    project_id: str,
+    scope: list[str] | None,
+    folder: str | None = None,
+    search: str | None = None,
+    depth: int | None = None,
+    titles_only: bool = False,
+    entry_type: str | None = None,
+) -> str:
     tree = documents_service.get_tree(project_id, scope="all")
+    search_lower = search.lower() if search else None
 
     def prune(node: dict[str, Any]) -> dict[str, Any]:
         folders = []
@@ -81,18 +90,51 @@ def _tree_text(project_id: str, scope: list[str] | None, folder: str | None = No
         ]
         return {"folders": folders, "documents": docs}
 
-    def lines(node: dict[str, Any], prefix: str = "") -> list[str]:
+    def lines(node: dict[str, Any], _depth: int = 0) -> list[str]:
         out: list[str] = []
+        if depth is not None and _depth > depth:
+            return out
         for d in node.get("documents", []):
-            out.append(f"- [{d['id']}] {d['title']} ({d.get('kind', 'note')}, {d.get('words', 0)} words)")
+            if search_lower and search_lower not in d["title"].lower():
+                continue
+            if entry_type and d.get("type") != entry_type:
+                continue
+            if titles_only:
+                out.append(f"- [{d['id']}] {d['title']}")
+            else:
+                w = d.get("words", 0)
+                est = w * 6
+                out.append(f"- [{d['id']}] {d['title']} ({d.get('kind', 'note')}, {w} words, ~{est} chars)")
         for f in node.get("folders", []):
+            if search_lower and search_lower not in f["name"].lower():
+                out.extend(lines(f, _depth + 1))
+                continue
             out.append(f"- [folder:{f['id']}] {f['name']}")
-            out.extend(lines(f))
+            out.extend(lines(f, _depth + 1))
         return out
 
-    text = "\n".join(lines(prune(tree)))
+    pruned = prune(tree)
+    if folder:
+
+        def _has_folder(node: dict[str, Any]) -> bool:
+            for f in node.get("folders", []):
+                if f["id"] == folder:
+                    return True
+                if _has_folder(f):
+                    return True
+            return False
+
+        if not _has_folder(pruned):
+            return f"(folder '{folder}' not found)"
+
+    text = "\n".join(lines(pruned))
     if not text:
-        text = "(no entries in the allowed folders)"
+        if search:
+            text = f"(no entries match '{search}')"
+        elif entry_type:
+            text = f"(no entries of type '{entry_type}' in the allowed folders)"
+        else:
+            text = "(no entries in the allowed folders)"
     if len(text) > TREE_TEXT_CAP:
         text = text[:TREE_TEXT_CAP] + "\n… (truncated)"
     return text
@@ -104,7 +146,16 @@ def _tree_text(project_id: str, scope: list[str] | None, folder: str | None = No
 
 def _list_tree(project_id: str, scope: list[str] | None, args: dict[str, Any], session_id: str | None = None) -> tuple[str, dict[str, Any] | None]:
     folder = args.get("folder") or None
-    return _tree_text(project_id, scope, folder), None
+    search = args.get("search") or None
+    depth = args.get("depth")
+    if depth is not None:
+        try:
+            depth = max(0, int(depth))
+        except (TypeError, ValueError):
+            depth = None
+    titles_only = bool(args.get("titles_only"))
+    entry_type = args.get("entry_type") or None
+    return _tree_text(project_id, scope, folder, search, depth, titles_only, entry_type), None
 
 
 def _read_entry(project_id: str, scope: list[str] | None, args: dict[str, Any], session_id: str | None = None) -> tuple[str, dict[str, Any] | None]:
@@ -237,6 +288,21 @@ def _diff_lines(before: str, after: str) -> list[dict[str, str]]:
     return out
 
 
+def _apply_append(existing: str, content: str, heading: str | None) -> tuple[str, str]:
+    """Return (new_content, note). note is empty for success or a warning string."""
+    if heading:
+        heading_md = f"## {heading}"
+        idx = existing.find(heading_md)
+        if idx == -1:
+            return existing + f"\n\n{content}", f"(heading \"{heading}\" not found — appended to end)"
+        next_jump = re.search(r"\n\n##", existing[idx + len(heading_md):])
+        if next_jump:
+            insert_pos = idx + len(heading_md) + next_jump.start()
+            return existing[:insert_pos] + f"\n\n{content}" + existing[insert_pos:], ""
+        return existing + f"\n\n{content}", ""
+    return existing + f"\n\n{content}", ""
+
+
 def _plan_edit_entry(project_id: str, args: dict[str, Any]) -> dict[str, Any]:
     entry_id = str(args["entryId"])
     try:
@@ -244,7 +310,14 @@ def _plan_edit_entry(project_id: str, args: dict[str, Any]) -> dict[str, Any]:
     except (FileNotFoundError, ValueError) as exc:
         raise ToolError(str(exc)) from exc
     proposed = str(args.get("content") or "")
-    diff = _diff_lines(doc.get("content", ""), proposed)
+    append = bool(args.get("append"))
+    heading = str(args.get("heading") or "") or None
+    existing = doc.get("content", "")
+    if append:
+        new_content, _note = _apply_append(existing, proposed, heading)
+    else:
+        new_content = proposed
+    diff = _diff_lines(existing, new_content)
     changed = sum(1 for d in diff if d["type"] in ("add", "del"))
     return {
         "tool": "edit_entry",
@@ -254,6 +327,8 @@ def _plan_edit_entry(project_id: str, args: dict[str, Any]) -> dict[str, Any]:
             "title": doc["title"],
             "folder": _doc_folder(entry_id),
             "words": doc.get("words", 0),
+            "append": append,
+            "heading": heading,
             "diff": diff,
         },
     }
@@ -380,12 +455,28 @@ def _plan_delete_folder(project_id: str, args: dict[str, Any]) -> dict[str, Any]
 def _exec_edit_entry(project_id: str, args: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
     entry_id = str(args["entryId"])
     content = str(args.get("content") or "")
+    append = bool(args.get("append"))
+    heading = str(args.get("heading") or "") or None
     try:
-        doc = documents_service.save_document(project_id, entry_id, content)
+        doc = documents_service.get_document(project_id, entry_id)
     except (FileNotFoundError, ValueError) as exc:
         raise ToolError(str(exc)) from exc
+    existing = doc.get("content", "")
+    if append:
+        new_content, note = _apply_append(existing, content, heading)
+        if heading:
+            label = f"Appended to \"{doc['title']}\" under \"{heading}\""
+        else:
+            label = f"Appended to \"{doc['title']}\""
+        result_text = f"{label}."
+        if note:
+            result_text = f"{label} {note}."
+    else:
+        new_content = content
+        result_text = f"Edited [{doc['id']}] \"{doc['title']}\"."
+    doc = documents_service.save_document(project_id, entry_id, new_content)
     action = {"tool": "edit_entry", "summary": f"Edited \"{doc['title']}\" ({doc.get('words', 0)} words)", "id": entry_id, "ok": True}
-    return f"Edited [{doc['id']}] \"{doc['title']}\".", action
+    return result_text, action
 
 
 def _exec_rename_entry(project_id: str, args: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
@@ -471,9 +562,17 @@ _SCHEMAS: list[dict[str, Any]] = [
     _schema(
         "list_tree",
         "List the project's folders and entries the user has allowed Lain to access. "
-        "Optionally pass 'folder' to list one folder's contents.",
+        "Use 'search' to filter by title or folder name (case-insensitive substring). "
+        "Use 'depth' to limit nesting depth (0 = root only, 1 = root + direct children, etc.). "
+        "Use 'titles_only' to drop word/char counts and save context. "
+        "Use 'entry_type' to filter by lore type (e.g. 'character', 'lore concept'). "
+        "Use 'folder' to list one folder's contents.",
         {
             "folder": {"type": "string", "description": "Optional folder id to list instead of everything"},
+            "search": {"type": "string", "description": "Case-insensitive substring to filter entry titles and folder names"},
+            "depth": {"type": "integer", "description": "Maximum nesting depth to show (0 = root only)"},
+            "titles_only": {"type": "boolean", "description": "If true, omit word/char counts to save context"},
+            "entry_type": {"type": "string", "description": "Filter by lore docType (e.g. 'character', 'location', 'lore concept')"},
         },
         [],
     ),
@@ -519,10 +618,18 @@ _SCHEMAS: list[dict[str, Any]] = [
     ),
     _schema(
         "edit_entry",
-        "Replace an entry's full Markdown body with new content. The app will show a diff and ask the user to confirm. "
-        "You may edit several entries per reply. For very large jobs, work in batches and tell the user you are still working "
-        "and will continue after they say 'continue'.",
-        {"entryId": {"type": "string"}, "content": {"type": "string", "description": "Complete new Markdown body"}},
+        "Replace an entry's full Markdown body with new content, or append to a section. "
+        "The app will show a diff and ask the user to confirm. "
+        "Set 'append' to true to add content instead of replacing (use 'heading' to append under "
+        "a specific ## section; without heading, the content is appended to the end of the entry). "
+        "You may edit several entries per reply. For very large jobs, work in batches and tell "
+        "the user you are still working and will continue after they say 'continue'.",
+        {
+            "entryId": {"type": "string"},
+            "content": {"type": "string", "description": "Markdown body (full replacement unless append is true)"},
+            "append": {"type": "boolean", "description": "If true, append content instead of replacing"},
+            "heading": {"type": "string", "description": "Heading text (without ##) to append under when append is true"},
+        },
         ["entryId", "content"],
     ),
     _schema(
