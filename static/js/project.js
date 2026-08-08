@@ -39,6 +39,10 @@ const state = {
 };
 
 let lainCtrl = null;
+let _creating = false;
+let _switching = false;
+let _opening = false;
+let _beforeUnload = null;
 
 /* ---------------- helpers ---------------- */
 
@@ -690,6 +694,13 @@ function renderLevel(node, folderId) {
     ...(node.folders || []).map((f) => ({ kind: "folder", id: f.id })),
     ...(node.documents || []).map((d) => ({ kind: "doc", id: d.id })),
   ];
+  if (node.entries && entries.some((e) => !byId.has(e.id))) {
+    entries.length = 0;
+    entries.push(
+      ...(node.folders || []).map((f) => ({ kind: "folder", id: f.id })),
+      ...(node.documents || []).map((d) => ({ kind: "doc", id: d.id }))
+    );
+  }
   for (const e of entries) {
     const it = byId.get(e.id);
     if (!it) continue;
@@ -1050,13 +1061,19 @@ async function handleFolderDrop(dragged, target) {
 }
 
 async function afterTreeChange() {
-  const prevTitle = docTitle(state.currentDocId);
+  const prevId = state.currentDocId;
+  const prevTitle = docTitle(prevId);
   await refreshTree();
   if (prevTitle) {
     const match = [...collectTree(state.tree), ...collectTree(state.wikiTree)].find(
       (d) => d.title === prevTitle
     );
-    if (match) state.currentDocId = match.id;
+    if (match && match.id !== prevId) {
+      console.warn("afterTreeChange: currentDocId changed from", prevId, "to", match.id, "(matched by title '" + prevTitle + "')");
+      state.currentDocId = match.id;
+    } else if (match) {
+      state.currentDocId = match.id;
+    }
   }
   renderSidebar();
 }
@@ -1125,18 +1142,24 @@ async function onLainActions(actions) {
 /* ---------------- document actions ---------------- */
 
 async function newDocument(kind, folder) {
-  const title = await promptDialog({
-    title: kind === "chapter" ? "New chapter" : "New note",
-    label: "Title",
-    placeholder: kind === "chapter" ? "Chapter title" : "Note title",
-    confirmText: "Create",
-  });
-  if (title === null) return;
-  if (!title.trim()) {
-    toast("A title is required", "error");
-    return;
+  console.warn("newDocument called, _creating=", _creating, "_switching=", _switching);
+  if (_creating) {
+    console.warn("newDocument: stale _creating lock detected, resetting");
+    _creating = false;
   }
+  _creating = true;
   try {
+    const title = await promptDialog({
+      title: kind === "chapter" ? "New chapter" : "New note",
+      label: "Title",
+      placeholder: kind === "chapter" ? "Chapter title" : "Note title",
+      confirmText: "Create",
+    });
+    if (title === null) return;
+    if (!title.trim()) {
+      toast("A title is required", "error");
+      return;
+    }
     const doc = await api.docs.create(state.project.id, {
       title: title.trim(),
       kind,
@@ -1145,10 +1168,12 @@ async function newDocument(kind, folder) {
     await flushSave();
     await afterTreeChange();
     await refreshWiki();
-    switchTab("write");
-    openDocument(doc.id);
+    await openDocument(doc.id);
   } catch (err) {
     toast(err.message, "error");
+  } finally {
+    console.warn("newDocument finally: setting _creating = false");
+    _creating = false;
   }
 }
 
@@ -1443,20 +1468,29 @@ async function deleteFolder(folderId) {
 }
 
 async function openDocument(docId) {
-  if (docId === state.currentDocId) return;
+  if (docId === state.currentDocId) {
+    console.warn("openDocument skipped: docId === currentDocId (" + docId + ")");
+    return;
+  }
+  if (_opening) return;
+  _opening = true;
+  try {
   await flushSave();
   const wiki = docId.startsWith("worldbuilding/");
-  state.currentDocId = docId;
-  state.currentTab = wiki ? "wiki" : "write";
-  if (wiki) state.wikiDocId = docId;
-  else state.writeDocId = docId;
-  setActiveTab(state.currentTab);
-  renderSidebar();
   try {
     const doc = await api.docs.get(state.project.id, docId);
+    state.currentDocId = docId;
+    state.currentTab = wiki ? "wiki" : "write";
+    if (wiki) state.wikiDocId = docId;
+    else state.writeDocId = docId;
+    setActiveTab(state.currentTab);
+    renderSidebar();
     renderEditorTab(doc, { wiki });
   } catch (err) {
     toast(err.message, "error");
+  }
+  } finally {
+    _opening = false;
   }
 }
 
@@ -1686,6 +1720,8 @@ function backlinksPanel() {
 
 async function renderEditorTab(doc, { wiki }) {
   if (state.editorCtrl) {
+    clearTimeout(state.saveTimer);
+    state.saveTimer = null;
     state.editorCtrl.destroy();
     state.editorCtrl = null;
   }
@@ -1727,24 +1763,30 @@ async function renderEditorTab(doc, { wiki }) {
     return;
   }
 
+  const mount = document.getElementById("editor-mount");
+  const wasPending = state.dirty && state.currentDocId === doc.id;
+  try {
+    state.editorCtrl = window.LainEditor.create({
+      element: mount,
+      content: doc.content || "",
+      placeholder: wiki ? "Begin lore entry…" : "Begin writing…",
+      onChange: onEditorUpdate,
+      onWikilinkClick,
+      showNav: wiki,
+    });
+  } catch (err) {
+    toast("Editor failed to load", "error");
+    return;
+  }
+
   state.currentDocId = doc.id;
   if (wiki) state.wikiDocId = doc.id;
   else state.writeDocId = doc.id;
   state.docStyle = doc.style || {};
   state.currentSection = null;
   state.selectionActive = false;
-
-  const mount = document.getElementById("editor-mount");
-  const wasPending = state.dirty && state.currentDocId === doc.id;
   state.dirty = false;
-  state.editorCtrl = window.LainEditor.create({
-    element: mount,
-    content: doc.content || "",
-    placeholder: wiki ? "Begin lore entry…" : "Begin writing…",
-    onChange: onEditorUpdate,
-    onWikilinkClick,
-    showNav: wiki,
-  });
+
   state.editorCtrl.setGrammarEnabled(state.settings.grammarEnabled);
   state.editorCtrl.setDictionaryWords(state.dictionary.words || []);
   state.editorCtrl.setOnAddToDictionary(async (word) => {
@@ -2612,6 +2654,14 @@ async function renderSettingsTab() {
 /* ---------------- tab switching ---------------- */
 
 async function switchTab(tab) {
+  console.warn("switchTab called, tab=", tab, "_creating=", _creating, "_switching=", _switching);
+  if (_creating || _switching) {
+    console.warn("switchTab BLOCKED by lock, resetting stale _creating");
+    _creating = false;
+    if (_switching) return;
+  }
+  _switching = true;
+  try {
   const main = document.getElementById("main-content");
   if (main) main.style.opacity = "0";
 
@@ -2621,6 +2671,8 @@ async function switchTab(tab) {
     state.currentTab = tab;
     setActiveTab(tab);
     if (state.editorCtrl) {
+      clearTimeout(state.saveTimer);
+      state.saveTimer = null;
       state.editorCtrl.destroy();
       state.editorCtrl = null;
     }
@@ -2638,7 +2690,7 @@ async function switchTab(tab) {
     const doc = state.currentDocId
       ? await api.docs.get(state.project.id, state.currentDocId)
       : null;
-    renderEditorTab(doc, { wiki });
+    await renderEditorTab(doc, { wiki });
     if (main) { requestAnimationFrame(() => { main.style.opacity = "1"; }); }
     return;
   }
@@ -2646,14 +2698,20 @@ async function switchTab(tab) {
   state.currentTab = tab;
   setActiveTab(tab);
   if (state.editorCtrl) {
+    clearTimeout(state.saveTimer);
+    state.saveTimer = null;
     state.editorCtrl.destroy();
     state.editorCtrl = null;
   }
-  if (tab === "stats") renderStatsTab();
-  else if (tab === "settings") renderSettingsTab();
+  if (tab === "stats") await renderStatsTab();
+  else if (tab === "settings") await renderSettingsTab();
   if (main) {
     main.classList.remove("no-scroll");
     requestAnimationFrame(() => { main.style.opacity = "1"; });
+  }
+  } finally {
+    console.warn("switchTab finally: setting _switching = false");
+    _switching = false;
   }
 }
 
@@ -2725,7 +2783,8 @@ async function init(params) {
 
   await Promise.all([refreshWiki(), updateTopbar()]);
 
-  window.addEventListener("beforeunload", () => {
+  if (_beforeUnload) window.removeEventListener("beforeunload", _beforeUnload);
+  _beforeUnload = () => {
     if (state.dirty) {
       const md = state.editorCtrl && state.editorCtrl.getMarkdown();
       if (md && state.currentDocId) {
@@ -2737,7 +2796,8 @@ async function init(params) {
         });
       }
     }
-  });
+  };
+  window.addEventListener("beforeunload", _beforeUnload);
 
   const first = firstDoc();
   if (state.currentDocId) {
