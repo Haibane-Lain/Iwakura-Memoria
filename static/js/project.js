@@ -1069,7 +1069,6 @@ async function afterTreeChange() {
       (d) => d.title === prevTitle
     );
     if (match && match.id !== prevId) {
-      console.warn("afterTreeChange: currentDocId changed from", prevId, "to", match.id, "(matched by title '" + prevTitle + "')");
       state.currentDocId = match.id;
     } else if (match) {
       state.currentDocId = match.id;
@@ -1142,9 +1141,7 @@ async function onLainActions(actions) {
 /* ---------------- document actions ---------------- */
 
 async function newDocument(kind, folder) {
-  console.warn("newDocument called, _creating=", _creating, "_switching=", _switching);
   if (_creating) {
-    console.warn("newDocument: stale _creating lock detected, resetting");
     _creating = false;
   }
   _creating = true;
@@ -1172,7 +1169,6 @@ async function newDocument(kind, folder) {
   } catch (err) {
     toast(err.message, "error");
   } finally {
-    console.warn("newDocument finally: setting _creating = false");
     _creating = false;
   }
 }
@@ -1468,10 +1464,7 @@ async function deleteFolder(folderId) {
 }
 
 async function openDocument(docId) {
-  if (docId === state.currentDocId) {
-    console.warn("openDocument skipped: docId === currentDocId (" + docId + ")");
-    return;
-  }
+  if (docId === state.currentDocId) return;
   if (_opening) return;
   _opening = true;
   try {
@@ -2654,9 +2647,7 @@ async function renderSettingsTab() {
 /* ---------------- tab switching ---------------- */
 
 async function switchTab(tab) {
-  console.warn("switchTab called, tab=", tab, "_creating=", _creating, "_switching=", _switching);
   if (_creating || _switching) {
-    console.warn("switchTab BLOCKED by lock, resetting stale _creating");
     _creating = false;
     if (_switching) return;
   }
@@ -2710,7 +2701,6 @@ async function switchTab(tab) {
     requestAnimationFrame(() => { main.style.opacity = "1"; });
   }
   } finally {
-    console.warn("switchTab finally: setting _switching = false");
     _switching = false;
   }
 }
