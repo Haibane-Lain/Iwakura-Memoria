@@ -67,6 +67,40 @@ def _display_path(entry_id: str) -> str:
     )
 
 
+def _tool_label(name: str, args: dict[str, Any]) -> str:
+    """Return a short human-readable label for a tool call, used in diagnostics."""
+    entry_id = args.get("entryId") or args.get("entry_id")
+    folder_id = args.get("folderId") or args.get("folder")
+    if name == "list_tree":
+        parts = ["list_tree"]
+        if args.get("search"):
+            parts.append(f"'{args['search']}'")
+        if args.get("folder"):
+            parts.append(f"in {_display_path(str(args['folder']))}")
+        elif args.get("entry_type"):
+            parts.append(args["entry_type"])
+        return " ".join(parts)
+    if name == "read_entry":
+        return f"read_entry '{_display_path(str(entry_id))}'" if entry_id else "read_entry"
+    if name == "read_attachment":
+        return f"read_attachment '{args.get('filename', '?')}'"
+    if name == "create_entry":
+        return f"create_entry '{args.get('title', '?')}'"
+    if name == "create_folder":
+        return f"create_folder '{args.get('name', '?')}'"
+    if name == "edit_entry":
+        return f"edit_entry '{_display_path(str(entry_id))}'" if entry_id else "edit_entry"
+    if name == "rename_entry":
+        return f"rename_entry '{str(args.get('newTitle', '?'))}'"
+    if name == "move_entry":
+        return f"move_entry '{_display_path(str(entry_id))}'" if entry_id else "move_entry"
+    if name == "move_folder":
+        return f"move_folder '{_display_path(str(folder_id))}'" if folder_id else "move_folder"
+    if name == "delete_entry":
+        return f"delete_entry '{_display_path(str(entry_id))}'" if entry_id else "delete_entry"
+    return name
+
+
 def _tree_text(
     project_id: str,
     scope: list[str] | None,

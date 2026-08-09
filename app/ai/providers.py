@@ -26,11 +26,23 @@ class AIClient:
     name = "base"
     default_base_url = ""
     default_model = ""
+    default_max_iterations = 20
 
-    def __init__(self, api_key: str, model: str = "", base_url: str = "") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "",
+        base_url: str = "",
+        max_iterations: int | None = None,
+    ) -> None:
         self.api_key = api_key
         self.model = model or self.default_model
         self.base_url = (base_url or self.default_base_url).rstrip("/")
+        self.max_iterations = (
+            max_iterations
+            if max_iterations is not None
+            else self.default_max_iterations
+        )
 
     def chat(
         self,
@@ -99,12 +111,14 @@ class DeepSeekClient(AIClient):
     name = "deepseek"
     default_base_url = "https://api.deepseek.com"
     default_model = "deepseek-v4-flash"
+    default_max_iterations = 20
 
 
 class LMStudioClient(AIClient):
     name = "lmstudio"
     default_base_url = "http://localhost:1234/v1"
     default_model = ""
+    default_max_iterations = 50
 
     def label(self) -> str:
         return "LM Studio"
@@ -114,6 +128,7 @@ class OpenAICompatibleClient(AIClient):
     name = "openai_compatible"
     default_base_url = ""
     default_model = ""
+    default_max_iterations = 50
 
     def label(self) -> str:
         return "OpenAI Compatible"
@@ -167,8 +182,10 @@ def get_client(settings: dict[str, Any]) -> AIClient:
         )
     cls = PROVIDERS[provider]
     cfg = (settings.get("ai") or {}).get(provider) or {}
+    max_iter = cfg.get("maxIterations")
     return cls(
         api_key=cfg["apiKey"],
         model=str(cfg.get("model") or ""),
         base_url=str(cfg.get("baseUrl") or ""),
+        max_iterations=int(max_iter) if max_iter is not None else None,
     )

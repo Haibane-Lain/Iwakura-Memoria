@@ -2486,30 +2486,40 @@ async function renderSettingsTab() {
     placeholder: "e.g. deepseek-v4-flash",
   });
   const aiBaseInput = el("input", { type: "text", value: aiCfg.baseUrl || "", placeholder: "https://api.deepseek.com" });
+  const aiMaxIterInput = el("input", {
+    type: "number",
+    min: 1,
+    max: 200,
+    value: aiCfg.maxIterations || "",
+    placeholder: "20",
+  });
   const aiTestStatus = el("span", { id: "ai-test-status", class: "chip" });
 
   const providerLabels = { deepseek: "DeepSeek", lmstudio: "LM Studio", openai_compatible: "OpenAI Compatible" };
 
   function readAiConfig() {
     const prov = aiProviderSelect.value;
+    const m = parseInt(aiMaxIterInput.value, 10);
     return {
       provider: prov,
       apiKey: aiKeyInput.value.trim(),
       model: aiModelInput.value.trim(),
       baseUrl: aiBaseInput.value.trim(),
+      maxIterations: Number.isFinite(m) && m > 0 ? m : undefined,
     };
   }
 
   function updateAiPlaceholders(prov) {
     const defaults = {
-      deepseek: { key: "sk-…", model: "e.g. deepseek-v4-flash", base: "https://api.deepseek.com" },
-      lmstudio: { key: "any value (LM Studio ignores auth)", model: "e.g. meta-llama-3.1-8b-instruct", base: "http://localhost:1234/v1" },
-      openai_compatible: { key: "sk-…", model: "e.g. gpt-4o", base: "" },
+      deepseek: { key: "sk-…", model: "e.g. deepseek-v4-flash", base: "https://api.deepseek.com", iter: "20" },
+      lmstudio: { key: "any value (LM Studio ignores auth)", model: "e.g. meta-llama-3.1-8b-instruct", base: "http://localhost:1234/v1", iter: "50" },
+      openai_compatible: { key: "sk-…", model: "e.g. gpt-4o", base: "", iter: "50" },
     };
     const d = defaults[prov] || defaults.openai_compatible;
     aiKeyInput.placeholder = d.key;
     aiModelInput.placeholder = d.model;
     aiBaseInput.placeholder = d.base;
+    aiMaxIterInput.placeholder = d.iter;
   }
 
   aiProviderSelect.addEventListener("change", async () => {
@@ -2521,6 +2531,7 @@ async function renderSettingsTab() {
       aiKeyInput.value = cfg.apiKey || "";
       aiModelInput.value = cfg.model || "";
       aiBaseInput.value = cfg.baseUrl || "";
+      aiMaxIterInput.value = cfg.maxIterations || "";
     } catch {
       /* ignore */
     }
@@ -2530,14 +2541,18 @@ async function renderSettingsTab() {
   const saveAiSettings = async () => {
     try {
       const cfg = readAiConfig();
+      const providerCfg = {
+        apiKey: cfg.apiKey,
+        model: cfg.model || undefined,
+        baseUrl: cfg.baseUrl || undefined,
+      };
+      if (cfg.maxIterations !== undefined) {
+        providerCfg.maxIterations = cfg.maxIterations;
+      }
       const payload = {
         ai: {
           provider: cfg.provider,
-          [cfg.provider]: {
-            apiKey: cfg.apiKey,
-            model: cfg.model || undefined,
-            baseUrl: cfg.baseUrl || undefined,
-          },
+          [cfg.provider]: providerCfg,
         },
       };
       // Carry forward other providers' config so they aren't wiped
@@ -2680,6 +2695,10 @@ async function renderSettingsTab() {
         el("div", { class: "field-row" }, [
           el("label", {}, "Base URL"),
           aiBaseInput,
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "Max iterations"),
+          aiMaxIterInput,
         ]),
         el("div", { class: "modal-actions" }, [
           el("button", { class: "icon-btn primary", onclick: saveAiSettings }, "Save AI settings"),

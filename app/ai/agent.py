@@ -26,10 +26,8 @@ EMPTY_RESPONSE_RETRIES = 2
 # When a turn's estimated context exceeds this, auto-compress the session
 # history first so the request stays cheap (best-effort; skips on failure).
 AUTO_COMPRESS_TOKENS = 50_000
-# Soft ceiling on loop iterations per turn. Normal turns take 2-6 steps; this
-# only fires if the model gets stuck re-issuing tool calls, so a runaway turn
-# can't bill indefinitely. It is a graceful stop, not a hard failure.
-MAX_ITERATIONS = 20
+# Number of recent tool calls to report when the iteration ceiling is hit.
+LAST_ACTIONS_REPORTED = 5
 
 
 class AgentError(Exception):
@@ -194,6 +192,15 @@ def _estimated_input_tokens(messages: list[dict[str, Any]]) -> int:
     return total
 
 
+def _track_action(last_tool_labels: list[str], name: str, args: dict[str, Any]) -> None:
+    """Record a short label for the tool call, deduplicating consecutive repeats."""
+    label = tools._tool_label(name, args)
+    if not last_tool_labels or last_tool_labels[-1] != label:
+        last_tool_labels.append(label)
+    if len(last_tool_labels) > LAST_ACTIONS_REPORTED:
+        last_tool_labels[:] = last_tool_labels[-LAST_ACTIONS_REPORTED:]
+
+
 def _run_loop(
     project_id: str,
     session: dict[str, Any],
@@ -208,6 +215,7 @@ def _run_loop(
     actions: list[dict[str, Any]] = []
     usage = _usage_dict()
     new_read_ids: list[str] = []
+    last_tool_labels: list[str] = []
     iterations = 0
     while True:
         if cancelled and cancelled.is_set():
@@ -218,13 +226,19 @@ def _run_loop(
                 "usage": usage,
                 "readIds": new_read_ids,
             }
-        if iterations >= MAX_ITERATIONS:
+        if iterations >= client.max_iterations:
+            detail = ""
+            if last_tool_labels:
+                detail = " Last " + (
+                    "action" if len(last_tool_labels) == 1 else "actions"
+                ) + ": " + ", ".join(last_tool_labels) + "."
             return {
                 "done": True,
                 "reply": (
-                    "Lain took too many steps without finishing — the conversation "
-                    "may be stuck in a loop. Use the compress button (⟲) above or "
-                    "start a new session, then say 'continue'."
+                    f"Lain took too many steps without finishing.{detail} The conversation "
+                    "may be stuck in a loop. Increase the iteration limit (currently "
+                    f"{client.max_iterations}) in Settings, or compress (⟲) / start a "
+                    "new session, then say 'continue'."
                 ),
                 "actions": actions,
                 "usage": usage,
@@ -305,6 +319,7 @@ def _run_loop(
                 args = json.loads(call["function"].get("arguments") or "{}")
             except (json.JSONDecodeError, TypeError):
                 args = {}
+            _track_action(last_tool_labels, name, args)
             if name not in tools.TOOLS:
                 messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": f"Unknown tool '{name}'"}
