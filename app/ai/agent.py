@@ -29,6 +29,10 @@ AUTO_COMPRESS_TOKENS = 50_000
 # Number of recent tool calls to report when the iteration ceiling is hit.
 LAST_ACTIONS_REPORTED = 5
 
+# Tool types whose rounds are free (don't count toward the iteration ceiling).
+# Pure information-gathering rounds can number in the dozens for bulk-read tasks.
+_READ_TOOLS = {"list_tree", "read_entry", "read_attachment"}
+
 
 class AgentError(Exception):
     pass
@@ -244,7 +248,6 @@ def _run_loop(
                 "usage": usage,
                 "readIds": new_read_ids,
             }
-        iterations += 1
         if _estimated_input_tokens(messages) > MAX_CONTEXT_TOKENS:
             return {
                 "done": True,
@@ -304,6 +307,7 @@ def _run_loop(
         }
         messages.append(assistant)
         if not tool_calls:
+            iterations += 1
             return {
                 "done": True,
                 "reply": content,
@@ -313,6 +317,7 @@ def _run_loop(
             }
         pending = None
         deferred: list[dict[str, Any]] = []
+        had_write = False
         for index, call in enumerate(tool_calls):
             name = call["function"]["name"]
             try:
@@ -320,6 +325,8 @@ def _run_loop(
             except (json.JSONDecodeError, TypeError):
                 args = {}
             _track_action(last_tool_labels, name, args)
+            if name not in _READ_TOOLS:
+                had_write = True
             if name not in tools.TOOLS:
                 messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": f"Unknown tool '{name}'"}
@@ -356,6 +363,8 @@ def _run_loop(
             if action:
                 actions.append(action)
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": content})
+        if pending or had_write:
+            iterations += 1
         if pending:
             return {
                 "done": False,
