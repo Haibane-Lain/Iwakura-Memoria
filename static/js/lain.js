@@ -96,9 +96,10 @@ async function refreshStatus() {
   try {
     const s = await api.ai.status();
     statusDot.classList.toggle("off", !s.enabled);
-    statusDot.title = s.enabled ? `DeepSeek · ${s.model}` : "DeepSeek not configured — click to open Settings";
+    const label = s.providerLabel || s.provider || "AI";
+    statusDot.title = s.enabled ? `${label} · ${s.model}` : `${label} not configured — click to open Settings`;
     statusDot.onclick = s.enabled ? null : () => ctx.goSettings();
-    statusLabel.textContent = s.enabled ? s.model : "not configured";
+    statusLabel.textContent = s.enabled ? s.model || label : "not configured";
     bannerEl.hidden = s.enabled;
   } catch {
     statusDot.classList.add("off");
@@ -599,7 +600,7 @@ function setBusy(b) {
 function buildPanel() {
   statusDot = el("span", { class: "lain-status-dot" });
   statusLabel = el("span", { class: "lain-status-label" });
-  bannerEl = el("button", { class: "lain-banner", onclick: () => ctx.goSettings() }, "DeepSeek not configured — open Settings");
+  bannerEl = el("button", { class: "lain-banner", onclick: () => ctx.goSettings() }, "AI not configured — open Settings");
 
   sessionsSelect = el("select", { class: "lain-sessions-select", onchange: (e) => loadSession(e.target.value) });
 

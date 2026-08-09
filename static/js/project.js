@@ -2455,30 +2455,100 @@ async function renderSettingsTab() {
   });
 
   let aiCfg = {};
+  let aiProvider = "deepseek";
   try {
     const full = await api.settings.get();
-    aiCfg = (full.ai && full.ai.deepseek) || {};
+    const ai = full.ai || {};
+    aiProvider = ai.provider || "deepseek";
+    aiCfg = (ai[aiProvider]) || {};
   } catch {
     /* ignore */
   }
+
+  const modelSuggestions = ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"];
+  const modelDatalist = el("datalist", { id: "ai-model-list" },
+    modelSuggestions.map((m) => el("option", { value: m }))
+  );
+  const aiProviderSelect = el("select", {},
+    Object.entries({
+      deepseek: "DeepSeek",
+      lmstudio: "LM Studio",
+      openai_compatible: "OpenAI Compatible",
+    }).map(([value, label]) =>
+      el("option", { value, selected: aiProvider === value }, label)
+    )
+  );
   const aiKeyInput = el("input", { type: "password", value: aiCfg.apiKey || "", placeholder: "sk-…" });
-  const aiModelSelect = el("select", {}, [
-    ["deepseek-v4-flash", "deepseek-v4-flash"],
-    ["deepseek-v4-pro", "deepseek-v4-pro"],
-  ].map(([value]) => el("option", { value, selected: (aiCfg.model || "deepseek-v4-flash") === value }, value)));
+  const aiModelInput = el("input", {
+    type: "text",
+    list: "ai-model-list",
+    value: aiCfg.model || "",
+    placeholder: "e.g. deepseek-v4-flash",
+  });
   const aiBaseInput = el("input", { type: "text", value: aiCfg.baseUrl || "", placeholder: "https://api.deepseek.com" });
   const aiTestStatus = el("span", { id: "ai-test-status", class: "chip" });
+
+  const providerLabels = { deepseek: "DeepSeek", lmstudio: "LM Studio", openai_compatible: "OpenAI Compatible" };
+
+  function readAiConfig() {
+    const prov = aiProviderSelect.value;
+    return {
+      provider: prov,
+      apiKey: aiKeyInput.value.trim(),
+      model: aiModelInput.value.trim(),
+      baseUrl: aiBaseInput.value.trim(),
+    };
+  }
+
+  function updateAiPlaceholders(prov) {
+    const defaults = {
+      deepseek: { key: "sk-…", model: "e.g. deepseek-v4-flash", base: "https://api.deepseek.com" },
+      lmstudio: { key: "any value (LM Studio ignores auth)", model: "e.g. meta-llama-3.1-8b-instruct", base: "http://localhost:1234/v1" },
+      openai_compatible: { key: "sk-…", model: "e.g. gpt-4o", base: "" },
+    };
+    const d = defaults[prov] || defaults.openai_compatible;
+    aiKeyInput.placeholder = d.key;
+    aiModelInput.placeholder = d.model;
+    aiBaseInput.placeholder = d.base;
+  }
+
+  aiProviderSelect.addEventListener("change", async () => {
+    const prov = aiProviderSelect.value;
+    updateAiPlaceholders(prov);
+    try {
+      const full = await api.settings.get();
+      const cfg = (full.ai && full.ai[prov]) || {};
+      aiKeyInput.value = cfg.apiKey || "";
+      aiModelInput.value = cfg.model || "";
+      aiBaseInput.value = cfg.baseUrl || "";
+    } catch {
+      /* ignore */
+    }
+  });
+  updateAiPlaceholders(aiProvider);
+
   const saveAiSettings = async () => {
     try {
-      await api.settings.update({
+      const cfg = readAiConfig();
+      const payload = {
         ai: {
-          deepseek: {
-            apiKey: aiKeyInput.value.trim(),
-            model: aiModelSelect.value,
-            baseUrl: aiBaseInput.value.trim() || undefined,
+          provider: cfg.provider,
+          [cfg.provider]: {
+            apiKey: cfg.apiKey,
+            model: cfg.model || undefined,
+            baseUrl: cfg.baseUrl || undefined,
           },
         },
-      });
+      };
+      // Carry forward other providers' config so they aren't wiped
+      const full = await api.settings.get();
+      const existingAi = full.ai || {};
+      for (const [k, v] of Object.entries(existingAi)) {
+        if (k !== "provider" && k !== cfg.provider && v && typeof v === "object") {
+          payload.ai[k] = v;
+        }
+      }
+      await api.settings.update(payload);
       toast("AI settings saved");
       if (lainCtrl) lainCtrl.refresh();
     } catch (err) {
@@ -2593,14 +2663,19 @@ async function renderSettingsTab() {
       ]),
       el("div", { class: "settings-section" }, [
         el("h2", {}, "AI assistant (Lain)"),
-        el("p", { class: "desc" }, "Connect DeepSeek so Lain can organize and maintain your lore from the sidebar chat. The API key is stored locally in data/settings.json."),
+        el("p", { class: "desc" }, "Connect an OpenAI-compatible provider so Lain can organize and maintain your lore from the sidebar chat. The API key stays local in data/settings.json."),
         el("div", { class: "field-row" }, [
-          el("label", {}, "DeepSeek API key"),
+          el("label", {}, "Provider"),
+          aiProviderSelect,
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "API key"),
           aiKeyInput,
         ]),
         el("div", { class: "field-row" }, [
           el("label", {}, "Model"),
-          aiModelSelect,
+          aiModelInput,
+          modelDatalist,
         ]),
         el("div", { class: "field-row" }, [
           el("label", {}, "Base URL"),

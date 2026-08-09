@@ -74,13 +74,25 @@ def _public_session(session: dict[str, Any]) -> dict[str, Any]:
 @router.get("/ai/status")
 def ai_status():
     settings = settings_service.get_settings()
-    ai_cfg = (settings.get("ai") or {}).get("deepseek") or {}
-    configured = bool(ai_cfg.get("apiKey"))
+    active = providers.get_active_provider(settings)
+    if active:
+        cfg = (settings.get("ai") or {}).get(active) or {}
+        cls = providers.PROVIDERS.get(active)
+        return {
+            "enabled": True,
+            "provider": active,
+            "providerLabel": providers.PROVIDER_LABELS.get(active, active),
+            "model": cfg.get("model") or (cls.default_model if cls else ""),
+            "baseUrl": cfg.get("baseUrl") or (cls.default_base_url if cls else ""),
+            "configured": providers.configured_providers(settings),
+        }
     return {
-        "enabled": configured,
-        "provider": "deepseek" if configured else None,
-        "model": ai_cfg.get("model") or "deepseek-v4-flash",
-        "baseUrl": ai_cfg.get("baseUrl") or "https://api.deepseek.com",
+        "enabled": False,
+        "provider": None,
+        "providerLabel": None,
+        "model": "",
+        "baseUrl": "",
+        "configured": [],
     }
 
 
