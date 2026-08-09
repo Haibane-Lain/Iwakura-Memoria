@@ -1465,7 +1465,9 @@ async function deleteFolder(folderId) {
 
 async function openDocument(docId) {
   if (docId === state.currentDocId) return;
-  if (_opening) return;
+  if (_opening) {
+    _opening = false;
+  }
   _opening = true;
   try {
   await flushSave();
