@@ -32,7 +32,8 @@ _PREFIX_RE = re.compile(r"^(\d+)-")
 _history_lock = threading.Lock()
 _save_locks: dict[str, threading.Lock] = {}
 _save_locks_guard = threading.Lock()
-_word_stats_cache: dict[tuple[str, str], tuple[int, int]] = {}
+# {(project_id, mode): {total_words: int, doc_count: int, docs: {doc_id: int}}}
+_word_stats_cache: dict[tuple[str, str], dict[str, Any]] = {}
 _word_stats_cache_lock = threading.Lock()
 
 
@@ -41,6 +42,33 @@ def _invalidate_word_stats(project_id: str) -> None:
         keys = [k for k in _word_stats_cache if k[0] == project_id]
         for k in keys:
             del _word_stats_cache[k]
+
+
+def _word_stats_update(
+    project_id: str, mode: str, doc_id: str, old_words: int, new_words: int
+) -> None:
+    key = (project_id, mode)
+    with _word_stats_cache_lock:
+        entry = _word_stats_cache.get(key)
+        if entry is None:
+            return
+        prev = entry["docs"].get(doc_id, 0)
+        entry["docs"][doc_id] = new_words
+        entry["total_words"] += new_words - prev
+        if prev == 0 and new_words > 0:
+            entry["doc_count"] += 1
+
+
+def _word_stats_remove_doc(project_id: str, mode: str, doc_id: str) -> None:
+    key = (project_id, mode)
+    with _word_stats_cache_lock:
+        entry = _word_stats_cache.get(key)
+        if entry is None:
+            return
+        prev = entry["docs"].pop(doc_id, 0)
+        if prev > 0:
+            entry["total_words"] -= prev
+            entry["doc_count"] -= 1
 
 
 def _save_lock_for(doc_path: Path) -> threading.Lock:
@@ -440,7 +468,6 @@ def _record_save(project_id: str, doc_id: str, delta: int) -> None:
     with _history_lock:
         with history.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    _invalidate_word_stats(project_id)
 
 
 def _next_index(directory: Path) -> int:
@@ -494,6 +521,7 @@ def create_document(
     )
     doc_id = target.relative_to(project_folder).as_posix()[: -len(".md")]
     _record_save(project_id, doc_id, 0)
+    _invalidate_word_stats(project_id)
     return get_document(project_id, doc_id, mode)
 
 
@@ -615,14 +643,15 @@ def save_document(
         raise FileNotFoundError(f"Document '{doc_id}' not found")
     with _save_lock_for(path):
         raw = path.read_text(encoding="utf-8")
-        old_words = count_words(raw, mode)
 
         fm_match = _FRONTMATTER_RE.match(raw)
         body_start = fm_match.end() if fm_match else 0
+        old_words = count_words(raw[body_start:], mode)
         config._write_atomic(path, raw[:body_start] + content)
 
         new_words = count_words(content, mode)
         _record_save(project_id, doc_id, new_words - old_words)
+        _word_stats_update(project_id, mode, doc_id, old_words, new_words)
         return get_document(project_id, doc_id, mode)
 
 
@@ -859,21 +888,29 @@ def _move_document_impl(
 def project_word_stats(project_id: str, mode: str = "auto") -> dict[str, int]:
     cache_key = (project_id, mode)
     with _word_stats_cache_lock:
-        cached = _word_stats_cache.get(cache_key)
-        if cached is not None:
-            return {"words": cached[0], "documents": cached[1]}
+        entry = _word_stats_cache.get(cache_key)
+        if entry is not None:
+            return {"words": entry["total_words"], "documents": entry["doc_count"]}
     folder = config.DATA_DIR / project_id
     if not folder.exists():
         return {"words": 0, "documents": 0}
+    docs: dict[str, int] = {}
     total = 0
     count = 0
     for path in _md_files_recursive(folder):
         if config.STATS_DIRNAME in path.parts:
             continue
+        doc_id = _entry_id(path, folder)
         raw = path.read_text(encoding="utf-8")
         _, body = parse_frontmatter(raw)
-        total += count_words(body, mode)
+        words = count_words(body, mode)
+        docs[doc_id] = words
+        total += words
         count += 1
     with _word_stats_cache_lock:
-        _word_stats_cache[cache_key] = (total, count)
+        _word_stats_cache[cache_key] = {
+            "total_words": total,
+            "doc_count": count,
+            "docs": docs,
+        }
     return {"words": total, "documents": count}

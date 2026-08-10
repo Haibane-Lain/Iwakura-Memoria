@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import time
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +77,18 @@ def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+_WRITE_RETRY_COUNT = 10
+_WRITE_RETRY_DELAY_S = 0.05
+
+
 def _write_atomic(path: Path, content: str) -> None:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
     tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    for attempt in range(_WRITE_RETRY_COUNT):
+        try:
+            os.replace(tmp, path)
+            return
+        except OSError:
+            if attempt == _WRITE_RETRY_COUNT - 1:
+                raise
+            time.sleep(_WRITE_RETRY_DELAY_S)
