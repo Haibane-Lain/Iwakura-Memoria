@@ -51,19 +51,28 @@ def resolve_wikilink(project_id: str, target: str) -> str | None:
 def get_wiki(project_id: str) -> dict[str, Any]:
     docs = _all_docs(project_id)
     by_id = {d["id"]: d for d in docs}
+    _title_norm = {_normalize(d["title"]): d["id"] for d in docs if d["title"]}
+    _id_norm = {_normalize(d["id"]): d["id"] for d in docs}
+
+    def _resolve(target: str) -> str | None:
+        target = target.strip()
+        if target in by_id:
+            return target
+        norm = _normalize(target)
+        return _title_norm.get(norm) or _id_norm.get(norm)
 
     links: list[dict[str, str]] = []
     broken: dict[str, list[str]] = {}
     backlinks: dict[str, list[str]] = {d["id"]: [] for d in docs}
     link_counts: dict[str, int] = {}
-
     seen_links: set[tuple[str, str]] = set()
+
     for doc in docs:
         body = documents_service.get_document(project_id, doc["id"])["content"]
         targets = _WIKILINK_RE.findall(body)
         for raw_target in targets:
             target = raw_target.strip()
-            resolved = resolve_wikilink(project_id, target)
+            resolved = _resolve(target)
             pair = (doc["id"], resolved)
             if resolved and resolved in by_id and pair not in seen_links:
                 seen_links.add(pair)

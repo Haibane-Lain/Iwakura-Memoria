@@ -38,6 +38,7 @@ const state = {
   selectionActive: false,
   dictionary: { words: [] },
   statsThrottledAt: 0,
+  wikiThrottledAt: 0,
 };
 
 let lainCtrl = null;
@@ -559,7 +560,12 @@ async function refreshWiki() {
   return state.wiki;
 }
 
+const WIKI_REFRESH_MS = 4000;
+
 function scheduleWikiRefresh() {
+  const now = performance.now();
+  if (now - state.wikiThrottledAt < WIKI_REFRESH_MS) return;
+  state.wikiThrottledAt = now;
   clearTimeout(state.wikiTimer);
   state.wikiTimer = setTimeout(refreshWiki, 1500);
 }
