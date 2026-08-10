@@ -32,6 +32,15 @@ _PREFIX_RE = re.compile(r"^(\d+)-")
 _history_lock = threading.Lock()
 _save_locks: dict[str, threading.Lock] = {}
 _save_locks_guard = threading.Lock()
+_word_stats_cache: dict[tuple[str, str], tuple[int, int]] = {}
+_word_stats_cache_lock = threading.Lock()
+
+
+def _invalidate_word_stats(project_id: str) -> None:
+    with _word_stats_cache_lock:
+        keys = [k for k in _word_stats_cache if k[0] == project_id]
+        for k in keys:
+            del _word_stats_cache[k]
 
 
 def _save_lock_for(doc_path: Path) -> threading.Lock:
@@ -431,6 +440,7 @@ def _record_save(project_id: str, doc_id: str, delta: int) -> None:
     with _history_lock:
         with history.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    _invalidate_word_stats(project_id)
 
 
 def _next_index(directory: Path) -> int:
@@ -714,6 +724,7 @@ def delete_document(project_id: str, doc_id: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"Document '{doc_id}' not found")
     path.unlink()
+    _invalidate_word_stats(project_id)
 
 
 def _entry_ids(directory: Path, project_folder: Path) -> dict[str, Path]:
@@ -846,6 +857,11 @@ def _move_document_impl(
 
 
 def project_word_stats(project_id: str, mode: str = "auto") -> dict[str, int]:
+    cache_key = (project_id, mode)
+    with _word_stats_cache_lock:
+        cached = _word_stats_cache.get(cache_key)
+        if cached is not None:
+            return {"words": cached[0], "documents": cached[1]}
     folder = config.DATA_DIR / project_id
     if not folder.exists():
         return {"words": 0, "documents": 0}
@@ -858,4 +874,6 @@ def project_word_stats(project_id: str, mode: str = "auto") -> dict[str, int]:
         _, body = parse_frontmatter(raw)
         total += count_words(body, mode)
         count += 1
+    with _word_stats_cache_lock:
+        _word_stats_cache[cache_key] = (total, count)
     return {"words": total, "documents": count}

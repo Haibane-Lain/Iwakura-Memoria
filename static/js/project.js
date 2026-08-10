@@ -37,6 +37,7 @@ const state = {
   currentSection: null,
   selectionActive: false,
   dictionary: { words: [] },
+  statsThrottledAt: 0,
 };
 
 let lainCtrl = null;
@@ -590,8 +591,13 @@ function topbar() {
   ]);
 }
 
+const UPDATE_TOPBAR_STATS_MS = 4000;
+
 async function updateTopbar() {
   document.getElementById("tb-title").textContent = state.project.title;
+  const now = performance.now();
+  if (now - state.statsThrottledAt < UPDATE_TOPBAR_STATS_MS) return;
+  state.statsThrottledAt = now;
   try {
     const stats = await api.projects.stats(state.project.id);
     const goal = stats.goal.enabled ? ` / ${formatNumber(stats.goal.wordsPerDay)} goal` : "";

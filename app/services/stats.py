@@ -67,12 +67,14 @@ def get_stats(
     today = date.today().isoformat()
     today_words = totals.get(today, 0)
 
+    total_stats = documents_service.project_word_stats(project_id, mode)
+    total_words = total_stats["words"]
+    total_docs = total_stats["documents"]
+
     last_days: list[dict[str, Any]] = []
     for offset in range(days - 1, -1, -1):
         day = (date.today() - timedelta(days=offset)).isoformat()
         last_days.append({"date": day, "words": totals.get(day, 0)})
-
-    total_words = documents_service.project_word_stats(project_id, mode)["words"]
 
     return {
         "projectId": project_id,
@@ -85,9 +87,7 @@ def get_stats(
         else 0.0,
         "streak": _streak(totals, goal_per_day),
         "lastDays": last_days,
-        "documents": documents_service.project_word_stats(project_id, mode)[
-            "documents"
-        ],
+        "documents": total_docs,
     }
 
 
