@@ -29,6 +29,7 @@ const state = {
   dirty: false,
   saving: false,
   saveTimer: null,
+  savePromise: null,
   wikiTimer: null,
   expanded: new Set(),
   wikiExpanded: new Set(),
@@ -1945,62 +1946,86 @@ function setSaveStatus(kind, text) {
   node.className = `status-save ${kind === "pending" ? "pending" : ""}`;
 }
 
-async function saveCurrentDoc() {
-  const docId = state.currentDocId;
-  if (!state.editorCtrl || !docId || state.saving) return;
-  const markdown = state.editorCtrl.getMarkdown();
-  if (!state.dirty) return;
-  state.dirty = false;
+async function _doSave(docId, markdown) {
+  const t0 = performance.now();
   state.saving = true;
   setSaveStatus("pending", "Saving…");
-  const t0 = performance.now();
-  console.warn("[diag] saveCurrentDoc start", docId);
+  console.warn("[diag] save start", docId);
   try {
     const saved = await api.docs.save(state.project.id, docId, markdown);
-    console.warn(`[diag] saveCurrentDoc done ${(performance.now() - t0).toFixed(0)}ms`, docId);
+    console.warn(`[diag] save done ${(performance.now() - t0).toFixed(0)}ms`, docId);
     if (state.currentDocId === docId) {
       setSaveStatus("", "Saved");
     }
     updateTreeWords(docId, saved.words);
     scheduleWikiRefresh();
     updateTopbar();
+    return saved;
   } catch (err) {
-    console.warn("[diag] saveCurrentDoc error", docId, err.message);
+    console.warn(`[diag] save error ${(performance.now() - t0).toFixed(0)}ms`, docId, err.message);
     state.dirty = true;
     setSaveStatus("pending", `Save failed: ${err.message}`);
+    if (state.editorCtrl && state.currentDocId === docId) {
+      clearTimeout(state.saveTimer);
+      state.saveTimer = setTimeout(saveCurrentDoc, state.settings.autosaveMs || 800);
+    }
+    throw err;
   } finally {
     state.saving = false;
+    state.savePromise = null;
+  }
+}
+
+async function saveCurrentDoc() {
+  const docId = state.currentDocId;
+  if (!state.editorCtrl || !docId || state.saving) return;
+  const markdown = state.editorCtrl.getMarkdown();
+  if (!state.dirty) return;
+  state.dirty = false;
+  state.savePromise = _doSave(docId, markdown);
+  try {
+    await state.savePromise;
+  } catch {
+    /* handled in _doSave */
   }
 }
 
 const FLUSH_SAVE_TIMEOUT_MS = 5000;
 
 async function flushSave() {
-  if (state.editorCtrl && state.dirty && state.currentDocId) {
-    const docId = state.currentDocId;
-    const markdown = state.editorCtrl.getMarkdown();
-    state.dirty = false;
-    const t0 = performance.now();
-    console.warn("[diag] flushSave start", docId);
+  if (!state.editorCtrl || !state.currentDocId) return;
+  if (state.savePromise) {
+    console.warn("[diag] flushSave reusing in-flight save", state.currentDocId);
     try {
-      const saved = await Promise.race([
-        api.docs.save(state.project.id, docId, markdown),
+      await Promise.race([
+        state.savePromise,
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error("save timed out")), FLUSH_SAVE_TIMEOUT_MS)
         ),
       ]);
-      console.warn(`[diag] flushSave done ${(performance.now() - t0).toFixed(0)}ms`, docId);
-      updateTreeWords(docId, saved.words);
-      scheduleWikiRefresh();
-      updateTopbar();
     } catch (err) {
-      console.warn(`[diag] flushSave error ${(performance.now() - t0).toFixed(0)}ms`, docId, err.message);
-      state.dirty = true;
-      if (err.message === "save timed out") {
-        toast("Save is taking a while; continuing without waiting");
-      } else {
-        toast(`Couldn't save before switching: ${err.message}`, "error");
-      }
+      console.warn(`[diag] flushSave awaited in-flight save: ${err.message}`);
+    }
+    return;
+  }
+  if (!state.dirty) return;
+  const docId = state.currentDocId;
+  const markdown = state.editorCtrl.getMarkdown();
+  state.dirty = false;
+  state.savePromise = _doSave(docId, markdown);
+  try {
+    await Promise.race([
+      state.savePromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("save timed out")), FLUSH_SAVE_TIMEOUT_MS)
+      ),
+    ]);
+  } catch (err) {
+    console.warn(`[diag] flushSave error: ${err.message}`);
+    if (err.message === "save timed out") {
+      toast("Save is taking a while; continuing without waiting");
+    } else {
+      toast(`Couldn't save before switching: ${err.message}`, "error");
     }
   }
 }

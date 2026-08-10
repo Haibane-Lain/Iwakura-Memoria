@@ -67,6 +67,8 @@ class FolderMove(BaseModel):
 
 
 def _http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, OSError):
+        return HTTPException(status_code=503, detail=f"File busy or locked: {exc}")
     status = 404 if isinstance(exc, FileNotFoundError) else 400
     return HTTPException(status_code=status, detail=str(exc))
 
@@ -179,7 +181,7 @@ def save_document(project_id: str, doc_id: str, payload: DocumentContent):
         return documents_service.save_document(
             project_id, doc_id, payload.content, _mode()
         )
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, OSError) as exc:
         raise _http_error(exc) from exc
 
 

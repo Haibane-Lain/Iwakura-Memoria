@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,6 @@ def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 def _write_atomic(path: Path, content: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, path)

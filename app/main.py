@@ -1,6 +1,9 @@
 """FastAPI application factory."""
 from __future__ import annotations
 
+import sys
+import time
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
@@ -16,6 +19,7 @@ from app.routes import templates as templates_routes
 from app.routes import wiki as wiki_routes
 
 MAX_REQUEST_BYTES = 10 * 1024 * 1024
+_SLOW_REQUEST_THRESHOLD_S = 1.0
 
 
 def create_app() -> FastAPI:
@@ -31,6 +35,18 @@ def create_app() -> FastAPI:
                 status_code=413,
             )
         return await call_next(request)
+
+    @app.middleware("http")
+    async def _request_timer(request: Request, call_next):
+        t0 = time.perf_counter()
+        response = await call_next(request)
+        elapsed = time.perf_counter() - t0
+        if elapsed > _SLOW_REQUEST_THRESHOLD_S:
+            print(
+                f"[timing] SLOW ({elapsed:.1f}s) {request.method} {request.url.path}",
+                file=sys.stderr,
+            )
+        return response
 
     app.include_router(settings_routes.router)
     app.include_router(projects_routes.router)

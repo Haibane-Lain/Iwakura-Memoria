@@ -30,6 +30,17 @@ _WORD_RE = re.compile(r"\S+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _PREFIX_RE = re.compile(r"^(\d+)-")
 _history_lock = threading.Lock()
+_save_locks: dict[str, threading.Lock] = {}
+_save_locks_guard = threading.Lock()
+
+
+def _save_lock_for(doc_path: Path) -> threading.Lock:
+    key = str(doc_path.resolve())
+    with _save_locks_guard:
+        lock = _save_locks.get(key)
+        if lock is None:
+            lock = _save_locks[key] = threading.Lock()
+        return lock
 
 
 class DocumentError(ValueError):
@@ -592,16 +603,17 @@ def save_document(
     path = _doc_path(folder, doc_id)
     if not path.exists():
         raise FileNotFoundError(f"Document '{doc_id}' not found")
-    raw = path.read_text(encoding="utf-8")
-    old_words = count_words(raw, mode)
+    with _save_lock_for(path):
+        raw = path.read_text(encoding="utf-8")
+        old_words = count_words(raw, mode)
 
-    fm_match = _FRONTMATTER_RE.match(raw)
-    body_start = fm_match.end() if fm_match else 0
-    config._write_atomic(path, raw[:body_start] + content)
+        fm_match = _FRONTMATTER_RE.match(raw)
+        body_start = fm_match.end() if fm_match else 0
+        config._write_atomic(path, raw[:body_start] + content)
 
-    new_words = count_words(content, mode)
-    _record_save(project_id, doc_id, new_words - old_words)
-    return get_document(project_id, doc_id, mode)
+        new_words = count_words(content, mode)
+        _record_save(project_id, doc_id, new_words - old_words)
+        return get_document(project_id, doc_id, mode)
 
 
 def update_style(
