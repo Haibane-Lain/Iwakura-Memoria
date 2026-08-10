@@ -163,6 +163,7 @@ let _lastDocOffsets = null;
 let _lastDocText = null;
 let _grammarDictionaryWords = [];
 let _grammarAddToDictCallback = null;
+let _grammarBusy = false;
 
 function _grammarHash(text) {
   let h = 0;
@@ -211,14 +212,29 @@ function _ltToDocPos(offsets, target) {
   return last.docPos + last.len;
 }
 
+const GRAMMAR_FETCH_TIMEOUT_MS = 8000;
+
 async function _grammarFetch(text) {
-  const resp = await fetch("/api/grammar/check", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, language: "en-US", dictionaryWords: _grammarDictionaryWords }),
-  });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-  return resp.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GRAMMAR_FETCH_TIMEOUT_MS);
+  try {
+    const resp = await fetch("/api/grammar/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, language: "en-US", dictionaryWords: _grammarDictionaryWords }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    return resp.json();
+  } catch (err) {
+    if (err.name === "AbortError") {
+      console.warn("grammar check timed out");
+      throw new Error("grammar check timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function _grammarUpdate(view, docText, matches) {
@@ -253,14 +269,24 @@ function _grammarSchedule(view) {
   if (hash === pluginState.textHash) return;
   _lastDocOffsets = docText.offsets;
   _lastDocText = docText.text;
+  const checkedHash = hash;
   _grammarTimer = setTimeout(async () => {
+    if (_grammarBusy) return;
     const currentView = _grammarView;
+    const t0 = performance.now();
+    _grammarBusy = true;
     try {
       const data = await _grammarFetch(docText.text);
       if (!currentView || currentView.isDestroyed) return;
       _grammarUpdate(currentView, docText, data.matches || []);
-    } catch {
-      /* grammar server unavailable */
+    } catch (err) {
+      console.warn(`[diag] grammar check failed ${(performance.now() - t0).toFixed(0)}ms`, err.message);
+    } finally {
+      _grammarBusy = false;
+      if (currentView && !currentView.isDestroyed) {
+        const latest = _grammarDocText(currentView.state.doc);
+        if (_grammarHash(latest.text) !== checkedHash) _grammarSchedule(currentView);
+      }
     }
   }, 1500);
 }
@@ -291,13 +317,19 @@ function makeGrammarPlugin() {
         if (tr.getMeta("forceGrammar") && newEnabled && _grammarView && !_grammarView.isDestroyed) {
           clearTimeout(_grammarTimer);
           const currentView = _grammarView;
+          const docText = _grammarDocText(newState.doc);
+          const checkedHash = _grammarHash(docText.text);
           _grammarTimer = setTimeout(async () => {
-            const docText = _grammarDocText(newState.doc);
+            if (_grammarBusy) return;
+            _grammarBusy = true;
             try {
               const data = await _grammarFetch(docText.text);
               if (!currentView || currentView.isDestroyed) return;
               _grammarUpdate(currentView, docText, data.matches || []);
             } catch { /* unavailable */ }
+            finally {
+              _grammarBusy = false;
+            }
           }, 300);
         }
 
@@ -624,6 +656,7 @@ window.LainEditor = {
         _grammarHideTooltip();
         _grammarView = null;
         _grammarSkipping = false;
+        _grammarBusy = false;
         _grammarReplaceRange = null;
         _lastDocOffsets = null;
         _lastDocText = null;

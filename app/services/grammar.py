@@ -4,6 +4,7 @@ from __future__ import annotations
 import atexit
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -15,9 +16,15 @@ _LT_URL = f"http://127.0.0.1:{_LT_PORT}"
 _LT_DIR = Path(__file__).resolve().parent.parent.parent / "LanguageTool 6.9"
 _LT_JAR = _LT_DIR / "languagetool-server.jar"
 _LT_JAVA = "java"
+# LanguageTool is a single JVM; checking long texts is slow. Capping in-flight
+# checks keeps a handful of slow requests from occupying every FastAPI sync
+# threadpool slot, which would otherwise starve doc saves during heavy typing.
+_LT_TIMEOUT_SECONDS = 12.0
+_LT_CONCURRENCY = 2
 
 _lt_process: subprocess.Popen | None = None
 _client: httpx.Client | None = None
+_concurrency = threading.Semaphore(_LT_CONCURRENCY)
 
 
 def _find_java() -> str | None:
@@ -69,7 +76,7 @@ def start_lt_server() -> bool:
         try:
             resp = httpx.get(f"{_LT_URL}/v2/languages", timeout=2)
             if resp.status_code == 200:
-                _client = httpx.Client(timeout=30)
+                _client = httpx.Client(timeout=_LT_TIMEOUT_SECONDS)
                 print(f"[Grammar] LanguageTool ready on port {_LT_PORT}")
                 return True
         except Exception:
@@ -106,6 +113,8 @@ def check(text: str, language: str = "en-US", dictionary_words: list[str] | None
     """
     if not is_available():
         return None
+    if not _concurrency.acquire(blocking=False):
+        return None
     try:
         resp = _client.post(
             f"{_LT_URL}/v2/check",
@@ -115,6 +124,8 @@ def check(text: str, language: str = "en-US", dictionary_words: list[str] | None
         data = resp.json()
     except Exception:
         return None
+    finally:
+        _concurrency.release()
 
     ignore = {w.strip().lower() for w in (dictionary_words or []) if w.strip()}
 

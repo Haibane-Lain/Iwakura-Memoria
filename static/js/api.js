@@ -20,13 +20,27 @@ export async function triggerDownload(resp) {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
+const REQUEST_TIMEOUT_MS = 15000;
+
 async function request(method, url, body) {
-  const opts = { method, headers: {} };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const opts = { method, headers: {}, signal: controller.signal };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(url, opts);
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s: ${method} ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
     try {

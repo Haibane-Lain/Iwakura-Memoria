@@ -1129,7 +1129,7 @@ async function onLainActions(actions) {
   await flushSave();
   try {
     const doc = await api.docs.get(state.project.id, current);
-    renderEditorTab(doc, { wiki: isWikiScope() });
+    await renderEditorTab(doc, { wiki: isWikiScope() });
   } catch {
     state.currentDocId = null;
     const f = firstDoc();
@@ -1465,6 +1465,7 @@ async function deleteFolder(folderId) {
 
 async function openDocument(docId) {
   if (docId === state.currentDocId) return;
+  console.warn("[diag] openDocument start", docId, { _opening, _switching, _creating });
   if (_opening) {
     _opening = false;
   }
@@ -1480,8 +1481,9 @@ async function openDocument(docId) {
     else state.writeDocId = docId;
     setActiveTab(state.currentTab);
     renderSidebar();
-    renderEditorTab(doc, { wiki });
+    await renderEditorTab(doc, { wiki });
   } catch (err) {
+    console.warn("openDocument failed", docId, err);
     toast(err.message, "error");
   }
   } finally {
@@ -1951,8 +1953,11 @@ async function saveCurrentDoc() {
   state.dirty = false;
   state.saving = true;
   setSaveStatus("pending", "Saving…");
+  const t0 = performance.now();
+  console.warn("[diag] saveCurrentDoc start", docId);
   try {
     const saved = await api.docs.save(state.project.id, docId, markdown);
+    console.warn(`[diag] saveCurrentDoc done ${(performance.now() - t0).toFixed(0)}ms`, docId);
     if (state.currentDocId === docId) {
       setSaveStatus("", "Saved");
     }
@@ -1960,6 +1965,7 @@ async function saveCurrentDoc() {
     scheduleWikiRefresh();
     updateTopbar();
   } catch (err) {
+    console.warn("[diag] saveCurrentDoc error", docId, err.message);
     state.dirty = true;
     setSaveStatus("pending", `Save failed: ${err.message}`);
   } finally {
@@ -1967,19 +1973,34 @@ async function saveCurrentDoc() {
   }
 }
 
+const FLUSH_SAVE_TIMEOUT_MS = 5000;
+
 async function flushSave() {
   if (state.editorCtrl && state.dirty && state.currentDocId) {
     const docId = state.currentDocId;
     const markdown = state.editorCtrl.getMarkdown();
     state.dirty = false;
+    const t0 = performance.now();
+    console.warn("[diag] flushSave start", docId);
     try {
-      const saved = await api.docs.save(state.project.id, docId, markdown);
+      const saved = await Promise.race([
+        api.docs.save(state.project.id, docId, markdown),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("save timed out")), FLUSH_SAVE_TIMEOUT_MS)
+        ),
+      ]);
+      console.warn(`[diag] flushSave done ${(performance.now() - t0).toFixed(0)}ms`, docId);
       updateTreeWords(docId, saved.words);
       scheduleWikiRefresh();
       updateTopbar();
     } catch (err) {
+      console.warn(`[diag] flushSave error ${(performance.now() - t0).toFixed(0)}ms`, docId, err.message);
       state.dirty = true;
-      toast(`Couldn't save before switching: ${err.message}`, "error");
+      if (err.message === "save timed out") {
+        toast("Save is taking a while; continuing without waiting");
+      } else {
+        toast(`Couldn't save before switching: ${err.message}`, "error");
+      }
     }
   }
 }
@@ -2743,15 +2764,13 @@ async function renderSettingsTab() {
 /* ---------------- tab switching ---------------- */
 
 async function switchTab(tab) {
-  if (_creating || _switching) {
-    _creating = false;
-    if (_switching) return;
-  }
+  console.warn("[diag] switchTab start", tab, { _switching, _creating, _opening });
+  if (_creating) _creating = false;
+  if (_switching) _switching = false;
   _switching = true;
-  try {
   const main = document.getElementById("main-content");
   if (main) main.style.opacity = "0";
-
+  try {
   if (tab === "write" || tab === "wiki") {
     await flushSave();
     const wiki = tab === "wiki";
@@ -2778,7 +2797,6 @@ async function switchTab(tab) {
       ? await api.docs.get(state.project.id, state.currentDocId)
       : null;
     await renderEditorTab(doc, { wiki });
-    if (main) { requestAnimationFrame(() => { main.style.opacity = "1"; }); }
     return;
   }
   await flushSave();
@@ -2792,11 +2810,11 @@ async function switchTab(tab) {
   }
   if (tab === "stats") await renderStatsTab();
   else if (tab === "settings") await renderSettingsTab();
-  if (main) {
-    main.classList.remove("no-scroll");
-    requestAnimationFrame(() => { main.style.opacity = "1"; });
-  }
+  if (main) main.classList.remove("no-scroll");
+  } catch (err) {
+    console.warn("switchTab failed", tab, err);
   } finally {
+    if (main) requestAnimationFrame(() => { main.style.opacity = "1"; });
     _switching = false;
   }
 }
