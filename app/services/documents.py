@@ -25,6 +25,7 @@ from app import config
 
 _SAFE_ID_RE = re.compile(r"^[^\\\x00-\x1f]+$")
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+_FRONTMATTER_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 _CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 _WORD_RE = re.compile(r"\S+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -113,13 +114,65 @@ def count_words(text: str, mode: str = "auto") -> int:
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     m = _FRONTMATTER_RE.match(text)
     if m:
+        block = m.group(1)
         try:
-            meta = yaml.safe_load(m.group(1)) or {}
+            meta = yaml.safe_load(block)
         except yaml.YAMLError:
-            meta = {}
+            meta = None
+        if not isinstance(meta, dict):
+            # Strict YAML failed or the block isn't a mapping — try a lenient
+            # recovery so legacy files (written before values were quoted)
+            # still expose their metadata instead of silently dropping it.
+            meta = _parse_frontmatter_lenient(block)
         body = text[m.end():]
-        return dict(meta), body
+        return meta, body
     return {}, text
+
+
+def _parse_frontmatter_lenient(block: str) -> dict[str, Any]:
+    """Best-effort recovery for a frontmatter block that failed strict YAML.
+
+    Old files can contain unquoted values that are invalid YAML, most
+    commonly a value with ``: `` (e.g. ``title: Part 1: The Beginning``).
+    Each line is split on the first ``: `` and the remainder is kept as a
+    raw string, so titles and other metadata survive until the file is next
+    rewritten (the writer quotes values, fixing the block for good).
+    """
+    meta: dict[str, Any] = {}
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, sep, value = stripped.partition(":")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if not _FRONTMATTER_KEY_RE.match(key) or key in meta:
+            continue
+        meta[key] = value
+    return meta
+
+
+def build_frontmatter(meta: dict[str, Any]) -> str:
+    """Serialize document metadata as YAML frontmatter.
+
+    Values are emitted through ``yaml.safe_dump`` so titles and other
+    metadata containing YAML-significant characters (``: `` inside the value,
+    a leading ``#``, quotes, …) round-trip cleanly instead of corrupting the
+    frontmatter block. Simple values keep their existing unquoted form, so
+    already-valid files are rewritten byte-identically.
+    """
+    if not meta:
+        return ""
+    body = yaml.safe_dump(
+        meta,
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+        width=10**9,  # never wrap long plain scalars
+    )
+    return f"---\n{body}---\n\n"
 
 
 def _headings(body: str) -> list[str]:
@@ -147,14 +200,20 @@ def _style_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
             return default
 
     sections: dict[str, Any] = {}
-    raw = meta.get("styles", "")
-    if isinstance(raw, str) and raw.strip():
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            parsed = None
-        if isinstance(parsed, dict):
-            for key, value in parsed.items():
+    raw = meta.get("styles")
+    if isinstance(raw, dict):
+        # Legacy files stored styles as an unquoted YAML mapping
+        # (``styles: {"Appearance": {...}}``); newer files carry a JSON string.
+        parsed = raw
+    else:
+        parsed = None
+        if isinstance(raw, str) and raw.strip():
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = None
+    if isinstance(parsed, dict):
+        for key, value in parsed.items():
                 if not isinstance(value, dict):
                     continue
                 section: dict[str, Any] = {}
@@ -174,16 +233,6 @@ def _style_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
         "zoom": to_int(meta.get("zoom"), None),
         "sections": sections,
     }
-
-
-def build_frontmatter(meta: dict[str, Any]) -> str:
-    if not meta:
-        return ""
-    lines = ["---"]
-    for key, value in meta.items():
-        lines.append(f"{key}: {value}")
-    lines.append("---")
-    return "\n".join(lines) + "\n\n"
 
 
 def _project_folder(project_id: str) -> Path:
@@ -687,9 +736,13 @@ def update_style(
         if not section_name:
             raise ValueError("A section name is required")
         styles: dict[str, Any] = {}
-        if isinstance(meta.get("styles"), str) and meta["styles"].strip():
+        raw_styles = meta.get("styles")
+        if isinstance(raw_styles, dict):
+            # Legacy unquoted YAML mapping (``styles: {"Appearance": {...}}``).
+            styles = raw_styles
+        elif isinstance(raw_styles, str) and raw_styles.strip():
             try:
-                parsed = json.loads(meta["styles"])
+                parsed = json.loads(raw_styles)
             except json.JSONDecodeError:
                 parsed = None
             if isinstance(parsed, dict):
