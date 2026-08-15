@@ -152,11 +152,13 @@ export const api = {
     test: () => api.post("/api/ai/test"),
     chat: (pid, payload) =>
       api.post(`/api/projects/${encodePath(pid)}/ai/chat`, payload),
-    chatStream: async (pid, payload) => {
+    cancel: (sessionId) => api.post("/api/ai/cancel", { sessionId }),
+    chatStream: async (pid, payload, signal) => {
       const res = await fetch(`/api/projects/${encodePath(pid)}/ai/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal,
       });
       if (!res.ok) {
         let detail = `${res.status} ${res.statusText}`;

@@ -17,6 +17,8 @@ let busy = false;
 let allSessions = [];
 let scopeCache = { write: [], wiki: [] };
 let lsKey = "lain-last-session";
+let abortCtl = null;
+let stopBtn = null;
 
 let messagesEl = null;
 let inputEl = null;
@@ -443,6 +445,22 @@ function renderSuggestions() {
 
 /* ---------------- send / confirm ---------------- */
 
+function stopChat() {
+  if (abortCtl) {
+    abortCtl.abort();
+    abortCtl = null;
+  }
+  if (session && session.sessionId) {
+    // Ask the server to stop the agent loop at its next checkpoint too, so a
+    // slow generation doesn't keep running invisibly after the stream closes.
+    api.ai.cancel(session.sessionId).catch(() => {});
+  }
+}
+
+function setStreaming(b) {
+  if (stopBtn) stopBtn.hidden = !b;
+}
+
 function parseSSE(block) {
   let type = "message";
   const dataLines = [];
@@ -508,22 +526,39 @@ async function sendMessage() {
   messagesEl.append(think);
   scrollChat();
   setBusy(true);
+  setStreaming(true);
   let resp = null;
   let streamError = null;
+  let stopped = false;
+  let logEl = null;
+  let streamEl = null;
+  const ctl = new AbortController();
+  abortCtl = ctl;
+  const ensureStream = () => {
+    if (logEl) return;
+    logEl = el("div", { class: "lain-tool-log" });
+    streamEl = el("div", { class: "lain-stream", hidden: true });
+    bubble.classList.remove("lain-think");
+    bubble.replaceChildren(logEl, streamEl);
+  };
   try {
     const body = await api.ai.chatStream(ctx.projectId(), {
       sessionId: session.sessionId,
       message: text,
       folders: currentScope(),
       currentDocId: ctx.currentDocId(),
-    });
-    const logEl = el("div", { class: "lain-tool-log" });
-    bubble.replaceChildren(logEl);
+    }, ctl.signal);
     const pendingLines = [];
     await readSSE(body, (ev) => {
-      if (ev.type === "tool_start") {
+      if (ev.type === "token") {
+        ensureStream();
+        streamEl.hidden = false;
+        streamEl.textContent += ev.data.text;
+      } else if (ev.type === "tool_start") {
+        ensureStream();
         pendingLines.push(toolLogLine(logEl, "tool-start", `${ev.data.label}…`));
       } else if (ev.type === "tool_result") {
+        ensureStream();
         const line = pendingLines.pop();
         if (line) {
           line.classList.remove("tool-start");
@@ -533,6 +568,7 @@ async function sendMessage() {
           toolLogLine(logEl, "tool-done", `✓ ${ev.data.label}`);
         }
       } else if (ev.type === "tool_error") {
+        ensureStream();
         const line = pendingLines.pop();
         if (line) {
           line.classList.remove("tool-start");
@@ -549,7 +585,21 @@ async function sendMessage() {
       scrollChat();
     });
   } catch (err) {
-    streamError = err;
+    if (err && err.name === "AbortError") stopped = true;
+    else streamError = err;
+  }
+  if (abortCtl === ctl) abortCtl = null;
+  setStreaming(false);
+  if (stopped) {
+    bubble.classList.remove("lain-think");
+    if (logEl) {
+      bubble.append(el("div", { class: "lain-stop-note" }, "⏹ Stopped"));
+    } else {
+      bubble.replaceChildren(el("div", { class: "lain-stop-note" }, "⏹ Stopped"));
+    }
+    scrollChat();
+    setBusy(false);
+    return;
   }
   if (streamError) {
     toast(streamError.message, "error");
@@ -626,6 +676,11 @@ function buildPanel() {
     placeholder: "Ask Lain to organize lore, find inconsistencies, or suggest improvements…",
   });
   inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && busy && abortCtl) {
+      e.preventDefault();
+      stopChat();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -646,6 +701,12 @@ function buildPanel() {
     title: "Attach a reference file (pdf, docx, txt, md)",
     onclick: () => attachInput.click(),
   }, "📎");
+  stopBtn = el("button", {
+    class: "icon-btn lain-stop",
+    title: "Stop generation",
+    hidden: true,
+    onclick: stopChat,
+  }, "⏹");
   sendBtn = el("button", { class: "icon-btn primary", onclick: sendMessage }, "Send");
   attachRowEl = el("div", { class: "lain-attach-row", hidden: true });
 
@@ -669,7 +730,7 @@ function buildPanel() {
     messagesEl,
     suggestionsEl,
     attachRowEl,
-    el("div", { class: "lain-input-row" }, [attachInput, attachBtn, inputEl, sendBtn]),
+    el("div", { class: "lain-input-row" }, [attachInput, attachBtn, inputEl, stopBtn, sendBtn]),
   ]);
 }
 
@@ -732,6 +793,7 @@ export function mount(hostEl, context) {
   busy = false;
   allSessions = [];
   scopeCache = { write: [], wiki: [] };
+  abortCtl = null;
   loaded = false;
   panel = buildPanel();
   host.appendChild(panel);

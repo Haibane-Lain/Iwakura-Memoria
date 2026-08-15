@@ -55,6 +55,35 @@ class StepCallback:
     def on_tool_error(self, name: str, args: dict[str, Any], error: str) -> None:
         pass
 
+    def on_token(self, text: str) -> None:
+        """A content token streamed from the model (``text`` is a delta)."""
+        pass
+
+
+def _complete_once(
+    client: providers.AIClient,
+    messages: list[dict[str, Any]],
+    callback: StepCallback | None,
+) -> dict[str, Any]:
+    """One chat-completions round trip.
+
+    Streams tokens to ``callback`` when one is attached; otherwise falls back
+    to a plain non-streaming request. Returns the response message dict.
+    """
+    if callback is None:
+        return client.chat(messages, tools=tools.schemas())
+    response: dict[str, Any] = {}
+    stream = client.stream_chat(messages, tools=tools.schemas())
+    try:
+        for event in stream:
+            if event["type"] == "delta":
+                callback.on_token(event["text"])
+            elif event["type"] == "message":
+                response = event["message"]
+    finally:
+        stream.close()
+    return response
+
 
 def system_prompt(
     scope: list[str] | None,
@@ -260,7 +289,7 @@ def _run_loop(
                 "usage": usage,
                 "readIds": new_read_ids,
             }
-        response = client.chat(messages, tools=tools.schemas())
+        response = _complete_once(client, messages, callback)
         _accumulate_usage(usage, response.get("usage"))
         tool_calls = response.get("tool_calls") or []
         content = (response.get("content") or "").strip()
@@ -274,10 +303,20 @@ def _run_loop(
             # Re-sending the identical request when the model hit the output
             # ceiling is guaranteed to fail again — stop and report instead.
             empty_attempts += 1
-            response = client.chat(messages, tools=tools.schemas())
+            response = _complete_once(client, messages, callback)
             _accumulate_usage(usage, response.get("usage"))
             tool_calls = response.get("tool_calls") or []
             content = (response.get("content") or "").strip()
+        if cancelled and cancelled.is_set():
+            # A stop arrived while this round was generating — discard the
+            # turn instead of committing a reply the user never saw.
+            return {
+                "done": True,
+                "reply": "",
+                "actions": actions,
+                "usage": usage,
+                "readIds": new_read_ids,
+            }
         if not content and not tool_calls:
             finish_reason = response.get("finish_reason")
             if finish_reason == "length":
@@ -417,7 +456,10 @@ def chat(
         reply: dict[str, Any] = {"role": "assistant", "content": result["reply"]}
         if result.get("usage"):
             reply["tokens"] = _effective_tokens(result["usage"])
-        session["history"].append(reply)
+        if result["reply"]:
+            # A stopped (cancelled) turn has no reply; leave the user message
+            # unanswered instead of saving an empty assistant bubble.
+            session["history"].append(reply)
         session["agentState"] = None
     else:
         session["agentState"] = {

@@ -30,6 +30,10 @@ class CompressPayload(BaseModel):
     keepMessages: int | None = None
 
 
+class CancelPayload(BaseModel):
+    sessionId: str
+
+
 class SessionRename(BaseModel):
     title: str
 
@@ -107,6 +111,19 @@ def ai_test():
         return {"ok": True, "model": client.model, "reply": content.strip()[:50]}
     except providers.AIError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/ai/cancel")
+def cancel_ai(payload: CancelPayload):
+    """Ask the active Lain run for a session to stop at its next checkpoint.
+
+    The chat stream is also cancelled by the client aborting the fetch; this
+    endpoint makes the stop explicit even if the server does not observe the
+    disconnect promptly.
+    """
+    if not stream.cancel_run(payload.sessionId or ""):
+        raise HTTPException(status_code=404, detail="No active Lain run for this session")
+    return {"ok": True}
 
 
 @router.get("/projects/{project_id}/ai/sessions")

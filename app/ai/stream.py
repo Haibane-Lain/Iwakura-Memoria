@@ -14,6 +14,33 @@ from typing import Any, Awaitable, Callable
 
 from app.ai import agent, tools
 
+# Active chat runs by session id, so a cancel request can signal the loop to
+# stop at its next checkpoint. The run that registered last wins.
+_active_runs: dict[str, threading.Event] = {}
+_active_runs_lock = threading.Lock()
+
+
+def _register_run(session_id: str, cancelled: threading.Event) -> None:
+    with _active_runs_lock:
+        _active_runs[session_id] = cancelled
+
+
+def _unregister_run(session_id: str, cancelled: threading.Event) -> None:
+    with _active_runs_lock:
+        if _active_runs.get(session_id) is cancelled:
+            _active_runs.pop(session_id, None)
+
+
+def cancel_run(session_id: str) -> bool:
+    """Ask the active chat run for ``session_id`` to stop at its next
+    checkpoint. Returns False when no run is currently active."""
+    with _active_runs_lock:
+        event = _active_runs.get(session_id)
+    if event is None:
+        return False
+    event.set()
+    return True
+
 
 def _display_name(args: dict[str, Any], key: str = "entryId") -> str:
     eid = str(args.get(key) or "")
@@ -98,6 +125,9 @@ class _StreamCallback(agent.StepCallback):
     def on_tool_error(self, name: str, args: dict[str, Any], error: str) -> None:
         self._push({"type": "tool_error", "tool": name, "label": error})
 
+    def on_token(self, text: str) -> None:
+        self._push({"type": "token", "text": text})
+
 
 def _public_pending(pending: dict[str, Any] | None, deferred: list[Any] | None) -> dict[str, Any] | None:
     if not pending:
@@ -125,6 +155,8 @@ async def stream_chat(
     callback = _StreamCallback(queue, loop)
     holder: dict[str, Any] = {}
     cancelled = threading.Event()
+    session_id = session.get("sessionId", "")
+    _register_run(session_id, cancelled)
 
     def _run() -> None:
         try:
@@ -145,9 +177,12 @@ async def stream_chat(
                 break
             yield item
     finally:
+        _unregister_run(session_id, cancelled)
         if thread.is_alive():
             cancelled.set()
-    thread.join()
+        # Join off the event loop: the thread may be mid-generation on a slow
+        # local model, and a blocking join here would stall every request.
+        await asyncio.to_thread(thread.join)
     if holder.get("error"):
         raise holder["error"]
     result = holder.get("result") or {}
