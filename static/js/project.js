@@ -2523,15 +2523,27 @@ async function renderSettingsTab() {
     /* ignore */
   }
 
-  const modelSuggestions = ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"];
-  const modelDatalist = el("datalist", { id: "ai-model-list" },
-    modelSuggestions.map((m) => el("option", { value: m }))
-  );
+  const modelSuggestions = {
+    deepseek: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+    opencode_go: [
+      "deepseek-v4-flash", "deepseek-v4-pro", "kimi-k3", "kimi-k2.7-code", "kimi-k2.6",
+      "longcat-2.0", "glm-5.3-flash", "glm-5.3", "glm-5.2", "glm-5.1", "mimo-v2.5",
+      "mimo-v2.5-pro", "hy4-preview", "hy3", "qwen3.8-flash", "qwen3.8-max",
+      "qwen3.7-max", "qwen3.7-plus", "minimax-m3", "minimax-m2.7", "grok-4.6",
+      "gpt-5.6-luna", "muse-spark-1.2-contributor",
+    ],
+  };
+  const modelDatalist = el("datalist", { id: "ai-model-list" });
+  const updateModelDatalist = (prov) => {
+    const list = modelSuggestions[prov] || [];
+    modelDatalist.replaceChildren(...list.map((m) => el("option", { value: m })));
+  };
   const aiProviderSelect = el("select", {},
     Object.entries({
       deepseek: "DeepSeek",
       lmstudio: "LM Studio",
       openai_compatible: "OpenAI Compatible",
+      opencode_go: "OpenCode Go",
     }).map(([value, label]) =>
       el("option", { value, selected: aiProvider === value }, label)
     )
@@ -2553,7 +2565,7 @@ async function renderSettingsTab() {
   });
   const aiTestStatus = el("span", { id: "ai-test-status", class: "chip" });
 
-  const providerLabels = { deepseek: "DeepSeek", lmstudio: "LM Studio", openai_compatible: "OpenAI Compatible" };
+  const providerLabels = { deepseek: "DeepSeek", lmstudio: "LM Studio", openai_compatible: "OpenAI Compatible", opencode_go: "OpenCode Go" };
 
   function readAiConfig() {
     const prov = aiProviderSelect.value;
@@ -2572,6 +2584,7 @@ async function renderSettingsTab() {
       deepseek: { key: "sk-…", model: "e.g. deepseek-v4-flash", base: "https://api.deepseek.com", iter: "20" },
       lmstudio: { key: "any value (LM Studio ignores auth)", model: "e.g. meta-llama-3.1-8b-instruct", base: "http://localhost:1234/v1", iter: "50" },
       openai_compatible: { key: "sk-…", model: "e.g. gpt-4o", base: "", iter: "50" },
+      opencode_go: { key: "sk-…", model: "e.g. deepseek-v4-flash", base: "https://opencode.ai/zen/go/v1", iter: "20" },
     };
     const d = defaults[prov] || defaults.openai_compatible;
     aiKeyInput.placeholder = d.key;
@@ -2583,6 +2596,7 @@ async function renderSettingsTab() {
   aiProviderSelect.addEventListener("change", async () => {
     const prov = aiProviderSelect.value;
     updateAiPlaceholders(prov);
+    updateModelDatalist(prov);
     try {
       const full = await api.settings.get();
       const cfg = (full.ai && full.ai[prov]) || {};
@@ -2595,6 +2609,7 @@ async function renderSettingsTab() {
     }
   });
   updateAiPlaceholders(aiProvider);
+  updateModelDatalist(aiProvider);
 
   const saveAiSettings = async () => {
     try {
@@ -2736,7 +2751,7 @@ async function renderSettingsTab() {
       ]),
       el("div", { class: "settings-section" }, [
         el("h2", {}, "AI assistant (Lain)"),
-        el("p", { class: "desc" }, "Connect an OpenAI-compatible provider so Lain can organize and maintain your lore from the sidebar chat. The API key stays local in data/settings.json."),
+        el("p", { class: "desc" }, "Connect a provider so Lain can organize and maintain your lore from the sidebar chat. OpenCode Go, DeepSeek, LM Studio, or any OpenAI-compatible endpoint. The API key stays local in data/settings.json."),
         el("div", { class: "field-row" }, [
           el("label", {}, "Provider"),
           aiProviderSelect,

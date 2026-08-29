@@ -167,9 +167,14 @@ improvements. Lain is **not** a ghost-writer: it won't write your prose.
 
 - Open it with the **Lain** button in the top bar. The panel is hidden by
   default and remembers the last session per project.
-- Connect a **DeepSeek API key** in **Settings → AI assistant** (stored in
-  `data/settings.json`; a **Test connection** button verifies it). Models:
-  `deepseek-v4-flash` (default) or `deepseek-v4-pro`.
+- Providers: **OpenCode Go** (`https://opencode.ai/zen/go/v1`, default model
+  `deepseek-v4-flash`; the model list changes over time and can be listed with
+  `GET https://opencode.ai/zen/go/v1/models`), **DeepSeek**, **LM Studio**, or
+  any **OpenAI-compatible** endpoint. Configure the key and model in
+  **Settings → AI assistant** (stored in `data/settings.json`; a **Test
+  connection** button verifies it).
+  OpenCode Go routes each model to the API dialect the gateway serves it with
+  (chat completions, OpenAI Responses, or Anthropic Messages) automatically.
 - **Access control**: under "Lain can access" pick which folders (Write
   and/or Wiki subtrees) Lain may read and change. The restriction is
   enforced by the server on every tool call, not just requested.
