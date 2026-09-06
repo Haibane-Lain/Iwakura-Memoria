@@ -12,9 +12,11 @@ when launched with `--browser`.
 python -m venv .venv                     # if you don't already have it
 .venv\Scripts\pip install -r requirements.txt
 npm install && npm run build             # builds the editor bundle
-python main.py                           # desktop window (on Windows)
+npm --prefix electron install            # installs the Electron shell once
+run.bat                                  # recommended launcher: Electron shell window
+run.bat --pywebview                      # legacy pywebview window
 python main.py --browser                 # or open in a browser tab
-python main.py --server-only --port 8000 # or headless (no window) — used by the Electron shell
+python main.py --server-only --port 8000 # headless (no window) — used by the Electron shell
 ```
 
 To run the tests:
