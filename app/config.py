@@ -17,11 +17,14 @@ when the new location is already populated or the move fails.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
+import re
 import secrets
 import shutil
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -58,6 +61,22 @@ RESERVED_FOLDER_NAMES = {
     REORDER_TMP_DIRNAME,
     WIKI_DIRNAME,
 }
+
+_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def is_safe_project_id(project_id: str) -> bool:
+    """True when ``project_id`` is a safe folder name inside the data dir.
+
+    The pattern allows letters/digits/``._-`` (so slugs and dotted names keep
+    working) but rejects empty ids and anything that could escape the data
+    root: ``.``, ``..``, hidden dot-prefixed names, and any path separator.
+    """
+    if not _PROJECT_ID_RE.fullmatch(project_id or ""):
+        return False
+    if project_id.startswith("."):
+        return False
+    return True
 
 
 def _default_data_dir() -> Path:
@@ -198,27 +217,67 @@ def get_settings_path() -> Path:
     return DATA_DIR / "settings.json"
 
 
+_settings_lock = threading.Lock()
+_settings_cache: dict[str, Any] | None = None
+_settings_cache_key: tuple[str, bool, float | None] | None = None
+
+
 def load_settings() -> dict[str, Any]:
+    """Read global settings, cached in-process between file changes.
+
+    The cache key is ``(path, exists, mtime)`` so edits from any process (and
+    tests pointed at different data dirs) are picked up, while the per-request
+    ``_mode()`` read during 800 ms autosaves stops touching the disk every
+    call. Callers receive a deep copy, so mutating the result never corrupts
+    the cached value.
+    """
     path = get_settings_path()
-    if not path.exists():
-        return dict(DEFAULT_SETTINGS)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return dict(DEFAULT_SETTINGS)
-    merged = dict(DEFAULT_SETTINGS)
-    merged.update(data)
-    return merged
+    exists = path.exists()
+    mtime: float | None = None
+    if exists:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            exists = False
+    key = (str(path), exists, mtime)
+    global _settings_cache, _settings_cache_key
+    with _settings_lock:
+        if _settings_cache is not None and _settings_cache_key == key:
+            return copy.deepcopy(_settings_cache)
+    if not exists:
+        merged = dict(DEFAULT_SETTINGS)
+    else:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            data = {}
+        merged = dict(DEFAULT_SETTINGS)
+        merged.update(data)
+    with _settings_lock:
+        _settings_cache = merged
+        _settings_cache_key = key
+        return copy.deepcopy(merged)
 
 
 def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
     merged = dict(DEFAULT_SETTINGS)
     merged.update(settings)
     ensure_dirs()
+    path = get_settings_path()
     _write_atomic(
-        get_settings_path(),
+        path,
         json.dumps(merged, ensure_ascii=False, indent=2),
     )
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = None
+    global _settings_cache, _settings_cache_key
+    with _settings_lock:
+        # Refresh the cache so the value just written is served without
+        # re-reading the file (and any concurrent load sees it consistently).
+        _settings_cache = merged
+        _settings_cache_key = (str(path), True, mtime)
     return merged
 
 
