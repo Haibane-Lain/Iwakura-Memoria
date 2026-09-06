@@ -48,6 +48,11 @@ _COMPACT_SIZE_BYTES = 384 * 1024
 # artifact and its contents are moved back on startup.
 _REORDER_RECOVERY_MIN_AGE_S = 300
 
+# Wikilink rewrite pattern: ``[[target]]`` / ``[[target|alias]]`` — the same
+# shape the resolver in app/services/wiki.py parses, kept here because
+# documents.py cannot import wiki.py without a cycle.
+_LINK_REWRITE_RE = re.compile(r"(\[\[)([^\]|]+)(\|[^\]]*)?(\]\])")
+
 
 def recover_reorder_tmp() -> int:
     """Move any entries still staged in a stale ``.reorder-tmp`` folder back
@@ -562,6 +567,123 @@ def _ensure_unique(folder: Path, target: Path) -> Path:
         counter += 1
 
 
+# --- wikilink rewriting on structural changes ------------------------------
+#
+# Document ids are paths, so reorders, moves, and folder renames change ids.
+# Links written as ``[[folder/doc]]`` (path form) would silently break when
+# that happens; app-inserted links use titles, which survive moves/reorders
+# but not document renames. These helpers patch document bodies accordingly.
+
+
+def _project_doc_map(project_folder: Path) -> dict[str, Path]:
+    """Map document id -> path for every document in the project tree."""
+    mapping: dict[str, Path] = {}
+    for path in _md_files_recursive(project_folder):
+        if config.REORDER_TMP_DIRNAME in path.parts or path.name.startswith("."):
+            continue
+        mapping[_entry_id(path, project_folder)] = path
+    return mapping
+
+
+def _expand_folder_maps(
+    before: dict[str, Path],
+    id_map: dict[str, str],
+) -> dict[str, str]:
+    """Expand folder-level old->new id pairs to every document inside them.
+
+    Renumbers/moves re-id only top-level *entries*; documents nested inside a
+    folder whose id changed change id too (their folder segment changed), even
+    though the app only reports the folder's own new id. ``before`` is a
+    pre-change snapshot of all document ids/paths.
+    """
+    expanded = dict(id_map)
+    for old, new in id_map.items():
+        prefix = f"{old}/"
+        for doc_id in before:
+            if doc_id.startswith(prefix):
+                new_id = f"{new}/{doc_id[len(prefix):]}"
+                if new_id != doc_id:
+                    expanded[doc_id] = new_id
+    return expanded
+
+
+def _link_lookup(id_map: dict[str, str]) -> dict[str, str]:
+    """Case-insensitive target lookup, tolerating a trailing ``.md``."""
+    lookup: dict[str, str] = {}
+    for old, new in id_map.items():
+        lookup[old.lower()] = new
+        lookup[f"{old}.md".lower()] = new
+    return lookup
+
+
+def _normalize_link_target(target: str) -> str:
+    return " ".join(target.strip().split()).lower()
+
+
+def rewrite_wikilink_ids(project_id: str, id_map: dict[str, str]) -> int:
+    """Rewrite path-form ``[[...]]`` targets across the project to new ids.
+
+    Any target matching an old id (case-insensitive, with an optional trailing
+    ``.md``) is replaced; title-form links and aliases are untouched. Returns
+    the number of files rewritten. Runs while holding each document's save
+    lock so it never clobbers a concurrent autosave.
+    """
+    if not id_map:
+        return 0
+    lookup = _link_lookup(id_map)
+    folder = _project_folder(project_id)
+    rewritten = 0
+    for path in _md_files_recursive(folder):
+        if config.REORDER_TMP_DIRNAME in path.parts or path.name.startswith("."):
+            continue
+        with _save_lock_for(path):
+            raw = path.read_text(encoding="utf-8")
+
+            def _sub(match: "re.Match[str]") -> str:
+                new_target = lookup.get(match.group(2).strip().lower())
+                if new_target is None:
+                    return match.group(0)
+                return f"{match.group(1)}{new_target}{match.group(3) or ''}{match.group(4)}"
+
+            updated = _LINK_REWRITE_RE.sub(_sub, raw)
+            if updated != raw:
+                config._write_atomic(path, updated)
+                rewritten += 1
+    return rewritten
+
+
+def rewrite_wikilink_titles(project_id: str, old_title: str, new_title: str) -> int:
+    """Rewrite title-form ``[[...]]`` links after a document rename.
+
+    Resolution falls back to document titles (case-insensitive), so renaming a
+    document breaks links that point at it by title; those are rewritten to
+    the new title. Path-form links are unaffected (the path didn't change).
+    Returns the number of files rewritten.
+    """
+    old_norm = _normalize_link_target(old_title)
+    new_title = (new_title or "").strip()
+    if not old_norm or not new_title or old_norm == _normalize_link_target(new_title):
+        return 0
+    folder = _project_folder(project_id)
+    rewritten = 0
+    for path in _md_files_recursive(folder):
+        if config.REORDER_TMP_DIRNAME in path.parts or path.name.startswith("."):
+            continue
+        with _save_lock_for(path):
+            raw = path.read_text(encoding="utf-8")
+
+            def _sub(match: "re.Match[str]") -> str:
+                if _normalize_link_target(match.group(2)) != old_norm:
+                    return match.group(0)
+                return f"{match.group(1)}{new_title}{match.group(3) or ''}{match.group(4)}"
+
+            updated = _LINK_REWRITE_RE.sub(_sub, raw)
+            if updated != raw:
+                config._write_atomic(path, updated)
+                rewritten += 1
+    return rewritten
+
+
 def _compact_history(path: Path) -> bool:
     """Rewrite *path* (a project's ``history.jsonl``) as one summed line per
     day, retaining **every** day that appears in the log.
@@ -761,11 +883,14 @@ def _move_folder_impl(
     if path.parent == target_dir:
         if index is None:
             return _entry_id(path, project_folder), {}
+        before = _project_doc_map(project_folder)
         entries = _ordered_entry_ids(target_dir, project_folder)
         entries.remove(folder_id)
         index = min(index, len(entries))
         entries.insert(index, folder_id)
         renamed = _renumber(target_dir, project_folder, entries)
+        id_map = _expand_folder_maps(before, renamed)
+        rewrite_wikilink_ids(project_id, id_map)
         return renamed.get(folder_id, folder_id), renamed
     if target_dir == path or target_dir.is_relative_to(path):
         raise DocumentError("Cannot move a folder into itself or one of its subfolders")
@@ -773,6 +898,8 @@ def _move_folder_impl(
     if new_path.exists():
         raise DocumentError(f"Folder '{path.name}' already exists in the destination")
 
+    before = _project_doc_map(project_folder)
+    old_folder_id = _entry_id(path, project_folder)
     path.rename(new_path)
     moved_id = _entry_id(new_path, project_folder)
     entries = _ordered_entry_ids(target_dir, project_folder)
@@ -780,7 +907,17 @@ def _move_folder_impl(
     index = len(entries) if index is None else min(index, len(entries))
     entries.insert(index, moved_id)
     renamed = _renumber(target_dir, project_folder, entries)
-    return renamed.get(moved_id, moved_id), renamed
+    new_id = renamed.get(moved_id, moved_id)
+
+    id_map = _expand_folder_maps(before, renamed)
+    old_prefix = f"{old_folder_id}/"
+    for doc_id in before:
+        if doc_id.startswith(old_prefix):
+            new_doc_id = f"{new_id}/{doc_id[len(old_prefix):]}"
+            if new_doc_id != doc_id:
+                id_map[doc_id] = new_doc_id
+    rewrite_wikilink_ids(project_id, id_map)
+    return new_id, renamed
 
 
 def rename_folder(project_id: str, folder_id: str, new_name: str) -> str:
@@ -796,10 +933,21 @@ def rename_folder(project_id: str, folder_id: str, new_name: str) -> str:
     new_path = path.parent / prefixed
     if new_path.exists():
         raise DocumentError(f"Folder '{new_name}' already exists")
+    before = _project_doc_map(project_folder)
+    old_folder_id = _entry_id(path, project_folder)
     path.rename(new_path)
     # The folder's children (and their ids) moved with it.
+    new_folder_id = _entry_id(new_path, project_folder)
+    id_map: dict[str, str] = {}
+    old_prefix = f"{old_folder_id}/"
+    for doc_id in before:
+        if doc_id.startswith(old_prefix):
+            new_doc_id = f"{new_folder_id}/{doc_id[len(old_prefix):]}"
+            if new_doc_id != doc_id:
+                id_map[doc_id] = new_doc_id
+    rewrite_wikilink_ids(project_id, id_map)
     _invalidate_word_stats(project_id)
-    return _entry_id(new_path, project_folder)
+    return new_folder_id
 
 
 def delete_folder(project_id: str, folder_id: str) -> None:
@@ -937,8 +1085,12 @@ def rename_document(
         raise FileNotFoundError(f"Document '{doc_id}' not found")
     raw = path.read_text(encoding="utf-8")
     meta, body = parse_frontmatter(raw)
+    old_title = str(meta.get("title", "") or "")
     meta["title"] = new_title.strip() or meta.get("title", "Untitled")
     config._write_atomic(path, build_frontmatter(meta) + body)
+    new_title = str(meta.get("title", "") or "")
+    if old_title and old_title != new_title:
+        rewrite_wikilink_titles(project_id, old_title, new_title)
     return get_document(project_id, doc_id, mode)
 
 
@@ -1022,7 +1174,9 @@ def reorder_documents(
 ) -> dict[str, Any]:
     project_folder = _project_folder(project_id)
     directory = _folder_path(project_folder, folder or "")
+    before = _project_doc_map(project_folder)
     renamed = _renumber(directory, project_folder, ordered_ids)
+    rewrite_wikilink_ids(project_id, _expand_folder_maps(before, renamed))
     return {"tree": get_tree(project_id, mode), "renamed": renamed}
 
 
@@ -1060,14 +1214,17 @@ def _move_document_impl(
     if path.parent == target_dir:
         if index is None:
             return get_document(project_id, doc_id, mode), {}
+        before = _project_doc_map(project_folder)
         entries = _ordered_entry_ids(target_dir, project_folder)
         entries.remove(doc_id)
         index = min(index, len(entries))
         entries.insert(index, doc_id)
         renamed = _renumber(target_dir, project_folder, entries)
         new_doc_id = renamed.get(doc_id, doc_id)
+        rewrite_wikilink_ids(project_id, _expand_folder_maps(before, renamed))
         return get_document(project_id, new_doc_id, mode), renamed
 
+    before = _project_doc_map(project_folder)
     moved = _ensure_unique(target_dir, target_dir / path.name)
     shutil.move(str(path), str(moved))
 
@@ -1079,6 +1236,10 @@ def _move_document_impl(
     renamed = _renumber(target_dir, project_folder, entries)
 
     new_doc_id = renamed.get(moved_id, moved_id)
+    id_map = _expand_folder_maps(before, renamed)
+    if new_doc_id != doc_id:
+        id_map[doc_id] = new_doc_id
+    rewrite_wikilink_ids(project_id, id_map)
     return get_document(project_id, new_doc_id, mode), renamed
 
 

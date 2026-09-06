@@ -210,4 +210,10 @@ export const api = {
         api.del(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}`),
     },
   },
+
+  backups: {
+    list: () => api.get("/api/backups"),
+    create: () => api.post("/api/backups", {}),
+    remove: (name) => api.del(`/api/backups/${encodePath(name)}`),
+  },
 };

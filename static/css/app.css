@@ -1613,6 +1613,38 @@ a {
   margin-bottom: 12px;
 }
 
+.backup-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  font-size: 13px;
+}
+
+.backup-item + .backup-item {
+  border-top: 1px solid var(--border);
+}
+
+.backup-name {
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-meta {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
 .field-row {
   display: flex;
   align-items: center;

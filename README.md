@@ -54,6 +54,11 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   a progress bar and bar chart.
 - **Drag-and-drop sidebar** — Reorder, nest, and move chapters, notes, wiki
   entries, and folders with visual drop zones.
+- **Link-safe rearranging** — Moving or reordering a document rewrites any
+  `[[path]]` links that point to it; renaming a document rewrites links that
+  point to it by title, so nothing silently breaks.
+- **Whole-library backups** — One click snapshots every project, settings,
+  stats, and chat history into a timestamped zip; the 10 newest are kept.
 - **Autosave** — Configurable debounce; last-ditch save on tab close.
 
 ## How data is stored
@@ -112,6 +117,12 @@ The **Write tab** shows everything except `worldbuilding/`; the **Wiki tab**
 shows only `worldbuilding/`, so lore lives in its own separate scaffolding
 with the same folder features. The `stats/`, `templates/`, `ai-sessions/` and
 `worldbuilding/` paths (and `project.json`, `dictionary.json`) are reserved.
+
+**Backups** live *next to* the data folder at
+`%LOCALAPPDATA%\IwakuraMemoria\backups\` (Settings → Export & backup → *Back
+up everything now*). Each is a timestamped zip of the whole `data/` layout —
+extracting one over the data folder restores everything. The 10 newest are
+kept automatically; older ones are deleted.
 
 ## Grammar checking
 

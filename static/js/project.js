@@ -2764,6 +2764,69 @@ async function renderSettingsTab() {
     class: `switch ${state.project.goal.enabled ? "on" : ""}`,
   });
 
+  const formatBytes = (n) => {
+    if (!Number.isFinite(n)) return "";
+    const units = ["B", "KB", "MB", "GB"];
+    let i = 0;
+    let v = n;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i += 1;
+    }
+    return `${(v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1))} ${units[i]}`;
+  };
+  const backupsList = el("ul", { class: "backup-list" });
+  const backupStatus = el("span", { class: "chip" });
+  const refreshBackups = async () => {
+    try {
+      const items = await api.backups.list();
+      backupsList.replaceChildren(...items.map((b) =>
+        el("li", { class: "backup-item" }, [
+          el("span", { class: "backup-name" }, b.name),
+          el("span", { class: "backup-meta" },
+            `${formatBytes(b.size)}${b.created ? ` · ${b.created.replace("T", " ").slice(0, 19)}` : ""}`),
+          el("button", {
+            class: "link-btn",
+            onclick: async () => {
+              const ok = await confirmDialog({
+                title: "Delete this backup?",
+                message: `Remove ${b.name}? This cannot be undone.`,
+                confirmText: "Delete",
+              });
+              if (!ok) return;
+              try {
+                await api.backups.remove(b.name);
+                toast("Backup deleted");
+                refreshBackups();
+              } catch (err) {
+                toast(err.message, "error");
+              }
+            },
+          }, "delete"),
+        ])
+      ));
+      backupStatus.hidden = items.length === 0;
+      backupStatus.textContent = items.length
+        ? `${items.length} saved (the ${items.length === 1 ? "newest is" : "10 newest are"} kept)`
+        : "No backups yet";
+    } catch (err) {
+      backupsList.replaceChildren(
+        el("li", { class: "backup-item backup-meta" }, `Couldn't load backups: ${err.message}`)
+      );
+    }
+  };
+  const runBackup = async () => {
+    try {
+      backupStatus.textContent = "Creating…";
+      const r = await api.backups.create();
+      toast(`Backup saved (${formatBytes(r.size)})`);
+      refreshBackups();
+    } catch (err) {
+      backupStatus.textContent = "Failed";
+      toast(err.message, "error");
+    }
+  };
+
   main.replaceChildren(
     el("div", { class: "settings-view" }, [
       el("div", { class: "settings-section" }, [
@@ -2881,10 +2944,13 @@ async function renderSettingsTab() {
       ]),
       el("div", { class: "settings-section" }, [
         el("h2", {}, "Export & backup"),
-        el("p", { class: "desc" }, "Download your project as zip, docx, pdf, or epub. Choose which folders to include."),
+        el("p", { class: "desc" }, "Export this project as zip, docx, pdf, or epub — or back up your whole library: every project, settings, stats, and chat history, saved as a timestamped zip next to your data folder (the 10 newest backups are kept)."),
         el("div", { class: "modal-actions" }, [
-          el("button", { class: "icon-btn primary", onclick: () => renderExportDialog(state.project.id) }, "Export…"),
+          el("button", { class: "icon-btn primary", onclick: () => renderExportDialog(state.project.id) }, "Export project…"),
+          el("button", { class: "icon-btn", onclick: runBackup }, "Back up everything now"),
+          backupStatus,
         ]),
+        backupsList,
       ]),
       el("div", { class: "settings-section" }, [
         el("h2", {}, "Danger zone"),
@@ -2911,6 +2977,7 @@ async function renderSettingsTab() {
       ]),
     ])
   );
+  refreshBackups();
 }
 
 /* ---------------- tab switching ---------------- */

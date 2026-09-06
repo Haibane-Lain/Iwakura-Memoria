@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse
 
 from app import config
 from app.routes import ai as ai_routes
+from app.routes import backups as backup_routes
 from app.routes import documents as documents_routes
 from app.routes import grammar as grammar_routes
 from app.routes import projects as projects_routes
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(templates_routes.router)
     app.include_router(ai_routes.router)
     app.include_router(grammar_routes.router)
+    app.include_router(backup_routes.router)
 
     config.STATIC_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="static")
