@@ -17,6 +17,8 @@ from app.routes import projects as projects_routes
 from app.routes import settings as settings_routes
 from app.routes import templates as templates_routes
 from app.routes import wiki as wiki_routes
+from app.security import check_local_request
+from app.services import documents as documents_service
 
 MAX_REQUEST_BYTES = 10 * 1024 * 1024
 _SLOW_REQUEST_THRESHOLD_S = 1.0
@@ -24,7 +26,28 @@ _SLOW_REQUEST_THRESHOLD_S = 1.0
 
 def create_app() -> FastAPI:
     config.ensure_dirs()
+    # Rewrite any overgrown history.jsonl into its compact per-day form.
+    # Runs for every launch (pywebview, browser, --server-only/Electron).
+    try:
+        documents_service.compact_overgrown_histories()
+    except Exception as exc:  # never block startup on housekeeping
+        print(f"[startup] history compaction skipped: {exc}", file=sys.stderr)
     app = FastAPI(title="Iwakura Memoria", docs_url="/api/docs", openapi_url="/api/openapi.json")
+
+    # Outermost middleware: every request crosses the localhost guard first.
+    @app.middleware("http")
+    async def _local_request_guard(request: Request, call_next):
+        reason = check_local_request(
+            request.headers.get("host", ""),
+            request.method,
+            request.headers.get("origin") or None,
+        )
+        if reason:
+            return JSONResponse(
+                {"detail": f"Rejected: {reason}"},
+                status_code=403,
+            )
+        return await call_next(request)
 
     @app.middleware("http")
     async def _limit_body_size(request: Request, call_next):

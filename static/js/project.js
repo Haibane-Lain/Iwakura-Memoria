@@ -2512,13 +2512,16 @@ async function renderSettingsTab() {
     }
   });
 
+  const KEY_MASK = "••••••••••••";
   let aiCfg = {};
   let aiProvider = "deepseek";
+  let keyConfigured = false; // true when a real key is stored for the active provider
   try {
     const full = await api.settings.get();
     const ai = full.ai || {};
     aiProvider = ai.provider || "deepseek";
     aiCfg = (ai[aiProvider]) || {};
+    keyConfigured = aiCfg.apiKey === KEY_MASK;
   } catch {
     /* ignore */
   }
@@ -2548,7 +2551,23 @@ async function renderSettingsTab() {
       el("option", { value, selected: aiProvider === value }, label)
     )
   );
-  const aiKeyInput = el("input", { type: "password", value: aiCfg.apiKey || "", placeholder: "sk-…" });
+  const aiKeyInput = el("input", {
+    type: "password",
+    value: keyConfigured ? "" : (aiCfg.apiKey || ""),
+    placeholder: keyConfigured ? "•••••••••••• (saved)" : "sk-…",
+  });
+  const clearKeyBtn = el("button", {
+    class: "link-btn",
+    type: "button",
+    title: "Forget the saved API key for this provider",
+    hidden: !keyConfigured,
+    onclick: () => {
+      aiKeyInput.value = "";
+      keyConfigured = false;
+      aiKeyInput.placeholder = "sk-…";
+      clearKeyBtn.hidden = true;
+    },
+  }, "clear saved key");
   const aiModelInput = el("input", {
     type: "text",
     list: "ai-model-list",
@@ -2600,7 +2619,11 @@ async function renderSettingsTab() {
     try {
       const full = await api.settings.get();
       const cfg = (full.ai && full.ai[prov]) || {};
-      aiKeyInput.value = cfg.apiKey || "";
+      const stored = cfg.apiKey === KEY_MASK;
+      aiKeyInput.value = stored ? "" : (cfg.apiKey || "");
+      if (stored) aiKeyInput.placeholder = "•••••••••••• (saved)";
+      keyConfigured = stored;
+      clearKeyBtn.hidden = !stored;
       aiModelInput.value = cfg.model || "";
       aiBaseInput.value = cfg.baseUrl || "";
       aiMaxIterInput.value = cfg.maxIterations || "";
@@ -2614,11 +2637,17 @@ async function renderSettingsTab() {
   const saveAiSettings = async () => {
     try {
       const cfg = readAiConfig();
+      const value = cfg.apiKey;
       const providerCfg = {
-        apiKey: cfg.apiKey,
         model: cfg.model || undefined,
         baseUrl: cfg.baseUrl || undefined,
       };
+      if (value !== "") {
+        providerCfg.apiKey = value; // set or replace
+      } else if (!keyConfigured) {
+        providerCfg.apiKey = ""; // nothing stored — explicit no-op
+      }
+      // empty + keyConfigured: omit apiKey so the server keeps the stored key
       if (cfg.maxIterations !== undefined) {
         providerCfg.maxIterations = cfg.maxIterations;
       }
@@ -2751,7 +2780,7 @@ async function renderSettingsTab() {
       ]),
       el("div", { class: "settings-section" }, [
         el("h2", {}, "AI assistant (Lain)"),
-        el("p", { class: "desc" }, "Connect a provider so Lain can organize and maintain your lore from the sidebar chat. OpenCode Go, DeepSeek, LM Studio, or any OpenAI-compatible endpoint. The API key stays local in data/settings.json."),
+        el("p", { class: "desc" }, "Connect a provider so Lain can organize and maintain your lore from the sidebar chat. OpenCode Go, DeepSeek, LM Studio, or any OpenAI-compatible endpoint. Your key stays stored locally and is never shown back to the page."),
         el("div", { class: "field-row" }, [
           el("label", {}, "Provider"),
           aiProviderSelect,
@@ -2759,6 +2788,7 @@ async function renderSettingsTab() {
         el("div", { class: "field-row" }, [
           el("label", {}, "API key"),
           aiKeyInput,
+          clearKeyBtn,
         ]),
         el("div", { class: "field-row" }, [
           el("label", {}, "Model"),
