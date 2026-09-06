@@ -13,9 +13,11 @@ Within a folder, documents are ordered by a numeric ``NN-`` filename prefix.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import threading
+import time
 import yaml
 from collections import defaultdict
 from datetime import date, datetime, timedelta
@@ -41,6 +43,51 @@ _COMPACT_SIZE_BYTES = 384 * 1024
 # Streaks only look backward from today, so a rolling 366-day window is
 # lossless for every stat the app reports.
 _HISTORY_KEEP_DAYS = 366
+
+# ``_renumber`` stages entries in ``<dir>/.reorder-tmp`` for milliseconds; if
+# the app dies mid-renumber they can sit there indefinitely (hidden from the
+# tree/export/stats). A leftover folder older than this is treated as a crash
+# artifact and its contents are moved back on startup.
+_REORDER_RECOVERY_MIN_AGE_S = 300
+
+
+def recover_reorder_tmp() -> int:
+    """Move any entries still staged in a stale ``.reorder-tmp`` folder back
+    into their parent directory (crash recovery for interrupted renumbers).
+
+    Scans every project tree for ``.reorder-tmp`` directories older than
+    ``_REORDER_RECOVERY_MIN_AGE_S`` (a live renumber finishes in seconds, so
+    younger ones are left alone — a renumber may still be in flight). Returns
+    the number of entries restored. Best-effort, never raises.
+    """
+    restored = 0
+    try:
+        projects = [p for p in config.DATA_DIR.iterdir() if p.is_dir()]
+    except OSError:
+        return 0
+    for project in projects:
+        for dirpath, dirnames, _filenames in os.walk(project):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            tmp = Path(dirpath) / config.REORDER_TMP_DIRNAME
+            try:
+                if not tmp.is_dir():
+                    continue
+                if time.time() - tmp.stat().st_mtime < _REORDER_RECOVERY_MIN_AGE_S:
+                    continue
+            except OSError:
+                continue
+            for child in list(tmp.iterdir()):
+                try:
+                    target = _ensure_unique(tmp.parent, tmp.parent / child.name)
+                    shutil.move(str(child), str(target))
+                    restored += 1
+                except OSError:
+                    continue
+            try:
+                shutil.rmtree(tmp, ignore_errors=True)
+            except OSError:
+                pass
+    return restored
 _save_locks: dict[str, threading.Lock] = {}
 _save_locks_guard = threading.Lock()
 # {(project_id, mode): {total_words: int, doc_count: int, docs: {doc_id: int}}}
@@ -246,6 +293,8 @@ def _style_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _project_folder(project_id: str) -> Path:
+    if not config.is_safe_project_id(project_id):
+        raise FileNotFoundError(f"Project '{project_id}' not found")
     folder = config.DATA_DIR / project_id
     if not (folder / config.PROJECT_META_FILENAME).exists():
         raise FileNotFoundError(f"Project '{project_id}' not found")
@@ -262,8 +311,9 @@ def _validate_id(doc_id: str) -> str:
 def _doc_path(folder: Path, doc_id: str) -> Path:
     doc_id = _validate_id(doc_id)
     relative = doc_id if doc_id.lower().endswith(".md") else doc_id + ".md"
+    base = folder.resolve()
     path = (folder / relative).resolve()
-    if not str(path).startswith(str(folder.resolve())):
+    if not path.is_relative_to(base):
         raise DocumentError("Invalid document path")
     return path
 
@@ -273,8 +323,9 @@ def _folder_path(folder: Path, folder_id: str | None, create: bool = False) -> P
     if not folder_id:
         return folder
     _validate_id(folder_id)
+    base = folder.resolve()
     path = (folder / folder_id).resolve()
-    if not str(path).startswith(str(folder.resolve())):
+    if not path.is_relative_to(base):
         raise DocumentError("Invalid folder path")
     if create:
         path.mkdir(parents=True, exist_ok=True)
@@ -749,6 +800,8 @@ def rename_folder(project_id: str, folder_id: str, new_name: str) -> str:
     if new_path.exists():
         raise DocumentError(f"Folder '{new_name}' already exists")
     path.rename(new_path)
+    # The folder's children (and their ids) moved with it.
+    _invalidate_word_stats(project_id)
     return _entry_id(new_path, project_folder)
 
 
@@ -760,6 +813,7 @@ def delete_folder(project_id: str, folder_id: str) -> None:
     if path.parent == project_folder and path.name.lower() == config.WIKI_DIRNAME:
         raise DocumentError("Cannot delete the wiki root")
     shutil.rmtree(path)
+    _invalidate_word_stats(project_id)
 
 
 def _prune_empty(start: Path, stop: Path) -> None:
@@ -958,6 +1012,8 @@ def _renumber(
         new_id = _entry_id(new, project_folder)
         if new_id != entry_id:
             renamed[entry_id] = new_id
+    # Renumbering changes entry ids — the word-stats cache is keyed by id.
+    _invalidate_word_stats(project_folder.name)
     return renamed
 
 

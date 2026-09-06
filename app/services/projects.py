@@ -83,11 +83,15 @@ def _now() -> str:
 
 
 def project_dir(project_id: str) -> Path:
-    return config.DATA_DIR / project_id
+    pid = _safe_id(project_id)
+    folder = (config.DATA_DIR / pid).resolve()
+    if not folder.is_relative_to(config.DATA_DIR.resolve()):
+        raise ValueError("Invalid project id")
+    return folder
 
 
 def _safe_id(project_id: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", project_id):
+    if not config.is_safe_project_id(project_id):
         raise ValueError("Invalid project id")
     return project_id
 
@@ -189,6 +193,16 @@ def rename_project(project_id: str, new_name: str) -> dict[str, Any]:
     meta["updatedAt"] = _now()
     if new_folder != folder:
         folder.rename(new_folder)
+        # Chat sessions are keyed by project folder name; move them so the
+        # renamed project keeps its history (best-effort, never fails a rename).
+        old_sessions = config.DATA_DIR / "ai-sessions" / pid
+        if old_sessions.is_dir():
+            new_sessions = config.DATA_DIR / "ai-sessions" / new_folder.name
+            if not new_sessions.exists():
+                try:
+                    shutil.move(str(old_sessions), str(new_sessions))
+                except OSError:
+                    pass
         folder = new_folder
     _write_meta(folder, meta)
     return get_project(new_folder.name)
@@ -369,6 +383,11 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     pdf.add_page()
 
     fonts = _find_pdf_fonts()
+    # Fall back to fpdf2's built-in core fonts when no system fonts resolve
+    # (e.g. a bare Linux box). Core fonts are latin-1 only — a graceful
+    # degradation, never a crash; the Windows/macOS paths are unchanged.
+    serif_family = "Serif" if fonts["serif"] else "Helvetica"
+    mono_family = "Mono" if fonts["mono"] else "Courier"
     if fonts["serif"]:
         pdf.add_font("Serif", "", fonts["serif"][0], uni=True)
         pdf.add_font("Serif", "B", fonts["serif"][1], uni=True)
@@ -377,7 +396,7 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     if fonts["mono"]:
         pdf.add_font("Mono", "", fonts["mono"][0], uni=True)
 
-    pdf.set_font("Serif", "B", 22)
+    pdf.set_font(serif_family, "B", 22)
     pdf.cell(0, 14, project_title, new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(8)
 
@@ -388,7 +407,7 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
             label = folder_name or "Top-level"
             if pdf.get_y() > 240:
                 pdf.add_page()
-            pdf.set_font("Serif", "B", 14)
+            pdf.set_font(serif_family, "B", 14)
             pdf.set_draw_color(200, 200, 200)
             pdf.set_line_width(0.4)
             y = pdf.get_y()
@@ -396,20 +415,20 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
             pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + pdf.w - 2 * pdf.l_margin, pdf.get_y())
             pdf.ln(4)
 
-        pdf.set_font("Serif", "B", 12)
+        pdf.set_font(serif_family, "B", 12)
         pdf.cell(0, 7, str(doc_title), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
         html = md_to_html(body)
-        pdf.set_font("Serif", "", 11)
+        pdf.set_font(serif_family, "", 11)
         pdf.write_html(html, tag_styles={
-            "h1": FontFace(family="Serif", emphasis="B", size_pt=16),
-            "h2": FontFace(family="Serif", emphasis="B", size_pt=14),
-            "h3": FontFace(family="Serif", emphasis="B", size_pt=12),
-            "h4": FontFace(family="Serif", emphasis="B", size_pt=11),
-            "code": FontFace(family="Mono", size_pt=9),
-            "pre": FontFace(family="Mono", size_pt=9),
-            "blockquote": FontFace(family="Serif", emphasis="I", color=(100, 100, 100)),
+            "h1": FontFace(family=serif_family, emphasis="B", size_pt=16),
+            "h2": FontFace(family=serif_family, emphasis="B", size_pt=14),
+            "h3": FontFace(family=serif_family, emphasis="B", size_pt=12),
+            "h4": FontFace(family=serif_family, emphasis="B", size_pt=11),
+            "code": FontFace(family=mono_family, size_pt=9),
+            "pre": FontFace(family=mono_family, size_pt=9),
+            "blockquote": FontFace(family=serif_family, emphasis="I", color=(100, 100, 100)),
         })
         pdf.ln(6)
 
