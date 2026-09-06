@@ -17,7 +17,8 @@ import re
 import shutil
 import threading
 import yaml
-from datetime import datetime
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,15 @@ _WORD_RE = re.compile(r"\S+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _PREFIX_RE = re.compile(r"^(\d+)-")
 _history_lock = threading.Lock()
+
+# history.jsonl grows one line per save; once a project's log is over this
+# size it is compacted into one summed line per day (keep-days window below).
+# ~60 bytes/line means the threshold is already well past the "4000 lines"
+# mark, so size alone is the trigger.
+_COMPACT_SIZE_BYTES = 384 * 1024
+# Streaks only look backward from today, so a rolling 366-day window is
+# lossless for every stat the app reports.
+_HISTORY_KEEP_DAYS = 366
 _save_locks: dict[str, threading.Lock] = {}
 _save_locks_guard = threading.Lock()
 # {(project_id, mode): {total_words: int, doc_count: int, docs: {doc_id: int}}}
@@ -503,6 +513,84 @@ def _ensure_unique(folder: Path, target: Path) -> Path:
         counter += 1
 
 
+def _compact_history(path: Path) -> bool:
+    """Rewrite *path* (a project's ``history.jsonl``) as one summed line per
+    day, keeping only the last ``_HISTORY_KEEP_DAYS`` days.
+
+    The daily-total shape is exactly what :func:`app.services.stats.get_stats`
+    derives, so compaction is lossless for every stat the app reports (streak
+    logic only looks backward from today). Returns True when a rewrite
+    happened. Best-effort: any read/parse/write failure leaves the file
+    untouched.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not raw:
+        return False
+    cutoff = (date.today() - timedelta(days=_HISTORY_KEEP_DAYS - 1)).isoformat()
+    totals: dict[str, int] = defaultdict(int)
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        day = entry.get("date")
+        if not isinstance(day, str) or day < cutoff:
+            continue
+        try:
+            totals[day] += int(entry.get("delta", 0))
+        except (TypeError, ValueError):
+            continue
+    if not totals:
+        return False
+    out = "".join(
+        json.dumps({"date": day, "delta": totals[day]}, ensure_ascii=False) + "\n"
+        for day in sorted(totals)
+    )
+    try:
+        config._write_atomic(path, out)
+    except OSError:
+        return False
+    return True
+
+
+def _maybe_compact_history(path: Path) -> bool:
+    """Compact *path* when it has grown past the threshold; False otherwise."""
+    try:
+        if not path.is_file() or path.stat().st_size <= _COMPACT_SIZE_BYTES:
+            return False
+    except OSError:
+        return False
+    return _compact_history(path)
+
+
+def compact_overgrown_histories() -> int:
+    """One-time startup pass: compact every project history over threshold.
+
+    Runs on each launch so existing large logs (e.g. from before compaction
+    existed) shrink on the first boot after an upgrade. Returns the number of
+    files rewritten. Best-effort — never raises.
+    """
+    rewritten = 0
+    try:
+        projects = [p for p in config.DATA_DIR.iterdir() if p.is_dir()]
+    except OSError:
+        return 0
+    for folder in projects:
+        history = folder / config.STATS_DIRNAME / config.HISTORY_FILENAME
+        if not history.is_file():
+            continue
+        with _history_lock:
+            if _maybe_compact_history(history):
+                rewritten += 1
+    return rewritten
+
+
 def _record_save(project_id: str, doc_id: str, delta: int) -> None:
     folder = _project_folder(project_id)
     history = folder / config.STATS_DIRNAME / config.HISTORY_FILENAME
@@ -517,6 +605,9 @@ def _record_save(project_id: str, doc_id: str, delta: int) -> None:
     with _history_lock:
         with history.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # Keep the log bounded: once it crosses the threshold, fold it into
+        # the compact per-day form while we hold the lock (never fails a save).
+        _maybe_compact_history(history)
 
 
 def _next_index(directory: Path) -> int:

@@ -139,6 +139,41 @@ def _migrate_legacy_data(target: Path) -> bool:
     return True
 
 
+def _sweep_orphan_tmp(root: Path) -> int:
+    """Delete stray ``*.tmp`` files under *root* that are older than a day.
+
+    Atomic writes leave ``.<name>.<pid>.<token>.tmp`` files that live for
+    milliseconds; anything still present after a day is a leftover from an
+    interrupted write (crash, kill, disk error). Only files older than
+    ``_TMP_SWEEP_MAX_AGE_S`` are removed, so in-flight writes are never
+    touched. Returns the number of files deleted. Best-effort.
+    """
+    removed = 0
+    now = time.time()
+    try:
+        walker = os.walk(root)
+    except OSError:
+        return 0
+    for dirpath, _dirnames, filenames in walker:
+        for name in filenames:
+            if not name.endswith(".tmp"):
+                continue
+            path = Path(dirpath) / name
+            try:
+                if now - path.stat().st_mtime > _TMP_SWEEP_MAX_AGE_S:
+                    path.unlink()
+                    removed += 1
+            except OSError:
+                continue
+    if removed:
+        print(f"[config] removed {removed} orphaned temp file(s) under {root}", file=sys.stderr)
+    return removed
+
+
+# Age past which a *.tmp file is treated as an orphan.
+_TMP_SWEEP_MAX_AGE_S = 24 * 60 * 60
+
+
 def ensure_dirs() -> None:
     global DATA_DIR
     intended = _default_data_dir()
@@ -156,6 +191,7 @@ def ensure_dirs() -> None:
         DATA_DIR = LEGACY_DATA_DIR
         DATA_DIR.mkdir(parents=True, exist_ok=True)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    _sweep_orphan_tmp(DATA_DIR)
 
 
 def get_settings_path() -> Path:
