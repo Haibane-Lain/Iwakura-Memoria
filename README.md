@@ -14,6 +14,14 @@ python -m venv .venv                     # if you don't already have it
 npm install && npm run build             # builds the editor bundle
 python main.py                           # desktop window (on Windows)
 python main.py --browser                 # or open in a browser tab
+python main.py --server-only --port 8000 # or headless (no window) — used by the Electron shell
+```
+
+To run the tests:
+
+```
+.venv\Scripts\pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest tests/ -q
 ```
 
 Grammar checking requires **Java 17+** and a LanguageTool server. See the
@@ -48,8 +56,19 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
 
 ## How data is stored
 
-Everything lives in the `data/` directory. Each project is a free-form
-scaffolding tree of **folders** and **documents**:
+Everything lives in the user's local app-data directory, **not** next to the
+code — so the app can be installed anywhere (even read-only folders) without
+losing your work. On Windows the default is
+`%LOCALAPPDATA%\IwakuraMemoria\data` (elsewhere it's `~/.iwakura/data`).
+Set the `IWAKURA_DATA_DIR` environment variable to force a location (used by
+tests and useful for portable setups).
+
+**First-run migration**: the very first launch after an upgrade moves an
+existing `data/` folder that sits next to the code into the new location. The
+migration is idempotent and safe — it never deletes or overwrites anything,
+and if it can't complete the app keeps using the old location.
+
+Each project is a free-form scaffolding tree of **folders** and **documents**:
 
 ```
 data/
@@ -144,6 +163,27 @@ Windows/macOS, DejaVu on Linux).
   chapters/notes/subfolders, rename, or delete it.
 - Word counts use auto mode by default: whitespace-separated words plus
   CJK characters (switchable in Settings).
+
+## Electron shell (experimental spike)
+
+`electron/` contains a proof-of-concept sidecar shell: Electron spawns the
+existing Python server (`python main.py --server-only`) as a child process and
+renders the same unmodified frontend. Its preload script exposes the exact
+`window.pywebview.api` contract the frontend already feature-detects, so the
+web UI needed **zero functional changes** — window controls and the export
+save dialog become native Electron calls. Use it from the workspace root:
+
+```
+npm --prefix electron install
+npm --prefix electron start
+```
+
+Notes: it runs the venv Python in dev mode (no bundled runtime yet); the
+close button tree-kills the Python process so the LanguageTool Java child is
+never orphaned; the renderer's edge resize handles are inert no-ops because
+frameless windows resize natively. This is a spike to validate the seam — the
+real distribution decision (Electron sidecar vs. packaged Python) is still
+open.
 
 ## Backend layout
 

@@ -1,6 +1,9 @@
 .venv/
 node_modules/
+# Legacy dev data folder — user data now lives in %LOCALAPPDATA%\IwakuraMemoria
+# (see README "How data is stored"); the entry stays for old copies.
 data/
+.pytest_cache/
 static/dist/
 __pycache__/
 *.pyc

@@ -1,0 +1,13 @@
+{
+  "name": "iwakura-memoria-shell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell spike (sidecar) for Iwakura Memoria — proves the seam is small",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

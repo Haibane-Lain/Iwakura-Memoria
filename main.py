@@ -81,17 +81,53 @@ def _start_grammar() -> None:
         print(f"[Grammar] LanguageTool not available: {exc}", file=sys.stderr)
 
 
-def _start_server() -> threading.Thread:
+def _start_server(port: int = PORT) -> threading.Thread:
     """Start uvicorn in a daemon thread. Returns the thread."""
     app = create_app()
     server = threading.Thread(
         target=uvicorn.run,
         args=(app,),
-        kwargs={"host": HOST, "port": PORT, "log_level": "info"},
+        kwargs={"host": HOST, "port": port, "log_level": "info"},
         daemon=True,
     )
     server.start()
     return server
+
+
+def _run_server_only(port: int = PORT) -> None:
+    """Headless server mode: uvicorn + grammar, no window (used by the
+    Electron shell and by headless testing)."""
+    server = _start_server(port)
+    url = f"http://{HOST}:{port}"
+    deadline = time.time() + 10.0
+    while time.time() < deadline:
+        if not server.is_alive():
+            print("Server failed to start.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            urllib.request.urlopen(url, timeout=0.5)
+            break
+        except Exception:
+            time.sleep(0.2)
+
+    threading.Thread(target=_start_grammar, daemon=True).start()
+    print(f"[server-only] ready on {url}", file=sys.stderr)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nShutting down.", file=sys.stderr)
+
+
+def _parse_port(argv: list[str]) -> int:
+    """Read ``--port <n>`` from argv (used with --server-only)."""
+    for i, arg in enumerate(argv):
+        if arg == "--port" and i + 1 < len(argv):
+            try:
+                return int(argv[i + 1])
+            except ValueError:
+                pass
+    return PORT
 
 
 def _run_browser() -> None:
@@ -233,6 +269,10 @@ def _run_desktop() -> None:
 
 
 def main() -> None:
+    if "--server-only" in sys.argv:
+        _run_server_only(_parse_port(sys.argv))
+        return
+
     if "--browser" in sys.argv:
         _run_browser()
         return
