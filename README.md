@@ -2,9 +2,11 @@
 
 A desktop application for long-form fiction and worldbuilding. Write in a
 WYSIWYG editor with real-time grammar checking, keep an Obsidian-style wiki,
-track daily word counts, and switch between themed palettes. The app runs
-natively via pywebview with a custom title bar, and falls back to a browser
-when launched with `--browser`.
+track daily word counts, and switch between themed palettes. The default
+launcher is the **Electron shell** (`run.bat`), which runs the Python server
+as a child process and renders the frontend in a native frameless window. The
+legacy pywebview path (`run.bat --pywebview`) and a plain-browser fallback
+(`python main.py --browser`) still work.
 
 ## Quick start
 
@@ -31,8 +33,10 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
 
 ## Features
 
-- **Native desktop window** — pywebview with Edge WebView2 backend, frameless
-  with a custom-themed title bar, maximize/restore/fullscreen, and edge resizing.
+- **Native desktop window** — Electron shell (default): spawns the Python
+  server as a child process, frameless with a custom-themed title bar,
+  maximize/restore/fullscreen, and a single-instance lock. The legacy
+  pywebview path is kept behind `run.bat --pywebview`.
 - **WYSIWYG editor** — TipTap-based ProseMirror editor with markdown
   round-tripping, wikilinks (`[[Target]]` / `[[Target|alias]]`), per-document
   and per-section fonts/sizes/alignment, and zoom.
@@ -51,7 +55,8 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   backlinks, and a Fandom-style navigation box.
 - **Themes** — Paper, Ink, Typewriter, Gothic, Horror, Fantasy, Sci-Fi.
 - **Stats** — Daily word counts, streak tracking, and configurable goals with
-  a progress bar and bar chart.
+  a progress bar, a 30-day bar chart, and an optional scrollable **full daily
+  history** (every day back to the project's creation, zero days shown dimmed).
 - **Drag-and-drop sidebar** — Reorder, nest, and move chapters, notes, wiki
   entries, and folders with visual drop zones.
 - **Link-safe rearranging** — Moving or reordering a document rewrites any
@@ -128,6 +133,10 @@ kept automatically; older ones are deleted.
 
 A local LanguageTool 6.9 server runs on port 8081. Requires **Java 17+**.
 The server starts automatically at launch and shuts down when the app closes.
+If a LanguageTool is already answering on 8081 when the app starts (e.g. an
+orphaned server left behind by a previous session), it is **reused** instead
+of starting a second one — so grammar keeps working even after an unclean
+exit, and restarts are instant.
 
 - Enable or disable per session from the **toolbar toggle**.
 - Underlines appear inline in the editor with a 1.5s debounce.
@@ -138,8 +147,9 @@ The server starts automatically at launch and shuts down when the app closes.
 - Open the **Dict** toolbar button to view, search, add, or remove dictionary
   words.
 
-If you don't need grammar checking, toggle it off and the server won't start.
-You can also set `"grammarEnabled": false` in `data/settings.json`.
+Toggling grammar off hides the underlines; the bundled server still starts
+at boot (it's already running and shared, so there's nothing to save). You
+can also set `"grammarEnabled": false` in `data/settings.json`.
 
 ## Export
 
@@ -177,40 +187,53 @@ Windows/macOS, DejaVu on Linux).
 - Word counts use auto mode by default: whitespace-separated words plus
   CJK characters (switchable in Settings).
 
-## Electron shell (experimental spike)
+## Electron shell (default launcher)
 
-`electron/` contains a proof-of-concept sidecar shell: Electron spawns the
-existing Python server (`python main.py --server-only`) as a child process and
-renders the same unmodified frontend. Its preload script exposes the exact
-`window.pywebview.api` contract the frontend already feature-detects, so the
-web UI needed **zero functional changes** — window controls and the export
-save dialog become native Electron calls. Use it from the workspace root:
+`run.bat` launches `electron/` — the default desktop shell. Electron spawns
+the Python server (`python main.py --server-only` on a free port 8000–8009)
+as a child process and renders the same unmodified frontend. Its preload
+script exposes the exact `window.pywebview.api` contract the frontend already
+feature-detects, so the web UI needed **zero functional changes** — window
+controls and the export save dialog become native Electron calls.
 
 ```
 npm --prefix electron install
 npm --prefix electron start
 ```
 
-Notes: it runs the venv Python in dev mode (no bundled runtime yet); the
-close button tree-kills the Python process so the LanguageTool Java child is
-never orphaned; the renderer's edge resize handles are inert no-ops because
-frameless windows resize natively. This is a spike to validate the seam — the
-real distribution decision (Electron sidecar vs. packaged Python) is still
-open.
+Notes: it runs the venv Python in dev mode (no bundled runtime yet — the
+portable/packaging decision is still open); the close button tree-kills the
+Python process so the LanguageTool Java child is never orphaned; a
+single-instance lock focuses the existing window instead of launching twice;
+the renderer's edge resize handles are inert no-ops because frameless windows
+resize natively. The legacy `run.bat --pywebview` path is kept for reference.
 
 ## Backend layout
 
 ```
-main.py                    # entry point (pywebview window + uvicorn)
+main.py                    # entry point (uvicorn; --server-only powers the Electron shell)
 app/
   main.py                  # FastAPI app factory, static serving
   config.py                # paths + defaults
-  routes/                  # projects, documents, wiki/stats, settings, ai, grammar
-  services/                # business logic (filesystem is the source of truth)
+  logging_filters.py       # access-log filters (external /health probes are hidden)
+  routes/                  # projects, documents, wiki/stats, settings, ai, grammar, backups
+  services/                # business logic (filesystem is the source of truth), incl. backup
   ai/                      # Lain: DeepSeek provider, tools, agent loop, sessions
 ```
 
 The API is documented at `/api/docs` while the server is running.
+
+## Server console
+
+The terminal window shows uvicorn's access log. One deliberate exception:
+
+- **Health probes are hidden.** Unknown local processes occasionally hit
+  `GET /health` (the one we chased turned out to be an unrelated project's
+  dev launcher); the app answers 404 but suppresses the log line so the
+  console stays readable. The filter is `HealthProbeFilter` in
+  `app/logging_filters.py`, wired in through `_logging_config()` in `main.py`.
+  If you ever need to see those requests again while hunting a mystery
+  poller, delete the filter and restart.
 
 ## Local API security
 
