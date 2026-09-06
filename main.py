@@ -6,6 +6,7 @@ Starts the FastAPI server and opens the app in a native desktop window
 
 from __future__ import annotations
 
+import copy
 import ctypes
 import sys
 import threading
@@ -15,12 +16,30 @@ from ctypes import wintypes
 from pathlib import Path
 
 import uvicorn
+from uvicorn.config import LOGGING_CONFIG as UVICORN_LOGGING_CONFIG
 
 from app.main import create_app
 
 HOST = "127.0.0.1"
 PORT = 8000
 URL = f"http://{HOST}:{PORT}"
+
+
+def _logging_config() -> dict:
+    """uvicorn's default logging config plus the health-probe filter.
+
+    The filter must live in the config (not be attached to the logger later):
+    uvicorn re-runs ``logging.config.dictConfig`` at startup, which would wipe
+    a filter attached at import time.
+    """
+    cfg = copy.deepcopy(UVICORN_LOGGING_CONFIG)
+    cfg.setdefault("filters", {})["health_probe"] = {
+        "()": "app.logging_filters.HealthProbeFilter",
+    }
+    access_handler = cfg.get("handlers", {}).get("access")
+    if isinstance(access_handler, dict):
+        access_handler.setdefault("filters", []).append("health_probe")
+    return cfg
 
 WM_NCLBUTTONDOWN = 0xA1
 SPI_GETWORKAREA = 0x0030
@@ -87,7 +106,12 @@ def _start_server(port: int = PORT) -> threading.Thread:
     server = threading.Thread(
         target=uvicorn.run,
         args=(app,),
-        kwargs={"host": HOST, "port": port, "log_level": "info"},
+        kwargs={
+            "host": HOST,
+            "port": port,
+            "log_level": "info",
+            "log_config": _logging_config(),
+        },
         daemon=True,
     )
     server.start()
@@ -135,7 +159,7 @@ def _run_browser() -> None:
     app = create_app()
     threading.Timer(0.5, lambda: _start_grammar()).start()
     threading.Timer(1.2, lambda: __import__("webbrowser").open(URL)).start()
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info", log_config=_logging_config())
 
 
 class _WindowApi:
