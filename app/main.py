@@ -36,6 +36,18 @@ def create_app() -> FastAPI:
         print(f"[startup] housekeeping skipped: {exc}", file=sys.stderr)
     app = FastAPI(title="Iwakura Memoria", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
+    # Every response must revalidate. With no Cache-Control at all, Chromium's
+    # *heuristic* caching may serve an old copy of a changed JS/CSS file (or
+    # API payload) from a previous session without ever revalidating — the
+    # classic "still no button after an update" stale-UI bug. no-cache forces a
+    # revalidation round-trip, which is a cheap 304 while the file is unchanged
+    # (ETag/Last-Modified come from StaticFiles) and fresh bytes the moment it is.
+    @app.middleware("http")
+    async def _no_cache(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
     # Outermost middleware: every request crosses the localhost guard first.
     @app.middleware("http")
     async def _local_request_guard(request: Request, call_next):

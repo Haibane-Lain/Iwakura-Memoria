@@ -22,6 +22,16 @@ def client(tmp_path, monkeypatch):
     return TestClient(create_app())
 
 
+def test_static_responses_never_heuristic_cached(client):
+    """Static assets must carry Cache-Control so Chromium can't serve a stale
+    copy of a changed JS/CSS file from its heuristic cache (the 'no button
+    after an update' bug)."""
+    for path in ("/", "/js/api.js", "/css/app.css", "/dist/editor.bundle.js"):
+        r = client.get(path, headers={"host": "127.0.0.1"})
+        assert r.status_code < 400, path
+        assert r.headers.get("cache-control") == "no-cache", path
+
+
 def _api(method: str, path: str, host: str = "127.0.0.1", origin: str | None = None, **kwargs):
     headers = {"host": host}
     if origin is not None:
