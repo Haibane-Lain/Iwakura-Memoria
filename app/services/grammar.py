@@ -19,7 +19,9 @@ _LT_JAVA = "java"
 # LanguageTool is a single JVM; checking long texts is slow. Capping in-flight
 # checks keeps a handful of slow requests from occupying every FastAPI sync
 # threadpool slot, which would otherwise starve doc saves during heavy typing.
-_LT_TIMEOUT_SECONDS = 12.0
+# The per-request cap is generous (30 s) because a freshly spawned JVM can take
+# that long on its first check while it loads its grammar models.
+_LT_TIMEOUT_SECONDS = 30.0
 _LT_CONCURRENCY = 2
 
 _lt_process: subprocess.Popen | None = None
@@ -42,8 +44,30 @@ def _find_java() -> str | None:
 
 
 def start_lt_server() -> bool:
-    """Launch LanguageTool server from the bundled folder. Returns True if ready."""
+    """Make sure a LanguageTool server is running on the port. Returns True if ready.
+
+    If a LanguageTool already answers on the port — e.g. an orphaned server
+    left behind by a previous session that still holds the port — it is adopted
+    instead of spawning a second JVM, which would crash on bind and leave
+    ``is_available()`` permanently False.
+    """
     global _lt_process, _client
+
+    if _client is not None and is_available():
+        return True
+    if _lt_process is not None and _lt_process.poll() is not None:
+        # Our previously spawned JVM died; forget it so we can adopt or respawn.
+        _lt_process = None
+
+    try:
+        probe = httpx.get(f"{_LT_URL}/v2/languages", timeout=2)
+        if probe.status_code == 200:
+            _client = httpx.Client(timeout=_LT_TIMEOUT_SECONDS)
+            _lt_process = None
+            print(f"[Grammar] Reusing existing LanguageTool server on port {_LT_PORT}")
+            return True
+    except Exception:
+        pass
 
     if not _LT_JAR.exists():
         print(f"[Grammar] LanguageTool JAR not found at {_LT_JAR}", file=sys.stderr)
@@ -54,7 +78,7 @@ def start_lt_server() -> bool:
         print("[Grammar] Java not found — LanguageTool requires Java 17+.", file=sys.stderr)
         return False
 
-    print(f"[Grammar] Starting LanguageTool server on port {_LT_PORT}…")
+    print(f"[Grammar] Starting LanguageTool server on port {_LT_PORT}...")
     try:
         _lt_process = subprocess.Popen(
             [java, "-cp", str(_LT_JAR), "org.languagetool.server.HTTPServer", "--port", str(_LT_PORT)],

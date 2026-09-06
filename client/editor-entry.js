@@ -212,7 +212,7 @@ function _ltToDocPos(offsets, target) {
   return last.docPos + last.len;
 }
 
-const GRAMMAR_FETCH_TIMEOUT_MS = 8000;
+const GRAMMAR_FETCH_TIMEOUT_MS = 30000;
 
 async function _grammarFetch(text) {
   const controller = new AbortController();
