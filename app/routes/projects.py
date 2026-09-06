@@ -40,8 +40,9 @@ def create_project(payload: ProjectCreate):
 def get_project(project_id: str):
     try:
         return projects_service.get_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+    except (FileNotFoundError, ValueError) as exc:
+        status = 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=status, detail=str(exc))
 
 
 @router.patch("/{project_id}")
@@ -50,8 +51,10 @@ def patch_project(project_id: str, payload: ProjectPatch):
         if payload.title is not None:
             return projects_service.rename_project(project_id, payload.title)
         return projects_service.get_project(project_id)
-    except (FileNotFoundError, ValueError) as exc:
+    except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 @router.delete("/{project_id}")
@@ -60,6 +63,8 @@ def delete_project(project_id: str):
         projects_service.delete_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True}
 
 
@@ -69,6 +74,8 @@ def get_tree(project_id: str, scope: str = "write"):
         return projects_service.get_document_tree(project_id, scope)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.put("/{project_id}/goal")
@@ -77,6 +84,8 @@ def put_goal(project_id: str, payload: GoalPatch):
         return projects_service.set_goal(project_id, payload.wordsPerDay, payload.enabled)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/{project_id}/export")
@@ -85,6 +94,8 @@ def export_project_get(project_id: str):
         data = projects_service.export_zip(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     filename = f"{project_id}-writing.zip"
     return Response(
         data,
@@ -142,6 +153,8 @@ def export_project_post(project_id: str, body: ExportRequest):
             raise HTTPException(status_code=400, detail=f"Unknown format: {fmt}")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return Response(
         data,
         media_type=media,

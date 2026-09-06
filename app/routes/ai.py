@@ -219,10 +219,19 @@ def chat(project_id: str, payload: ChatPayload):
         session = sessions.create(project_id)
     session["scope"] = payload.folders if payload.folders is not None else session.get("scope", [])
     session["currentDocId"] = payload.currentDocId or session.get("currentDocId")
+    session_id = session["sessionId"]
+    cancelled = stream.begin_run(session_id)
+    if cancelled is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Lain is already working on this session — wait for the current turn to finish.",
+        )
     try:
         result = agent.chat(project_id, session, message)
     except providers.AIError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        stream.end_run(session_id, cancelled)
     return {
         "session": _public_session(session),
         "reply": result.get("reply"),
@@ -249,17 +258,30 @@ async def chat_stream(project_id: str, payload: ChatPayload):
         session = sessions.create(project_id)
     session["scope"] = payload.folders if payload.folders is not None else session.get("scope", [])
     session["currentDocId"] = payload.currentDocId or session.get("currentDocId")
+    session_id = session["sessionId"]
+    cancelled = stream.begin_run(session_id)
+    if cancelled is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Lain is already working on this session — wait for the current turn to finish.",
+        )
 
     async def sse():
         try:
             async for event in stream.stream_chat(
-                project_id, session, message, build_public=lambda: _public_session(session)
+                project_id,
+                session,
+                message,
+                build_public=lambda: _public_session(session),
+                cancelled=cancelled,
             ):
                 yield f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
         except providers.AIError as exc:
             yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
         except Exception as exc:  # noqa: BLE001 — surface any turn failure as an SSE event
             yield f"event: error\ndata: {json.dumps({'message': f'Lain failed: {exc}'})}\n\n"
+        finally:
+            stream.end_run(session_id, cancelled)
 
     return StreamingResponse(
         sse(),

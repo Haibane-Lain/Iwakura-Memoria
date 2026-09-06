@@ -14,20 +14,32 @@ from typing import Any, Awaitable, Callable
 
 from app.ai import agent, tools
 
-# Active chat runs by session id, so a cancel request can signal the loop to
-# stop at its next checkpoint. The run that registered last wins.
+# Active chat runs by session id. `cancel_run` signals the loop to stop at its
+# next checkpoint; `begin_run` additionally refuses a second concurrent run for
+# the same session (two parallel chats would interleave history writes).
 _active_runs: dict[str, threading.Event] = {}
 _active_runs_lock = threading.Lock()
 
 
-def _register_run(session_id: str, cancelled: threading.Event) -> None:
-    with _active_runs_lock:
-        _active_runs[session_id] = cancelled
+class RunConflictError(Exception):
+    """Raised when a chat run is started for a session that already has one."""
 
 
-def _unregister_run(session_id: str, cancelled: threading.Event) -> None:
+def begin_run(session_id: str) -> threading.Event | None:
+    """Register an active run for ``session_id``; returns its cancel event, or
+    None when a run for this session is already active (reject the caller)."""
+    event = threading.Event()
     with _active_runs_lock:
-        if _active_runs.get(session_id) is cancelled:
+        if session_id in _active_runs:
+            return None
+        _active_runs[session_id] = event
+    return event
+
+
+def end_run(session_id: str, event: threading.Event) -> None:
+    """Remove the run's registration (idempotent — safe to call twice)."""
+    with _active_runs_lock:
+        if _active_runs.get(session_id) is event:
             _active_runs.pop(session_id, None)
 
 
@@ -144,19 +156,30 @@ async def stream_chat(
     session: dict[str, Any],
     user_message: str,
     build_public: Callable[[], dict[str, Any]] | None = None,
+    cancelled: threading.Event | None = None,
 ) -> Any:
     """Yield live progress dicts, then a final ``done`` dict.
 
     ``build_public`` (if given) produces the serialized public session after
     the turn finishes; it is called once for the ``done`` event.
+
+    When ``cancelled`` is None the run registers itself via ``begin_run`` and
+    raises :class:`RunConflictError` if the session already has an active run
+    (the routes pre-register the event so a conflict surfaces as a 409 status
+    instead of an error event mid-stream).
     """
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
     callback = _StreamCallback(queue, loop)
     holder: dict[str, Any] = {}
-    cancelled = threading.Event()
     session_id = session.get("sessionId", "")
-    _register_run(session_id, cancelled)
+    own_run = cancelled is None
+    if own_run:
+        cancelled = begin_run(session_id)
+        if cancelled is None:
+            raise RunConflictError(
+                f"A Lain run for session '{session_id}' is already active"
+            )
 
     def _run() -> None:
         try:
@@ -177,7 +200,8 @@ async def stream_chat(
                 break
             yield item
     finally:
-        _unregister_run(session_id, cancelled)
+        if own_run:
+            end_run(session_id, cancelled)
         if thread.is_alive():
             cancelled.set()
         # Join off the event loop: the thread may be mid-generation on a slow

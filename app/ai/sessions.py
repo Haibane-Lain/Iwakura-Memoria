@@ -26,9 +26,12 @@ def _now() -> str:
 
 
 def _sessions_dir(project_id: str) -> Path:
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", project_id):
+    if not config.is_safe_project_id(project_id):
         raise ValueError("Invalid project id")
-    path = config.DATA_DIR / "ai-sessions" / project_id
+    base = (config.DATA_DIR / "ai-sessions").resolve()
+    path = (config.DATA_DIR / "ai-sessions" / project_id).resolve()
+    if not path.is_relative_to(base):
+        raise ValueError("Invalid project id")
     return path
 
 
