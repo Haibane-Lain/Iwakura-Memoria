@@ -108,3 +108,33 @@ def test_ensure_dirs_migrates_and_points_data_dir(tmp_path, monkeypatch):
     assert config.DATA_DIR == target
     assert (target / "settings.json").exists()
     assert config.DATA_DIR.is_dir()
+
+
+# --- settings read cache (R2) ----------------------------------------------
+
+
+def test_settings_cache_tracks_file_changes(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    assert config.load_settings()["theme"] == "paper"
+
+    config.save_settings({**config.load_settings(), "theme": "dark"})
+    assert config.load_settings()["theme"] == "dark"
+
+    # The cache is keyed to the file's existence/mtime: deleting the file
+    # yields fresh defaults, never a stale cached value.
+    (config.get_settings_path()).unlink()
+    assert config.load_settings()["theme"] == "paper"
+
+
+def test_settings_cache_isolated_per_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "a" / "data")
+    config.save_settings({**config.load_settings(), "theme": "dark"})
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "b" / "data")
+    assert config.load_settings()["theme"] == "paper"  # different file → no bleed
+
+
+def test_settings_cache_returns_copies(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    loaded = config.load_settings()
+    loaded["editorFont"] = "mono"  # mutate the caller's copy
+    assert config.load_settings()["editorFont"] == "serif"  # cache untouched
