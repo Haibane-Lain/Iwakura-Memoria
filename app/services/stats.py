@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +88,55 @@ def get_stats(
         "streak": _streak(totals, goal_per_day),
         "lastDays": last_days,
         "documents": total_docs,
+    }
+
+
+def _local_date(value: Any) -> date | None:
+    """Parse an ISO datetime string into its *local* calendar date."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).astimezone().date()
+    except (TypeError, ValueError):
+        return None
+
+
+def get_daily_history(project_id: str) -> dict[str, Any]:
+    """Full writing history: every calendar day from the project's earliest
+    available day up to today, with that day's word total.
+
+    Unlike :func:`get_stats` (which slices a 30-day display window out of the
+    same data), this returns the entire log: the earlier of the project's
+    creation date and its earliest recorded entry. Days without an entry
+    report 0 so the list is dense and scrollable.
+
+    The returned list is ascending (oldest first); the UI reverses it.
+    """
+    project = documents_service_project(project_id)
+    entries = _load_history(project_id)
+    totals = _daily_totals(entries)
+
+    created = _local_date(project.get("createdAt"))
+    earliest: date | None = None
+    for key in totals:
+        d = _local_date(key)
+        if d is not None and (earliest is None or d < earliest):
+            earliest = d
+    candidates = [d for d in (created, earliest) if d is not None]
+    since = min(candidates) if candidates else date.today()
+    if since > date.today():
+        since = date.today()
+
+    days: list[dict[str, Any]] = []
+    day = since
+    while day <= date.today():
+        days.append({"date": day.isoformat(), "words": totals.get(day.isoformat(), 0)})
+        day += timedelta(days=1)
+
+    return {
+        "projectId": project_id,
+        "since": since.isoformat(),
+        "days": days,
     }
 
 

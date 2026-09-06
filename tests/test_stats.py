@@ -1,4 +1,5 @@
-"""Tests for history.jsonl compaction and the orphan-tmp sweep.
+"""Tests for history.jsonl compaction, the orphan-tmp sweep, and the full
+daily-history endpoint.
 
 Run from the workspace root:
 
@@ -9,13 +10,16 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app import config
+from app.main import create_app
 from app.services import documents
+from app.services import stats as stats_service
 
 
 @pytest.fixture
@@ -44,7 +48,7 @@ def _read_compact(path: Path) -> dict[str, int]:
 # --- _compact_history -------------------------------------------------------
 
 
-def test_compact_history_sums_recent_days_and_drops_old(tmp_path):
+def test_compact_history_sums_days_and_keeps_old_ones(tmp_path):
     path = tmp_path / "history.jsonl"
     today = date.today()
     old = (today - timedelta(days=400)).isoformat()
@@ -57,11 +61,12 @@ def test_compact_history_sums_recent_days_and_drops_old(tmp_path):
         {"date": today.isoformat(), "doc": "a", "delta": -5, "at": "t"},
     ])
     assert documents._compact_history(path) is True
-    # exactly two kept days, sums correct, old day dropped
-    assert _read_compact(path) == {yesterday: 150, today.isoformat(): 25}
+    # per-day sums, all days kept (even years-old ones) — only per-save
+    # detail (doc id, timestamp) is dropped so the full history stays visible
+    assert _read_compact(path) == {old: 500, yesterday: 150, today.isoformat(): 25}
 
 
-def test_compact_ignores_garbage_and_leaves_file_when_all_stale(tmp_path):
+def test_compact_ignores_garbage_but_keeps_valid_old_entries(tmp_path):
     path = tmp_path / "history.jsonl"
     stale = (date.today() - timedelta(days=800)).isoformat()
     path.write_text(
@@ -70,8 +75,17 @@ def test_compact_ignores_garbage_and_leaves_file_when_all_stale(tmp_path):
         f'{{"date": "{stale}", "delta": "oops"}}\n',
         encoding="utf-8",
     )
-    assert documents._compact_history(path) is False  # nothing worth keeping → untouched
-    assert stale in path.read_text(encoding="utf-8")
+    # The valid old entry survives (summed); garbage and invalid deltas drop.
+    assert documents._compact_history(path) is True
+    assert _read_compact(path) == {stale: 10}
+    assert "not json" not in path.read_text(encoding="utf-8")
+
+
+def test_compact_leaves_garbage_only_file_untouched(tmp_path):
+    path = tmp_path / "history.jsonl"
+    path.write_text("not json\n{}\n", encoding="utf-8")
+    assert documents._compact_history(path) is False
+    assert "not json" in path.read_text(encoding="utf-8")
 
 
 def test_compact_missing_file_is_noop(tmp_path):
@@ -167,3 +181,100 @@ def test_sweep_removes_only_old_tmp_files(tmp_path):
 
 def test_sweep_does_not_raise_on_missing_root(tmp_path):
     assert config._sweep_orphan_tmp(tmp_path / "missing") == 0
+
+
+# --- get_daily_history -------------------------------------------------------
+
+
+def _make_project_meta(data_dir: Path, project_id: str, created_at: str) -> Path:
+    folder = data_dir / project_id
+    (folder / "stats").mkdir(parents=True)
+    (folder / "project.json").write_text(
+        json.dumps({"title": project_id, "createdAt": created_at}),
+        encoding="utf-8",
+    )
+    return folder
+
+
+def test_daily_history_spans_from_creation_to_today(data_dir):
+    created = (datetime.now() - timedelta(days=10)).astimezone()
+    since = created.astimezone().date()
+    folder = _make_project_meta(data_dir, "proj", created.isoformat())
+    today = date.today()
+    _write_history(folder / "stats" / "history.jsonl", [
+        {"date": since.isoformat(), "delta": 200},
+        {"date": today.isoformat(), "delta": 50},
+        {"date": today.isoformat(), "delta": -5},
+    ])
+    result = stats_service.get_daily_history("proj")
+    assert result["projectId"] == "proj"
+    assert result["since"] == since.isoformat()
+    assert len(result["days"]) == (today - since).days + 1
+    # ascending, oldest first
+    assert result["days"][0] == {"date": since.isoformat(), "words": 200}
+    assert result["days"][-1] == {"date": today.isoformat(), "words": 45}
+    # dense zero-fill on days with no entries
+    gap = (today - timedelta(days=5)).isoformat()
+    assert {"date": gap, "words": 0} in result["days"]
+
+
+def test_daily_history_starts_at_earliest_entry_when_history_predates_meta(data_dir):
+    today = date.today()
+    # meta says created two days ago, but the log has older entries (a
+    # project that was renamed/recreated — the real mother-of-horrors case)
+    created = (datetime.now() - timedelta(days=2)).astimezone()
+    folder = _make_project_meta(data_dir, "proj", created.isoformat())
+    earliest = (today - timedelta(days=6)).isoformat()
+    _write_history(folder / "stats" / "history.jsonl", [
+        {"date": earliest, "delta": 100},
+        {"date": today.isoformat(), "delta": 7},
+    ])
+    result = stats_service.get_daily_history("proj")
+    assert result["since"] == earliest
+    assert result["days"][0]["words"] == 100
+    assert len(result["days"]) == 7
+    # dense ascending across the gap
+    assert result["days"][1] == {"date": (today - timedelta(days=5)).isoformat(), "words": 0}
+
+
+def test_daily_history_falls_back_to_earliest_entry_without_created_at(data_dir):
+    today = date.today()
+    folder = _make_project_meta(data_dir, "proj", "")
+    earliest = (today - timedelta(days=3)).isoformat()
+    _write_history(folder / "stats" / "history.jsonl", [
+        {"date": earliest, "delta": 25},
+    ])
+    result = stats_service.get_daily_history("proj")
+    assert result["since"] == earliest
+    assert len(result["days"]) == 4
+
+
+def test_daily_history_clamps_future_created_at_and_handles_empty_log(data_dir):
+    future = (datetime.now() + timedelta(days=5)).astimezone()
+    _make_project_meta(data_dir, "proj", future.isoformat())
+    result = stats_service.get_daily_history("proj")
+    assert result["since"] == date.today().isoformat()
+    assert result["days"] == [{"date": date.today().isoformat(), "words": 0}]
+
+
+def test_stats_daily_route_full_history_and_404(tmp_path, monkeypatch):
+    monkeypatch.setenv("IWAKURA_DATA_DIR", str(tmp_path / "data"))
+    client = TestClient(create_app())
+    _H = {"host": "127.0.0.1"}
+    r = client.get("/api/projects/nope/stats/daily", headers=_H)
+    assert r.status_code == 404
+    created = client.post("/api/projects", json={"name": "Demo"}, headers=_H)
+    assert created.status_code == 201
+    today = date.today()
+    _write_history(tmp_path / "data" / "demo" / "stats" / "history.jsonl", [
+        {"date": (today - timedelta(days=2)).isoformat(), "delta": 300},
+        {"date": today.isoformat(), "delta": 12},
+    ])
+    r = client.get("/api/projects/demo/stats/daily", headers=_H)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["projectId"] == "demo"
+    assert body["days"][-1] == {"date": today.isoformat(), "words": 12}
+    # full span since the earliest recorded day, not a 30-day slice
+    assert body["since"] == (today - timedelta(days=2)).isoformat()
+    assert len(body["days"]) == 3

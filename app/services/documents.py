@@ -20,7 +20,7 @@ import threading
 import time
 import yaml
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,13 +36,11 @@ _PREFIX_RE = re.compile(r"^(\d+)-")
 _history_lock = threading.Lock()
 
 # history.jsonl grows one line per save; once a project's log is over this
-# size it is compacted into one summed line per day (keep-days window below).
+# size it is compacted into one summed line per day (all days are kept, so
+# the full writing history survives; only per-save detail is lost).
 # ~60 bytes/line means the threshold is already well past the "4000 lines"
 # mark, so size alone is the trigger.
 _COMPACT_SIZE_BYTES = 384 * 1024
-# Streaks only look backward from today, so a rolling 366-day window is
-# lossless for every stat the app reports.
-_HISTORY_KEEP_DAYS = 366
 
 # ``_renumber`` stages entries in ``<dir>/.reorder-tmp`` for milliseconds; if
 # the app dies mid-renumber they can sit there indefinitely (hidden from the
@@ -566,13 +564,13 @@ def _ensure_unique(folder: Path, target: Path) -> Path:
 
 def _compact_history(path: Path) -> bool:
     """Rewrite *path* (a project's ``history.jsonl``) as one summed line per
-    day, keeping only the last ``_HISTORY_KEEP_DAYS`` days.
+    day, retaining **every** day that appears in the log.
 
     The daily-total shape is exactly what :func:`app.services.stats.get_stats`
-    derives, so compaction is lossless for every stat the app reports (streak
-    logic only looks backward from today). Returns True when a rewrite
-    happened. Best-effort: any read/parse/write failure leaves the file
-    untouched.
+    derives, so compaction loses only per-save detail (doc id, timestamp) —
+    never a day's total. Older days are preserved so the full writing history
+    stays visible. Returns True when a rewrite happened. Best-effort: any
+    read/parse/write failure leaves the file untouched.
     """
     try:
         raw = path.read_text(encoding="utf-8")
@@ -580,7 +578,6 @@ def _compact_history(path: Path) -> bool:
         return False
     if not raw:
         return False
-    cutoff = (date.today() - timedelta(days=_HISTORY_KEEP_DAYS - 1)).isoformat()
     totals: dict[str, int] = defaultdict(int)
     for line in raw.splitlines():
         line = line.strip()
@@ -591,7 +588,7 @@ def _compact_history(path: Path) -> bool:
         except json.JSONDecodeError:
             continue
         day = entry.get("date")
-        if not isinstance(day, str) or day < cutoff:
+        if not isinstance(day, str):
             continue
         try:
             totals[day] += int(entry.get("delta", 0))

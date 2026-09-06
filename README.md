@@ -79,7 +79,7 @@ data/
   <project>/
     project.json                   # title, daily goal, timestamps
     dictionary.json                # per-project grammar ignore list
-    stats/history.jsonl            # word-count deltas (compacted on the fly to one summed line per day)
+    stats/history.jsonl            # word-count deltas (compacted on the fly to one summed line per day; all days kept)
     templates/*.json               # lore templates (Character, Location, …)
     worldbuilding/                 # the Wiki tab's scaffolding root
       characters/mara.md

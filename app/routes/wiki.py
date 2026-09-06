@@ -29,3 +29,12 @@ def get_stats(project_id: str):
         return stats_service.get_stats(project_id, _mode())
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@stats_router.get("/{project_id}/stats/daily")
+def get_stats_daily(project_id: str):
+    """Complete daily history (every date since the project's start)."""
+    try:
+        return stats_service.get_daily_history(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

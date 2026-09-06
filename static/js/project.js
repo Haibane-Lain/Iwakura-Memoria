@@ -2132,6 +2132,56 @@ function showModalFromUI(children) {
 
 /* ---------------- stats tab ---------------- */
 
+const LS_DAILY_LIST = "im.stats.dailyList";
+let dailyCache = { id: null, data: null };
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+async function loadDailyHistory() {
+  if (dailyCache.id === state.project.id) return dailyCache.data;
+  const data = await api.projects.statsDaily(state.project.id);
+  dailyCache = { id: state.project.id, data };
+  return data;
+}
+
+function dailyHistoryEl(data) {
+  const today = todayISO();
+  const rows = [...data.days].reverse().map((d) => {
+    const label = new Date(d.date + "T00:00:00").toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    const cls = [d.words === 0 ? "zero" : "", d.date === today ? "hl" : ""].filter(Boolean).join(" ");
+    return el("div", { class: `daily-row ${cls}` }, [
+      el("span", { class: "daily-date" }, label),
+      el("span", { class: "daily-words" }, formatNumber(d.words)),
+    ]);
+  });
+  return el("div", { class: "daily-list" }, rows);
+}
+
+async function insertDailyHistory(anchorEl, checkbox) {
+  const holder = el("div", { class: "daily-list loading" }, "Loading history…");
+  anchorEl.after(holder);
+  try {
+    const data = await loadDailyHistory();
+    if (!holder.isConnected) return; // toggled off or re-rendered meanwhile
+    holder.replaceWith(dailyHistoryEl(data));
+  } catch (err) {
+    if (!holder.isConnected) return;
+    holder.remove();
+    if (checkbox) {
+      checkbox.checked = false;
+      localStorage.setItem(LS_DAILY_LIST, "0");
+    }
+    toast(err.message, "error");
+  }
+}
+
 async function renderStatsTab() {
   const main = document.getElementById("main-content");
   main.replaceChildren(el("div", { class: "empty-state" }, [el("p", {}, "Loading stats…")]));
@@ -2188,6 +2238,23 @@ async function renderStatsTab() {
     ]);
   });
 
+  const chartEl = el("div", { class: "chart" }, bars);
+  const dailyListOn = localStorage.getItem(LS_DAILY_LIST) === "1";
+  const dailyCb = el("input", { type: "checkbox", id: "daily-list-cb", checked: dailyListOn });
+  const toggleRow = el("div", { class: "daily-list-toggle" }, [
+    dailyCb,
+    el("label", { for: "daily-list-cb" }, "Show daily history"),
+  ]);
+  dailyCb.addEventListener("change", () => {
+    localStorage.setItem(LS_DAILY_LIST, dailyCb.checked ? "1" : "0");
+    const existing = main.querySelector(".daily-list");
+    if (!dailyCb.checked) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (!existing) insertDailyHistory(toggleRow, dailyCb);
+  });
+
   main.replaceChildren(
     el("div", { class: "stats-view" }, [
       el("h2", {}, "Writing stats"),
@@ -2212,9 +2279,12 @@ async function renderStatsTab() {
         el("div", { class: "goal-fineprint" }, progressNote),
       ]),
       el("h2", {}, "Last 30 days"),
-      el("div", { class: "chart" }, bars),
+      chartEl,
+      toggleRow,
     ])
   );
+
+  if (dailyListOn) insertDailyHistory(toggleRow, dailyCb);
 }
 
 function statCard(label, value, sub) {

@@ -1454,6 +1454,73 @@ a {
   font-weight: 700;
 }
 
+.daily-list-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 4px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.daily-list-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.daily-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-y: auto;
+  max-height: min(360px, 45vh);
+  margin-top: 4px;
+}
+
+.daily-list.loading {
+  padding: 14px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.daily-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 14px;
+  font-size: 13px;
+}
+
+.daily-row + .daily-row {
+  border-top: 1px solid var(--border);
+}
+
+.daily-row .daily-date {
+  color: var(--text-dim);
+}
+
+.daily-row .daily-words {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.daily-row.zero {
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+
+.daily-row.hl {
+  background: var(--surface-2);
+}
+
+.daily-row.hl .daily-date {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 /* ---------- Wiki view ---------- */
 
 .wiki-view {

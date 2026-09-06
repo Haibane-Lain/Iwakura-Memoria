@@ -100,6 +100,7 @@ export const api = {
       return res;
     },
     stats: (id) => api.get(`/api/projects/${encodePath(id)}/stats`),
+    statsDaily: (id) => api.get(`/api/projects/${encodePath(id)}/stats/daily`),
     wiki: (id) => api.get(`/api/projects/${encodePath(id)}/wiki`),
     dictionary: {
       get: (id) => api.get(`/api/projects/${encodePath(id)}/dictionary`),
