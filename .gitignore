@@ -4,6 +4,7 @@ node_modules/
 # (see README "How data is stored"); the entry stays for old copies.
 data/
 .pytest_cache/
+pytest-cache-files-*/
 static/dist/
 __pycache__/
 *.pyc

@@ -77,7 +77,7 @@ data/
   <project>/
     project.json                   # title, daily goal, timestamps
     dictionary.json                # per-project grammar ignore list
-    stats/history.jsonl            # append-only log of word-count deltas
+    stats/history.jsonl            # word-count deltas (compacted on the fly to one summed line per day)
     templates/*.json               # lore templates (Character, Location, …)
     worldbuilding/                 # the Wiki tab's scaffolding root
       characters/mara.md
@@ -198,6 +198,27 @@ app/
 ```
 
 The API is documented at `/api/docs` while the server is running.
+
+## Local API security
+
+The API binds to `127.0.0.1` with no authentication — but every request is
+checked against two headers a web page cannot spoof before it reaches a route:
+
+- **Host** must be a loopback hostname (`127.0.0.1`, `localhost`, `[::1]`).
+  This blocks DNS-rebinding attacks: a malicious page whose domain resolves
+  to `127.0.0.1` still sends its own hostname in `Host` and is rejected.
+- For **POST/PUT/DELETE**, an explicit `Origin` header must also be loopback
+  (any port — the Electron shell uses dynamic ports). Read-only requests and
+  requests with no `Origin` header at all (curl, the Electron main process)
+  pass on the Host check alone.
+
+AI keys live in `data/settings.json` but are **never sent back to the page**:
+the settings API returns a `••••••••••••` sentinel instead, and the settings
+dialog only shows a saved-key indicator (with a *clear saved key* button)
+unless you type a new key.
+
+Set `IWAKURA_INSECURE_LOCALHOST=1` to disable every check — for experiments
+only; never for normal use.
 
 ## Lain (AI assistant)
 
