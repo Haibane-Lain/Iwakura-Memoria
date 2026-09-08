@@ -1,2 +1,5 @@
 # Development-only dependencies (not needed to run the app):
 pytest>=8.0
+# Packaging (build an .exe). Not needed to run the app; install only when
+# building a distribution. See scripts/build/build.bat and README → Distribution.
+pyinstaller>=6.0
