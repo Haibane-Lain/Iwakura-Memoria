@@ -9,3 +9,12 @@ static/dist/
 __pycache__/
 *.pyc
 LanguageTool 6.9/
+
+# Distribution build outputs (scripts/build/build.bat).
+scripts/build/_bundle/
+scripts/build/_pyinstaller-work/
+dist/
+# Bundled JRE for the installer — drop it next to LanguageTool before building.
+_jre/
+# Installer / app icon placeholder — ship a real build/icon.ico before release.
+electron/build/

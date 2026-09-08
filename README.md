@@ -208,6 +208,46 @@ single-instance lock focuses the existing window instead of launching twice;
 the renderer's edge resize handles are inert no-ops because frameless windows
 resize natively. The legacy `run.bat --pywebview` path is kept for reference.
 
+## Distribution (installer .exe)
+
+The app ships as a **Windows installer** (electron-builder → NSIS) that bundles
+the Electron shell, the Python server frozen with PyInstaller, LanguageTool,
+and a JRE — so an end user needs **no** Node.js, Python, or Java installed.
+
+```
+scripts\build\build.bat
+```
+
+The script, in order:
+
+1. Installs Python build deps (`pyinstaller` via `requirements-dev.txt`).
+2. Builds the frontend bundle (`npm run build` → `static/dist/editor.bundle.js`).
+3. Freezes the server with PyInstaller (`scripts\build\app.spec` → a single
+   `Iwakura-Memoria-server.exe`; the **PyInstaller config is in
+   `scripts/build/`** and the package manifest is in `electron/package.json`’s
+   `build` block).
+4. Runs electron-builder, bundling `server/`, `LanguageTool 6.9/` as
+   `languagetool/`, and a JRE as `jre/` into the installer.
+
+The installer lands at `dist/electron/Iwakura Memoria Setup*.exe`.
+
+**Before you build**, drop a JRE folder at `_jre/` with `bin/java.exe` (e.g.
+Adoptium Temurin 21; the app prefers it via `IWAKURA_JRE_DIR`, falling back to a
+system Java). The first `electron-builder` run downloads its toolchain
+(~100 MB, one-time). A real `electron/build/icon.ico` gives the installer/app an
+icon — without one the default Electron icon is used. The installer is unsigned,
+so Windows SmartScreen shows a *"unrecognized app"* prompt on first run; that's
+expected without a code-signing certificate.
+
+A frozen `--server-only` server can be smoked out on its own:
+
+```
+dist\app\Iwakura-Memoria-server.exe --server-only --port 8000
+```
+
+Installed apps store data the same way as dev (`%LOCALAPPDATA%\IwakuraMemoria`),
+so upgrading from a dev install keeps your projects.
+
 ## Backend layout
 
 ```
@@ -288,6 +328,10 @@ improvements. Lain is **not** a ghost-writer: it won't write your prose.
 - After Lain changes anything, the sidebar tree, wiki backlinks, and the
   open document (if it was touched) refresh automatically.
 
+A code review of the AI stack lives in [`docs/ai-review.md`](docs/ai-review.md)
+(two bugs fixed so far: session-attachment cleanup on delete, and the 25 MB
+attachment cap being unreachable; plus an HTML sanitizer for chat rendering).
+
 ## Frontend layout
 
 ```
@@ -296,7 +340,7 @@ static/
   lib/marked.js            # Markdown renderer for Lain chat
   css/themes.css           # CSS-variable palettes (7 themes)
   css/app.css
-  js/                      # api, router, ui, themes, library, project, lain
+  js/                      # api, router, ui, themes, library, project, lain, sanitize
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
 ```

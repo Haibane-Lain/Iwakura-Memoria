@@ -13,7 +13,19 @@ import httpx
 
 _LT_PORT = 8081
 _LT_URL = f"http://127.0.0.1:{_LT_PORT}"
-_LT_DIR = Path(__file__).resolve().parent.parent.parent / "LanguageTool 6.9"
+
+
+def _lt_dir() -> Path:
+    """LanguageTool directory. A packaged build passes it via IWAKURA_LT_DIR
+    (Electron's extraResources/languagetool); dev falls back to the gitignored
+    LanguageTool 6.9/ next to the code."""
+    env = __import__("os").environ.get("IWAKURA_LT_DIR")
+    if env and Path(env).is_dir():
+        return Path(env)
+    return Path(__file__).resolve().parent.parent.parent / "LanguageTool 6.9"
+
+
+_LT_DIR = _lt_dir()
 _LT_JAR = _LT_DIR / "languagetool-server.jar"
 _LT_JAVA = "java"
 # LanguageTool is a single JVM; checking long texts is slow. Capping in-flight
@@ -30,12 +42,20 @@ _concurrency = threading.Semaphore(_LT_CONCURRENCY)
 
 
 def _find_java() -> str | None:
+    import os
     import shutil
+    # A bundled JRE (packaged build) is the first choice — the end user likely
+    # has no system Java. Electron passes IWAKURA_JRE_DIR = resources/jre.
+    bundled = os.environ.get("IWAKURA_JRE_DIR")
+    if bundled:
+        candidate = Path(bundled) / "bin" / "java.exe"
+        if candidate.is_file():
+            return str(candidate)
     java = shutil.which("java")
     if java:
         return java
     for home in ("JAVA_HOME", "JDK_HOME"):
-        val = __import__("os").environ.get(home)
+        val = os.environ.get(home)
         if val:
             candidate = Path(val) / "bin" / "java.exe"
             if candidate.is_file():

@@ -2,12 +2,58 @@
   "name": "iwakura-memoria-shell",
   "version": "0.1.0",
   "private": true,
-  "description": "Electron shell spike (sidecar) for Iwakura Memoria — proves the seam is small",
+  "description": "Electron shell (sidecar) for Iwakura Memoria",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.lain.iwakuramemoria",
+    "productName": "Iwakura Memoria",
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "directories": {
+      "output": "../dist/electron",
+      "buildResources": "build"
+    },
+    "extraResources": [
+      {
+        "from": "../scripts/build/_bundle/server",
+        "to": "server"
+      },
+      {
+        "from": "../LanguageTool 6.9",
+        "to": "languagetool"
+      },
+      {
+        "from": "../_jre",
+        "to": "jre"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Iwakura Memoria"
+    }
   }
 }

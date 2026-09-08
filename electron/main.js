@@ -1,13 +1,18 @@
-// Electron shell spike for Iwakura Memoria.
+// Electron shell for Iwakura Memoria.
 //
-// Spawns the existing FastAPI server (`python main.py --server-only`) as a
-// child process and renders the existing static frontend unmodified. A preload
-// shim exposes the same `window.pywebview.api` contract the frontend already
-// feature-detects, so the frontend needed no changes.
+// Spawns the existing FastAPI server as a child process and renders the
+// existing static frontend unmodified. A preload shim exposes the same
+// `window.pywebview.api` contract the frontend already feature-detects, so the
+// frontend needed no changes.
 //
-// This is a proof-of-concept for the sidecar seam, not the final product:
-// it runs the venv Python from the workspace in dev mode. Embedded Python,
-// auto-update, code signing and an installer are deliberately out of scope.
+// Two modes:
+//   - Dev:  `run.bat` -> runs the venv Python from the workspace (main.py)
+//            with `IWAKURA_PYTHON`/`IWAKURA_RESOURCES_DIR` unset.
+//   - Packaged: `scripts\build\build.bat` freezes the server with PyInstaller
+//            and electron-builder ships it (plus LanguageTool + JRE) as
+//            extraResources; the server exe is located under
+//            resources/server/ and LanguageTool/JRE via the env the child is
+//            given here. Auto-update and code signing remain out of scope.
 
 "use strict";
 
@@ -17,9 +22,24 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
+// Repo root in dev; under a packaged build the server exe + LanguageTool/JRE
+// are shipped as extraResources into process.resourcesPath (see package.json).
 const ROOT = path.resolve(__dirname, "..");
-const PYTHON =
-  process.env.IWAKURA_PYTHON || path.join(ROOT, ".venv", "Scripts", "python.exe");
+const RES = app.isPackaged ? process.resourcesPath : ROOT;
+
+function resolvePythonExe() {
+  if (process.env.IWAKURA_PYTHON) return process.env.IWAKURA_PYTHON;
+  if (app.isPackaged) {
+    // Bundled server exe from PyInstaller, placed under resources/server/.
+    const exe = path.join(RES, "server", "Iwakura-Memoria-server.exe");
+    if (fs.existsSync(exe)) return exe;
+    // Fall back to the dev venv (shouldn't happen in a packaged build).
+    return path.join(ROOT, ".venv", "Scripts", "python.exe");
+  }
+  return path.join(ROOT, ".venv", "Scripts", "python.exe");
+}
+
+const PYTHON = resolvePythonExe();
 const BASE_PORT = 8000;
 const PORT_TRIES = 10;
 
@@ -54,8 +74,29 @@ async function startServer() {
     if (i === PORT_TRIES - 1) throw new Error(`no free port in 8000-${BASE_PORT + PORT_TRIES - 1}`);
   }
 
-  serverProc = spawn(PYTHON, ["main.py", "--server-only", "--port", String(port)], {
-    cwd: ROOT,
+  // Dev: python main.py --server-only --port N
+  // Packaged: server.exe --server-only --port N (the exe is the entry point)
+  const args = app.isPackaged
+    ? ["--server-only", "--port", String(port)]
+    : ["main.py", "--server-only", "--port", String(port)];
+
+  // Tell the server where the bundled LanguageTool + JRE live so grammar works
+  // without a system Java. Under dev these env vars are unset and the server
+  // falls back to its own `LanguageTool 6.9/` + system `java` (see grammar.py).
+  const env = {
+    ...process.env,
+    IWAKURA_RESOURCES_DIR: RES,
+    IWAKURA_LT_DIR: path.join(RES, "languagetool"),
+    IWAKURA_JRE_DIR: path.join(RES, "jre"),
+  };
+
+  // cwd: dev uses the repo root; packaged uses the writable user-data dir
+  // (a path inside app.asar is not a real directory and can't be a cwd).
+  const baseCwd = app.isPackaged ? app.getPath("userData") : ROOT;
+
+  serverProc = spawn(PYTHON, args, {
+    cwd: baseCwd,
+    env,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
