@@ -97,6 +97,13 @@ def delete(project_id: str, session_id: str) -> bool:
     if not path.exists():
         return False
     path.unlink()
+    # The session's attachment directory (raw uploads, extracted text and
+    # metadata.json) is a sibling of the JSON file and must go too, or deleted
+    # sessions leak their files on disk forever. Best-effort: if a file is
+    # locked it's left behind rather than failing the delete.
+    shutil.rmtree(session_dir(project_id, session_id), ignore_errors=True)
+    # Drop the now-empty per-project directory if it has nothing left.
+    _cleanup(project_id)
     return True
 
 

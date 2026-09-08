@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { el, toast, promptDialog, confirmDialog, escapeHtml, formatNumber } from "./ui.js";
+import { sanitizeChatHTML } from "./sanitize.js";
 
 const SUGGESTIONS = [
   "Review the current entry for inconsistencies",
@@ -42,7 +43,7 @@ function esc(s) {
 }
 
 function mdToHTML(text) {
-  return window.marked.parse(String(text || ""), { breaks: true });
+  return sanitizeChatHTML(window.marked.parse(String(text || ""), { breaks: true }));
 }
 
 function covers(o, r) {

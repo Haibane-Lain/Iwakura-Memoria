@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap",
-    "watch": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap --watch"
+    "watch": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap --watch",
+    "test:sanitize": "node tests/sanitize.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

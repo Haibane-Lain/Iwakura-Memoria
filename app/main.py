@@ -21,7 +21,8 @@ from app.routes import wiki as wiki_routes
 from app.security import check_local_request
 from app.services import documents as documents_service
 
-MAX_REQUEST_BYTES = 10 * 1024 * 1024
+MAX_REQUEST_BYTES = 27 * 1024 * 1024
+_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024  # must match app.ai.attachments.MAX_FILE_BYTES
 _SLOW_REQUEST_THRESHOLD_S = 1.0
 
 
@@ -66,12 +67,20 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def _limit_body_size(request: Request, call_next):
+        # The global ceiling sits just above the 25 MB attachment limit so a
+        # full-size upload is expressible; the route-level check (413) enforces
+        # the exact attachment cap. JSON requests are far smaller than this.
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > MAX_REQUEST_BYTES:
-            return JSONResponse(
-                {"detail": f"Request body exceeds maximum size ({MAX_REQUEST_BYTES // (1024*1024)} MB)"},
-                status_code=413,
-            )
+        if content_length:
+            try:
+                too_big = int(content_length) > MAX_REQUEST_BYTES
+            except ValueError:
+                too_big = False
+            if too_big:
+                return JSONResponse(
+                    {"detail": f"Request body exceeds maximum size ({_MAX_ATTACHMENT_BYTES // (1024*1024)} MB)"},
+                    status_code=413,
+                )
         return await call_next(request)
 
     @app.middleware("http")
