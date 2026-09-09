@@ -301,6 +301,19 @@ def main() -> None:
         _run_browser()
         return
 
+    if getattr(sys, "frozen", False):
+        # The packaged server exe is a backend component — the Electron shell
+        # spawns it with --server-only. Double-clicked alone it can't open the
+        # app window (the pywebview window path is not bundled), so explain
+        # instead of hijacking the user's browser with a fallback tab.
+        print(
+            "This is Iwakura Memoria's server component. Launch the app from the "
+            "'Iwakura Memoria' shortcut, or run with --server-only for the "
+            "headless server.",
+            file=sys.stderr,
+        )
+        return
+
     _run_desktop()
 
 
