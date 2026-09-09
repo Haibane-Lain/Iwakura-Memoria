@@ -16,5 +16,3 @@ scripts/build/_pyinstaller-work/
 dist/
 # Bundled JRE for the installer — drop it next to LanguageTool before building.
 _jre/
-# Installer / app icon placeholder — ship a real build/icon.ico before release.
-electron/build/
