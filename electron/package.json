@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Electron shell (sidecar) for Iwakura Memoria",
+  "author": "Lain",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -48,7 +49,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
