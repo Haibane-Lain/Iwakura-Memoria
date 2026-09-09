@@ -9,38 +9,61 @@ REM    - LanguageTool + a bundled JRE (grammar works with no Java install)
 REM    - the static frontend (inside the server exe)
 REM
 REM  Single entry point:  scripts\build\build.bat
+REM
+REM  On failure the window PAUSES so the error stays readable (and a copy of
+REM  the last output is in scripts\build\build-run.log). Pass --nopause to
+REM  skip the pause (for CI / scripting).
 REM =====================================================================
 setlocal
 cd /d "%~dp0..\.."
 
+set "LOG=%~dp0build-run.log"
+if exist "%LOG%" del "%LOG%"
+echo [build] log: %LOG%
+
 echo [build] - Installing Python build deps (PyInstaller)...
-.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-if errorlevel 1 ( echo Failed to install Python build deps & exit /b 1 )
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt > "%LOG%" 2>&1
+if errorlevel 1 goto :fail
 
 echo [build] - Building the frontend bundle (static/dist/editor.bundle.js)...
-call npm run build
-if errorlevel 1 ( echo Frontend build failed & exit /b 1 )
+call npm run build > "%LOG%" 2>&1
+if errorlevel 1 goto :fail
 
 echo [build] - Freezing the Python server with PyInstaller...
 if exist "scripts\build\_bundle" rmdir /s /q "scripts\build\_bundle"
-.venv\Scripts\python.exe -m PyInstaller --noconfirm --distpath "scripts\build\_bundle\server" --workpath "scripts\build\_pyinstaller-work" scripts\build\app.spec
-if errorlevel 1 ( echo PyInstaller failed & exit /b 1 )
+.venv\Scripts\python.exe -m PyInstaller --noconfirm --distpath "scripts\build\_bundle\server" --workpath "scripts\build\_pyinstaller-work" scripts\build\app.spec > "%LOG%" 2>&1
+if errorlevel 1 goto :fail
+if not exist "scripts\build\_bundle\server\Iwakura-Memoria-server.exe" (
+  echo [build] PyInstaller finished without producing the server exe.
+  goto :fail
+)
 
 echo [build] - Building the installer with electron-builder...
 pushd electron
 if not exist "node_modules\electron-builder" (
-  echo Installing electron-builder (one-time)...
-  call npm install
+  echo [build] Installing electron-builder (one-time)...
+  call npm install >> "%LOG%" 2>&1
 )
-call npm run dist
+call npm run dist > "%LOG%" 2>&1
 set RESULT=%ERRORLEVEL%
 popd
-if not %RESULT% neq 0 goto :done
+if not %RESULT% equ 0 goto :fail
 
 echo.
-echo Installer written to dist\electron\*.exe
+echo [build] SUCCESS - installer written to dist\electron\*.exe
 exit /b 0
 
-:done
-endlocal
-exit /b %RESULT%
+:fail
+echo.
+echo ****************** BUILD FAILED ******************
+echo.
+if exist "%LOG%" (
+  echo --- last 40 lines of %LOG% ---
+  powershell -NoProfile -Command "Get-Content '%LOG%' -Tail 40"
+  echo ---------------------------------------------
+) else (
+  echo (no log file was produced)
+)
+echo.
+if /I not "%~1"=="--nopause" pause
+exit /b 1

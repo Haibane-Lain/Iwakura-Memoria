@@ -25,8 +25,9 @@ import os
 
 from PyInstaller.utils.hooks import collect_submodules
 
-# This spec lives at <repo>/scripts/build/. Repo root is two levels up.
-SPEC_DIR = os.path.dirname(os.path.abspath(__file__))
+# PyInstaller runs the spec with SPEC/SPECPATH globals (no __file__). The spec
+# lives at <repo>/scripts/build/; repo root is two levels up.
+SPEC_DIR = os.path.dirname(os.path.abspath(SPEC))
 ROOT = os.path.abspath(os.path.join(SPEC_DIR, "..", ".."))
 
 # Every runtime import under app/ and the routes/services/ai packages.
