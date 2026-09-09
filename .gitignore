@@ -13,6 +13,7 @@ LanguageTool 6.9/
 # Distribution build outputs (scripts/build/build.bat).
 scripts/build/_bundle/
 scripts/build/_pyinstaller-work/
+scripts/build/build-run.log
 dist/
 # Bundled JRE for the installer — drop it next to LanguageTool before building.
 _jre/
