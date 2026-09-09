@@ -51,6 +51,8 @@ if not %RESULT% equ 0 goto :fail
 
 echo.
 echo [build] SUCCESS - installer written to dist\electron\*.exe
+echo.
+if not /I "%~1"=="--nopause" pause
 exit /b 0
 
 :fail
@@ -59,7 +61,9 @@ echo ****************** BUILD FAILED ******************
 echo.
 if exist "%LOG%" (
   echo --- last 40 lines of %LOG% ---
-  powershell -NoProfile -Command "Get-Content '%LOG%' -Tail 40"
+  setlocal EnableDelayedExpansion
+  set "LOGQ=!LOG:'=''!"
+  endlocal & powershell -NoProfile -Command "Get-Content -LiteralPath '%LOGQ%' -Tail 40"
   echo ---------------------------------------------
 ) else (
   echo (no log file was produced)
