@@ -246,6 +246,70 @@ await check("a drag with no files is left to ProseMirror", () => {
   s.close();
 });
 
+await check("moving a picture inside the editor is left to ProseMirror", async () => {
+  // Chromium puts the dragged <img> into dataTransfer.files *and* ProseMirror
+  // records the drag in view.dragging. Treating that as a file drop copied the
+  // picture instead of moving it, so the prop must decline while dragging.
+  const s = open("![](assets/x.png)");
+  const view = s.ctrl.editor.view;
+  const props = s.ctrl.editor.options.editorProps;
+  view.dragging = { slice: null, move: true, node: null };
+  let prevented = false;
+  const handled = props.handleDrop(view, {
+    clientX: 5,
+    clientY: 5,
+    preventDefault: () => {
+      prevented = true;
+    },
+    dataTransfer: { files: [file("x-abc123.png")] },
+  });
+  view.dragging = null;
+
+  assert.equal(handled, false, "ProseMirror keeps the drop");
+  assert.equal(prevented, false);
+  assert.equal(s.uploaded.length, 0, "no second copy is uploaded");
+  assert.equal(s.host.querySelectorAll("img.doc-image").length, 1);
+  s.close();
+});
+
+await check("pasting a picture copied from the editor keeps its width", async () => {
+  // The clipboard carries both the document slice and the image file; the
+  // slice wins so a resized picture is not silently reset to natural size.
+  const s = open("text");
+  const props = s.ctrl.editor.options.editorProps;
+  const slice = {
+    content: {
+      descendants(cb) {
+        cb({ type: { name: "image" }, attrs: { src: "assets/x.png", width: 300 } });
+      },
+    },
+  };
+  const handled = props.handlePaste(s.ctrl.editor.view, { clipboardData: { files: [file()] } }, slice);
+  assert.equal(handled, false, "ProseMirror pastes the slice");
+  assert.equal(s.uploaded.length, 0);
+  s.close();
+});
+
+await check("a slice carrying a remote picture still uploads the file", async () => {
+  const s = open("text");
+  const props = s.ctrl.editor.options.editorProps;
+  const slice = {
+    content: {
+      descendants(cb) {
+        cb({ type: { name: "image" }, attrs: { src: "https://example.com/pasted.png" } });
+      },
+    },
+  };
+  const handled = props.handlePaste(
+    s.ctrl.editor.view,
+    { preventDefault: () => {}, clipboardData: { files: [file()] } },
+    slice
+  );
+  assert.equal(handled, true);
+  assert.equal(s.uploaded.length, 1);
+  s.close();
+});
+
 await check("a pasted image is inserted, ordinary pastes pass through", async () => {
   const s = open("text");
   const props = s.ctrl.editor.options.editorProps;

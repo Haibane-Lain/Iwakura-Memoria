@@ -11,6 +11,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { DOMSerializer } from "@tiptap/pm/model";
 import {
+  ASSET_PREFIX,
   clampImageWidth,
   imageAltFromFileName,
   isImageFile,
@@ -807,6 +808,26 @@ function inlineInsertPos(view, pos) {
   return fallback;
 }
 
+// Whether a paste slice already carries one of the project's stored pictures
+// (an internal copy). The clipboard then holds both that slice and the image
+// file Chromium attaches alongside it, and the slice is the better source: it
+// keeps the picture's saved width.
+function sliceHasStoredImage(slice) {
+  if (!slice || !slice.content) return false;
+  let found = false;
+  slice.content.descendants((node) => {
+    if (
+      node.type &&
+      node.type.name === "image" &&
+      String((node.attrs && node.attrs.src) || "").startsWith(ASSET_PREFIX)
+    ) {
+      found = true;
+    }
+    return !found;
+  });
+  return found;
+}
+
 async function insertImageFiles(view, files, pos, imageOpts) {
   const wanted = (files || []).filter(isImageFile);
   if (!wanted.length || !imageOpts.uploadImage) return;
@@ -875,6 +896,12 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       // existing node, dropping text, pasting text) is left to ProseMirror —
       // returning false is what keeps ordinary drag & drop working.
       handleDrop(view, event) {
+        // A drag that started inside the editor — moving a picture or a block
+        // of text — belongs to ProseMirror. Chromium puts a dragged <img> into
+        // dataTransfer.files as well as into the drag slice, so without this
+        // the drop looks exactly like a fresh file drop and the picture ends
+        // up *copied* instead of moved. (Ctrl+drag is ProseMirror's copy too.)
+        if (view.dragging) return false;
         const dt = event.dataTransfer;
         if (!dt || !dt.files || !dt.files.length) return false;
         const files = Array.from(dt.files);
@@ -894,11 +921,15 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
         insertImageFiles(view, files, hit ? hit.pos : view.state.selection.from, imageOpts);
         return true;
       },
-      handlePaste(view, event) {
+      handlePaste(view, event, slice) {
         const dt = event.clipboardData;
         if (!dt || !dt.files || !dt.files.length) return false;
         const files = Array.from(dt.files);
         if (!files.some(isImageFile)) return false;
+        // A copy from inside the editor carries the picture as a document
+        // slice — with its width — alongside the file Chromium attaches to the
+        // clipboard. Let ProseMirror paste that instead of re-uploading it.
+        if (sliceHasStoredImage(slice)) return false;
         event.preventDefault();
         insertImageFiles(view, files, view.state.selection.from, imageOpts);
         return true;

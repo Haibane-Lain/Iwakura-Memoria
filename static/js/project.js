@@ -1870,6 +1870,11 @@ function showImageOverlay({ url, alt }) {
 // (and therefore Electron) navigate the window to that file. This guard keeps
 // the drop from doing anything but inserting a picture.
 function setupFileDropGuard() {
+  // Dragging a picture *within* the editor is ProseMirror moving its own node.
+  // Chromium still reports it as a file drag, so it has to be told apart from
+  // a drag that came in from outside — otherwise the guard would insert a
+  // second copy while the editor moves the first.
+  let internalDrag = false;
   const hasFiles = (e) => {
     const types = e.dataTransfer && e.dataTransfer.types;
     return !!types && Array.from(types).indexOf("Files") !== -1;
@@ -1877,8 +1882,19 @@ function setupFileDropGuard() {
   const clearHint = () =>
     document.querySelectorAll(".editor-host.drop-active").forEach((node) => node.classList.remove("drop-active"));
 
+  document.addEventListener(
+    "dragstart",
+    (e) => {
+      internalDrag = !!(e.target && e.target.closest && e.target.closest(".ProseMirror"));
+    },
+    true
+  );
+  document.addEventListener("dragend", () => {
+    internalDrag = false;
+    clearHint();
+  });
   document.addEventListener("dragover", (e) => {
-    if (!hasFiles(e)) return;
+    if (!hasFiles(e) || internalDrag) return;
     e.preventDefault();
     const host = e.target.closest && e.target.closest(".editor-host");
     if (host) host.classList.add("drop-active");
@@ -1886,11 +1902,13 @@ function setupFileDropGuard() {
   document.addEventListener("dragleave", (e) => {
     if (!e.relatedTarget) clearHint();
   });
-  document.addEventListener("dragend", clearHint);
   document.addEventListener("drop", (e) => {
+    const wasInternal = internalDrag;
+    internalDrag = false;
     if (!hasFiles(e)) return;
     e.preventDefault();
     clearHint();
+    if (wasInternal) return; // the editor is moving its own picture
     // Inside the ProseMirror surface the editor already handled it (its own
     // drop listener runs first and inserts at the drop point).
     if (e.target.closest && e.target.closest(".ProseMirror")) return;
