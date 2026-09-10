@@ -26,6 +26,7 @@ To run the tests:
 ```
 .venv\Scripts\pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest tests/ -q
+npm run test:js                          # frontend unit tests (node)
 ```
 
 Grammar checking requires **Java 17+** and a LanguageTool server. See the
@@ -52,7 +53,9 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   server-enforced by scope. Destructive actions require user confirmation.
 - **Wiki system** — Dedicated `worldbuilding/` tree with templates (Character,
   Location, Organization, Nation, Lore Concept), wikilink auto-resolution,
-  backlinks, and a Fandom-style navigation box.
+  backlinks, a Fandom-style navigation box, and a sidebar **search box** that
+  filters entries and folders by name as you type (case-insensitive, hierarchy
+  kept in place, ancestors expanded to reveal the match).
 - **Themes** — Paper, Ink, Typewriter, Gothic, Horror, Fantasy, Sci-Fi.
 - **Stats** — Daily word counts, streak tracking, and configurable goals with
   a progress bar, a 30-day bar chart, and an optional scrollable **full daily
@@ -176,6 +179,14 @@ Windows/macOS, DejaVu on Linux).
   Concept, or Blank) and its sections (`## Appearance`, `## History`, …) are
   pre-filled and separated by horizontal rules. Templates can be added,
   edited, or deleted from the **Templates** button in the wiki sidebar.
+- The wiki sidebar has a **search box** above the **+ Entry** / **+ Folder** /
+  **Templates** buttons. Type part of an entry title or a folder name and the
+  tree narrows to matches in place — case-insensitive, with the folders leading
+  to a match opened for you and a live result count beside the box. A folder
+  whose own name matches keeps its whole subtree. Press **Esc** or use the
+  box's clear button to show everything again; searching never changes which
+  folders you had expanded, and leaving the Wiki tab clears the filter.
+  Only titles and folder names are searched, not entry text.
 - Wiki pages get a **navigation box** (a small rounded card at the top of
   the editor, Fandom-style) listing the document title and its numbered
   headings; clicking one jumps to that section in the editor.
@@ -340,7 +351,8 @@ static/
   lib/marked.js            # Markdown renderer for Lain chat
   css/themes.css           # CSS-variable palettes (7 themes)
   css/app.css
-  js/                      # api, router, ui, themes, library, project, lain, sanitize
+  js/                      # api, router, ui, themes, library, project, lain,
+                           # sanitize, wiki-search
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
 ```

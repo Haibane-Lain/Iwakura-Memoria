@@ -3,6 +3,7 @@ import * as router from "./router.js";
 import * as theme from "./themes.js";
 import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
+import { filterWikiTree } from "./wiki-search.js";
 import {
   el,
   toast,
@@ -39,7 +40,12 @@ const state = {
   dictionary: { words: [] },
   statsThrottledAt: 0,
   wikiThrottledAt: 0,
+  wikiQuery: "",
 };
+
+// Folders the current wiki search render must show expanded. Display-only:
+// searching never edits state.wikiExpanded.
+let _wikiSearchOpen = new Set();
 
 let lainCtrl = null;
 let _creating = false;
@@ -669,8 +675,22 @@ async function renameProject(e) {
 function renderTree(scrollEl) {
   const wiki = isWikiScope();
   const tree = activeTree() || { folders: [], documents: [] };
+
+  // Typing re-renders the whole sidebar, and renderSidebar() is also reached
+  // from autosave and tree mutations. Remember the caret so the box keeps
+  // focus and position across a replaceChildren().
+  const prevInput = wiki ? scrollEl.querySelector(".tree-search-input") : null;
+  const hadFocus = !!prevInput && document.activeElement === prevInput;
+  const caret = hadFocus ? [prevInput.selectionStart, prevInput.selectionEnd] : null;
+
+  const { tree: shown, openIds, count } = wiki
+    ? filterWikiTree(tree, state.wikiQuery)
+    : { tree, openIds: new Set(), count: 0 };
+  _wikiSearchOpen = openIds;
+
   const frag = document.createDocumentFragment();
   if (wiki) {
+    frag.append(wikiSearchRow(count));
     frag.append(
       el("div", { class: "tree-toolbar" }, [
         el("button", { class: "mini-add wide", title: "New wiki entry", onclick: () => newWikiEntry("") }, "+ Entry"),
@@ -687,15 +707,64 @@ function renderTree(scrollEl) {
       ])
     );
   }
-  const root = { folders: tree.folders, documents: tree.documents, entries: tree.entries };
-  if (tree.folders.length === 0 && tree.documents.length === 0) {
-    frag.append(
-      el("div", { class: "empty-hint" }, wiki ? "Create a folder or lore entry to begin." : "Create a folder, chapter, or note to begin.")
-    );
+  const root = {
+    folders: shown.folders || [],
+    documents: shown.documents || [],
+    entries: shown.entries,
+  };
+  if (root.folders.length === 0 && root.documents.length === 0) {
+    frag.append(el("div", { class: "empty-hint" }, emptyTreeHint(wiki)));
   } else {
     frag.append(renderLevel(root, wiki ? "worldbuilding" : ""));
   }
   scrollEl.replaceChildren(frag);
+  if (hadFocus) {
+    const next = scrollEl.querySelector(".tree-search-input");
+    if (next) {
+      next.focus();
+      next.setSelectionRange(caret[0], caret[1]);
+    }
+  }
+}
+
+function emptyTreeHint(wiki) {
+  if (!wiki) return "Create a folder, chapter, or note to begin.";
+  const query = state.wikiQuery.trim();
+  if (query) return `No entries match "${query}".`;
+  return "Create a folder or lore entry to begin.";
+}
+
+function wikiSearchRow(count) {
+  const active = state.wikiQuery.trim() !== "";
+  const input = el("input", {
+    class: "tree-search-input",
+    type: "search",
+    placeholder: "Search wiki…",
+    title: "Filter wiki entries and folders by name",
+    value: state.wikiQuery,
+    oninput: (e) => {
+      state.wikiQuery = e.target.value;
+      renderSidebar();
+    },
+    // Chromium's native clear button fires `search` (and `input`).
+    onsearch: (e) => {
+      state.wikiQuery = e.target.value;
+      renderSidebar();
+    },
+    onkeydown: (e) => {
+      if (e.key !== "Escape" || !state.wikiQuery) return;
+      // Keep this from reaching the document-level context-menu handler.
+      e.stopPropagation();
+      state.wikiQuery = "";
+      renderSidebar();
+    },
+  });
+  return el("div", { class: "tree-search" }, [
+    input,
+    active
+      ? el("span", { class: "tree-search-count" }, `${count} entr${count === 1 ? "y" : "ies"}`)
+      : null,
+  ]);
 }
 
 function renderLevel(node, folderId) {
@@ -725,7 +794,10 @@ function renderLevel(node, folderId) {
 
 function renderFolderRow(folder, parentId) {
   const wiki = isWikiScope();
-  const expanded = (wiki ? state.wikiExpanded : state.expanded).has(folder.id);
+  // A search renders matches (and their ancestors) open without touching the
+  // user's own expand state.
+  const searchOpen = wiki && _wikiSearchOpen.has(folder.id);
+  const expanded = searchOpen || (wiki ? state.wikiExpanded : state.expanded).has(folder.id);
   const head = el(
     "div",
     {
@@ -1268,6 +1340,8 @@ async function newWikiEntry(folder) {
       docType: tpl ? tpl.type : "note",
     });
     await flushSave();
+    // A live filter would hide the entry we just made; show the full tree.
+    state.wikiQuery = "";
     await afterTreeChange();
     await refreshWiki();
     openDocument(doc.id);
@@ -1430,6 +1504,8 @@ async function newFolder(parent) {
   try {
     await api.folders.create(state.project.id, name.trim(), parent || null);
     if (parent) (isWikiScope() ? state.wikiExpanded : state.expanded).add(parent);
+    // A live filter would hide the folder we just made; show the full tree.
+    if (isWikiScope()) state.wikiQuery = "";
     await afterTreeChange();
   } catch (err) {
     toast(err.message, "error");
@@ -2990,6 +3066,9 @@ async function switchTab(tab) {
   const main = document.getElementById("main-content");
   if (main) main.style.opacity = "0";
   try {
+  // Leaving the Wiki tab drops its search, so arriving there always shows the
+  // full tree rather than a stale filter hiding entries.
+  if (tab !== "wiki") state.wikiQuery = "";
   if (tab === "write" || tab === "wiki") {
     await flushSave();
     const wiki = tab === "wiki";
@@ -3050,6 +3129,8 @@ function renderSidebar() {
 }
 
 async function init(params) {
+  // A fresh project starts with an unfiltered wiki sidebar.
+  state.wikiQuery = "";
   try {
     const settings = await api.settings.get();
     state.settings = {
