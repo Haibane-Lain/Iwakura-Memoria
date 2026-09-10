@@ -138,3 +138,20 @@ def test_settings_cache_returns_copies(tmp_path, monkeypatch):
     loaded = config.load_settings()
     loaded["editorFont"] = "mono"  # mutate the caller's copy
     assert config.load_settings()["editorFont"] == "serif"  # cache untouched
+
+
+def test_save_settings_stays_in_a_patched_data_dir(tmp_path, monkeypatch):
+    """Regression: ``save_settings`` used to call ``ensure_dirs()``, which
+    re-derives DATA_DIR from the environment. Any caller that had pointed
+    DATA_DIR somewhere of its own — the settings-cache tests above, any tool —
+    therefore wrote into the *real* user folder, overwriting the user's theme,
+    font size, alignment and zoom."""
+    patched = tmp_path / "data"
+    monkeypatch.setattr(config, "DATA_DIR", patched)
+    monkeypatch.setenv("IWAKURA_DATA_DIR", str(tmp_path / "elsewhere"))
+
+    config.save_settings({"theme": "dark"})
+
+    assert config.DATA_DIR == patched
+    assert (patched / "settings.json").exists()
+    assert not (tmp_path / "elsewhere").exists()

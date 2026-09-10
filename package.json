@@ -12,7 +12,8 @@
     "test:image": "node tests/image-utils.test.mjs",
     "test:editor": "node tests/editor-image.test.mjs",
     "test:chartable": "node tests/editor-chartable.test.mjs",
-    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable"
+    "test:zoom": "node tests/zoom.test.mjs",
+    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable && npm run test:zoom"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

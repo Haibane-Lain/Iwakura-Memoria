@@ -540,6 +540,101 @@ def _migrate_folder_order(project_id: str) -> None:
     _visit(project_folder)
 
 
+# The zoom percentage is a *reading* size now: 100% renders at CSS
+# ``zoom: 2``, the size the old numbering called 200%. Stored values are
+# halved exactly once so every existing document keeps the size it had.
+# The marker that records this is a *file*, not a settings key: settings.json
+# is rewritten from an in-process cache by whichever instance is running, so a
+# key there can be dropped by a stale writer — which would let the rebase run
+# a second time and halve every document again.
+ZOOM_SCALE = 2
+ZOOM_MARKER = ".zoom-rebased"
+
+
+def _rebased_zoom(value: Any) -> int | None:
+    """``value`` halved onto the new zoom baseline, or ``None`` if unusable."""
+    try:
+        current = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(1, round(current / ZOOM_SCALE)) if current > 0 else None
+
+
+def rebase_zoom_scale() -> int:
+    """One-time halving of every stored editor zoom value.
+
+    An editor percentage used to be a raw CSS factor (200% meant ``zoom: 2``);
+    it is a reading size now, so the comfortable size the user picked is 100
+    and everything already stored has to be halved to keep looking the same.
+    ``editorZoom`` in settings.json and the flat ``zoom`` key in each
+    document's frontmatter are rebased; document bodies are never touched, and
+    a document without a ``zoom`` key is not written at all. Returns the number
+    of documents rewritten.
+
+    Idempotent: the ``.zoom-rebased`` marker is written last, so an
+    interrupted pass is retried on the next launch rather than silently left
+    half-done.
+    """
+    marker = config.DATA_DIR / ZOOM_MARKER
+    if marker.exists():
+        return 0  # already rebased
+
+    changed = _rebase_document_zooms()
+    _rebase_global_zoom()
+    marker.write_text("rebased\n", encoding="utf-8")
+    return changed
+
+
+def _rebase_global_zoom() -> bool:
+    """Halve ``editorZoom`` in settings.json, preserving every other key."""
+    path = config.get_settings_path()
+    if not path.exists():
+        return False
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    if not isinstance(raw, dict):
+        return False
+    zoom = _rebased_zoom(raw.get("editorZoom"))
+    if zoom is None:
+        return False
+    raw["editorZoom"] = zoom
+    # Written directly rather than through config.save_settings(), which would
+    # materialise every default into the file.
+    config._write_atomic(path, json.dumps(raw, ensure_ascii=False, indent=2))
+    return True
+
+
+def _rebase_document_zooms() -> int:
+    """Halve the frontmatter ``zoom`` of every document in every project."""
+    changed = 0
+    try:
+        projects = sorted(config.DATA_DIR.iterdir())
+    except OSError:
+        return 0
+    for project in projects:
+        if not project.is_dir() or project.name.startswith("."):
+            continue
+        if not (project / config.PROJECT_META_FILENAME).exists():
+            continue  # not a project (ai-sessions, stats, a stray folder)
+        for path in _md_files_recursive(project):
+            if any(part.startswith(".") for part in path.relative_to(project).parts):
+                continue  # crash-staging and other hidden folders
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            meta, body = parse_frontmatter(text)
+            zoom = _rebased_zoom(meta.get("zoom"))
+            if zoom is None or zoom == meta.get("zoom"):
+                continue
+            meta["zoom"] = zoom
+            config._write_atomic(path, build_frontmatter(meta) + body)
+            changed += 1
+    return changed
+
+
 def get_document(project_id: str, doc_id: str, mode: str = "auto") -> dict[str, Any]:
     folder = _project_folder(project_id)
     path = _doc_path(folder, doc_id)

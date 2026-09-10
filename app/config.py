@@ -42,6 +42,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "editorFont": "serif",
     "editorSize": 18,
     "editorAlign": "left",
+    # Percent of the comfortable reading baseline: 100% renders at CSS zoom 2
+    # (documents.rebase_zoom_scale halved the older factor-based numbers once).
     "editorZoom": 100,
     "grammarEnabled": True,
     "ai": {},
@@ -267,7 +269,11 @@ def load_settings() -> dict[str, Any]:
 def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
     merged = dict(DEFAULT_SETTINGS)
     merged.update(settings)
-    ensure_dirs()
+    # Deliberately ``mkdir`` rather than ``ensure_dirs()``: ensure_dirs()
+    # re-derives DATA_DIR from the environment, so a caller that pointed
+    # DATA_DIR somewhere of its own (a test, a tool) would silently have its
+    # settings written into the real user data folder instead.
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = get_settings_path()
     _write_atomic(
         path,

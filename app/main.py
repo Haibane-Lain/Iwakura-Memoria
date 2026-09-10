@@ -29,12 +29,14 @@ _SLOW_REQUEST_THRESHOLD_S = 1.0
 
 def create_app() -> FastAPI:
     config.ensure_dirs()
-    # Rewrite any overgrown history.jsonl into its compact per-day form, and
-    # restore entries stranded in stale .reorder-tmp folders after a crash.
+    # Rewrite any overgrown history.jsonl into its compact per-day form,
+    # restore entries stranded in stale .reorder-tmp folders after a crash, and
+    # rebase stored zoom values onto the new 100% reading baseline (once).
     # Runs for every launch (pywebview, browser, --server-only/Electron).
     try:
         documents_service.compact_overgrown_histories()
         documents_service.recover_reorder_tmp()
+        documents_service.rebase_zoom_scale()
     except Exception as exc:  # never block startup on housekeeping
         print(f"[startup] housekeeping skipped: {exc}", file=sys.stderr)
     app = FastAPI(title="Iwakura Memoria", docs_url="/api/docs", openapi_url="/api/openapi.json")

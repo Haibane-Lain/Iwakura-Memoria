@@ -5,6 +5,7 @@ import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
 import { filterTree } from "./tree-search.js";
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
+import { DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
 import {
   el,
   toast,
@@ -186,7 +187,7 @@ function applyEditorPrefs() {
   root.style.setProperty("--editor-font", fontStack(state.settings.editorFont));
   root.style.setProperty("--editor-size", `${state.settings.editorSize || 18}px`);
   root.style.setProperty("--editor-align", state.settings.editorAlign || "left");
-  root.style.setProperty("--editor-zoom", String((state.settings.editorZoom || 100) / 100));
+  root.style.setProperty("--editor-zoom", String(zoomFactor(state.settings.editorZoom)));
   syncEditorControls();
 }
 
@@ -207,7 +208,7 @@ function effectiveAlign() {
 }
 
 function effectiveZoom() {
-  return docStyle().zoom || state.settings.editorZoom;
+  return docStyle().zoom || state.settings.editorZoom || DEFAULT_ZOOM;
 }
 
 function sectionOverrides() {
@@ -286,7 +287,7 @@ function applyDocStyle() {
     host.style.setProperty("--editor-font", fontStack(effectiveFont()));
     host.style.setProperty("--editor-size", `${effectiveSize()}px`);
     host.style.setProperty("--editor-align", effectiveAlign());
-    host.style.setProperty("--editor-zoom", String(effectiveZoom() / 100));
+    host.style.setProperty("--editor-zoom", String(zoomFactor(effectiveZoom())));
   }
   if (state.editorCtrl) {
     const map = {};
@@ -434,13 +435,11 @@ function applyInlineSize(size) {
   syncEditorControls();
 }
 
-const ZOOM_PRESETS = [75, 90, 100, 110, 125, 150, 200];
-
 function zoomSelect(target) {
   const sel = el("select", { class: "toolbar-control size editor-control-zoom", title: "Zoom" }, [
     ...ZOOM_PRESETS.map((n) => el("option", { value: String(n) }, `${n}%`)),
   ]);
-  sel.value = String(target === "global" ? state.settings.editorZoom || 100 : currentZoom());
+  sel.value = String(target === "global" ? state.settings.editorZoom || DEFAULT_ZOOM : currentZoom());
   sel.addEventListener("change", async () => {
     const zoom = parseInt(sel.value, 10);
     if (!Number.isFinite(zoom)) return;
@@ -3331,7 +3330,7 @@ async function init(params) {
       editorFont: settings.editorFont || "serif",
       editorSize: settings.editorSize || 18,
       editorAlign: settings.editorAlign || "left",
-      editorZoom: settings.editorZoom || 100,
+      editorZoom: settings.editorZoom || DEFAULT_ZOOM,
       grammarEnabled: settings.grammarEnabled !== false,
     };
   } catch (err) {

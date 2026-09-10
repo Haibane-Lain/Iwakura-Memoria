@@ -102,6 +102,7 @@ Each project is a free-form scaffolding tree of **folders** and **documents**:
 ```
 data/
   settings.json                    # global settings (theme, word count mode, grammar toggle, AI config)
+  .zoom-rebased                    # marker: stored zoom values use the current 100% scale
   ai-sessions/<project>/           # Lain chat session history
   <project>/
     project.json                   # title, daily goal, timestamps
@@ -476,10 +477,17 @@ The ribbon's **font / size / alignment** controls are context-aware:
   (a small label next to them shows which one).
 - **Cursor outside any section** — the controls style the document's base.
 
-**Zoom** is always document-level. The **Clear** button resets the current
-selection / section / document back to inheriting the level above. Inline
-font/size styling and block alignment are written into the Markdown body;
-section and document styling live entirely in frontmatter.
+**Zoom** is always document-level, and its percentage is a *reading size*, not
+a raw CSS factor: **100% is the comfortable baseline** (an 18px font renders at
+36px), so 75% is a smaller comfortable size rather than an unusably tiny one.
+Document frontmatter and `editorZoom` in `settings.json` store that same
+percentage. An older numbering measured the CSS factor directly, where this
+size was called 200%; the app rebases those stored values once, on first
+launch, and writes the `data/.zoom-rebased` marker so it never halves them
+twice. The **Clear** button resets the current selection / section / document
+back to inheriting the level above. Inline font/size styling and block
+alignment are written into the Markdown body; section and document styling
+live entirely in frontmatter.
 
 ## Known limitations
 
