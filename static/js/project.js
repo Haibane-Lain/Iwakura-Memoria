@@ -1653,6 +1653,14 @@ const TOOLBAR = [
   null,
   { cmd: "linkNote", label: "[[  ]]", title: "Link to a note" },
   { cmd: "image", label: "🖼", title: "Insert an image (or drag & drop / paste one)" },
+  // The wiki's info box. The toolbar is shared with the Write tab, so the
+  // button is marked wiki-only rather than living in a second toolbar.
+  {
+    cmd: "charTable",
+    label: "👤",
+    title: "Insert a character table (info box on the right)",
+    wikiOnly: true,
+  },
 ];
 
 let toolbarButtons = [];
@@ -1688,7 +1696,7 @@ function dictionaryBtn() {
   return btn;
 }
 
-function toolbar() {
+function toolbar(wiki) {
   const bar = el("div", { class: "editor-toolbar" });
   toolbarButtons = [];
   for (const def of TOOLBAR) {
@@ -1696,6 +1704,7 @@ function toolbar() {
       bar.append(el("div", { class: "toolbar-sep" }));
       continue;
     }
+    if (def.wikiOnly && !wiki) continue;
     const btn = el("button", {
       class: "tool-btn",
       title: def.title,
@@ -1734,6 +1743,12 @@ function toolbarCommand(cmd) {
   }
   if (cmd === "image") {
     pickImageFiles();
+    return;
+  }
+  if (cmd === "charTable") {
+    if (state.editorCtrl) {
+      state.editorCtrl.insertCharacterTable({ title: docTitle(state.currentDocId) });
+    }
     return;
   }
   if (state.editorCtrl) state.editorCtrl.run(cmd);
@@ -1934,11 +1949,14 @@ function setupFileDropGuard() {
 }
 
 // The toolbar's picture button — a file picker, for the times dragging isn't
-// convenient.
+// convenient. With a `portrait` position the chosen picture fills a character
+// table's picture slot instead of going in at the caret.
 let _imageInput = null;
+let _portraitTarget = null;
 
-function pickImageFiles() {
+function pickImageFiles(portrait) {
   if (!state.editorCtrl) return;
+  const target = typeof portrait === "number" ? portrait : null;
   if (!_imageInput) {
     _imageInput = el("input", {
       type: "file",
@@ -1947,16 +1965,24 @@ function pickImageFiles() {
       hidden: true,
       onchange: (e) => {
         const files = Array.from((e.target && e.target.files) || []);
+        const slot = _portraitTarget;
+        _portraitTarget = null;
         if (e.target) e.target.value = "";
         (async () => {
+          if (!state.editorCtrl) return;
+          if (slot != null) {
+            await state.editorCtrl.setPortrait(slot, files);
+            return;
+          }
           for (const file of files) {
-            if (state.editorCtrl) await state.editorCtrl.insertImage(file);
+            await state.editorCtrl.insertImage(file);
           }
         })();
       },
     });
     document.body.append(_imageInput);
   }
+  _portraitTarget = target;
   _imageInput.click();
 }
 
@@ -1971,7 +1997,7 @@ async function renderEditorTab(doc, { wiki }) {
   navListEl = null;
   const main = document.getElementById("main-content");
   const header = docHeader(doc);
-  const tb = toolbar();
+  const tb = toolbar(wiki);
   const host = el("div", { class: "editor-host" + (wiki ? " wiki-host" : "") }, [el("div", { id: "editor-mount" })]);
   const panel = backlinksPanel();
   const wrap = el("div", { class: "editor-wrap" }, [host, panel]);
@@ -2022,6 +2048,7 @@ async function renderEditorTab(doc, { wiki }) {
         if (busy) setSaveStatus("pending", "Uploading image…");
       },
       onOpenImage: showImageOverlay,
+      onPickPortrait: (pos) => pickImageFiles(pos),
     });
   } catch (err) {
     toast("Editor failed to load", "error");

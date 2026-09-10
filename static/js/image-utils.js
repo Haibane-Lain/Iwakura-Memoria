@@ -92,12 +92,28 @@ function escapeMarkdownUrl(url) {
   return String(url).replace(/[()]/g, "\\$&");
 }
 
-function escapeHtmlAttr(text) {
+export function escapeHtmlAttr(text) {
   return String(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+// The HTML form of one image node. Needed wherever Markdown is *not* parsed
+// back: a resized picture, and any picture inside a character table — that
+// block is raw HTML, so the `![…]()` form would be shown as literal text
+// instead of rendering as a picture.
+export function imageHtmlTag(attrs = {}) {
+  const src = String(attrs.src == null ? "" : attrs.src);
+  const alt = String(attrs.alt == null ? "" : attrs.alt);
+  const title = String(attrs.title == null ? "" : attrs.title);
+  const width = parseImageWidth(attrs.width);
+  const parts = [`src="${escapeHtmlAttr(src)}"`];
+  if (alt) parts.push(`alt="${escapeHtmlAttr(alt)}"`);
+  if (title) parts.push(`title="${escapeHtmlAttr(title)}"`);
+  if (width) parts.push(`width="${width}"`);
+  return `<img ${parts.join(" ")}>`;
 }
 
 // The Markdown form of one image node. Mirrors prosemirror-markdown's own
@@ -107,14 +123,7 @@ export function serializeImageMarkdown(attrs = {}) {
   const src = String(attrs.src == null ? "" : attrs.src);
   const alt = String(attrs.alt == null ? "" : attrs.alt);
   const title = String(attrs.title == null ? "" : attrs.title);
-  const width = parseImageWidth(attrs.width);
-  if (width) {
-    const parts = [`src="${escapeHtmlAttr(src)}"`];
-    if (alt) parts.push(`alt="${escapeHtmlAttr(alt)}"`);
-    if (title) parts.push(`title="${escapeHtmlAttr(title)}"`);
-    parts.push(`width="${width}"`);
-    return `<img ${parts.join(" ")}>`;
-  }
+  if (parseImageWidth(attrs.width)) return imageHtmlTag(attrs);
   const titlePart = title ? ` "${title.replace(/"/g, '\\"')}"` : "";
   return `![${escapeMarkdownAlt(alt)}](${escapeMarkdownUrl(src)}${titlePart})`;
 }

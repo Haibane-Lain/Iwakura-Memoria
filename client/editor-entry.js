@@ -20,6 +20,12 @@ import {
   toServedSrc,
   toStoredSrc,
 } from "../static/js/image-utils.js";
+import {
+  insertCharacterTable as insertCharacterTableAt,
+  makeCharacterTableNodes,
+  portraitTargetAt,
+  setPortraitFromFiles,
+} from "./character-table.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
@@ -831,6 +837,13 @@ function sliceHasStoredImage(slice) {
 async function insertImageFiles(view, files, pos, imageOpts) {
   const wanted = (files || []).filter(isImageFile);
   if (!wanted.length || !imageOpts.uploadImage) return;
+  // A picture aimed at a character table's portrait slot replaces whatever is
+  // in the slot instead of becoming a second picture next to it.
+  const portrait = portraitTargetAt(view.state, pos);
+  if (portrait != null) {
+    await setPortraitFromFiles(view, portrait, wanted, imageOpts);
+    return;
+  }
   if (imageOpts.onUploadState) imageOpts.onUploadState(true);
   try {
     let at = pos;
@@ -888,6 +901,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       SectionStyles,
       GrammarExtension,
       makeAssetImage(imageOpts),
+      ...makeCharacterTableNodes(imageOpts),
     ],
     content,
     editorProps: {
@@ -912,13 +926,27 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
           return true;
         }
         event.preventDefault();
-        let hit = null;
-        try {
-          hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
-        } catch {
-          /* no geometry available (e.g. a dropped event without layout) */
+        // Dropped into the character table's picture slot? Then it fills the
+        // slot; otherwise it is placed where it was dropped.
+        const slot = event.target && event.target.closest && event.target.closest(".ct-portrait");
+        let at = null;
+        if (slot) {
+          try {
+            at = view.posAtDOM(slot, 0);
+          } catch {
+            at = null;
+          }
         }
-        insertImageFiles(view, files, hit ? hit.pos : view.state.selection.from, imageOpts);
+        if (at == null) {
+          let hit = null;
+          try {
+            hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          } catch {
+            /* no geometry available (e.g. a dropped event without layout) */
+          }
+          at = hit ? hit.pos : view.state.selection.from;
+        }
+        insertImageFiles(view, files, at, imageOpts);
         return true;
       },
       handlePaste(view, event, slice) {
@@ -976,6 +1004,7 @@ window.LainEditor = {
       onImageError: opts.onImageError || null,
       onUploadState: opts.onUploadState || null,
       onOpenImage: opts.onOpenImage || null,
+      onPickPortrait: opts.onPickPortrait || null,
     };
     const editor = makeEditor({ ...opts, navWidget, imageOpts });
     return {
@@ -1039,6 +1068,17 @@ window.LainEditor = {
           editor.state.selection.from,
           imageOpts
         );
+      },
+      // The ribbon's character-table button: a right-hand info box, inserted
+      // after the block the caret is in (never inside another box).
+      insertCharacterTable(options) {
+        return insertCharacterTableAt(editor, options || {});
+      },
+      // Fills a character table's picture slot, used by the click-to-choose
+      // picker and by a drop on the slot.
+      async setPortrait(pos, files) {
+        const list = Array.isArray(files) ? files : [files];
+        return setPortraitFromFiles(editor.view, pos, list, imageOpts);
       },
       setGrammarEnabled(enabled) {
         editor.view.dispatch(editor.state.tr.setMeta("grammarEnabled", !!enabled));

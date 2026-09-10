@@ -308,6 +308,12 @@ def collect_documents(project_id: str, folder_ids: list[str] | None) -> list[tup
 # ---------------------------------------------------------------------------
 
 class _DocxBuilder(HTMLParser):
+    """HTML -> Word. Paragraphs, inline formatting and pictures, plus real Word
+    tables so a character table (or any HTML ``<table>``) keeps its rows."""
+
+    TABLE_STRUCTURE = ("table", "thead", "tbody", "tfoot", "tr", "td", "th")
+    INLINE_TAGS = ("strong", "b", "em", "i", "code", "a")
+
     def __init__(self, doc: Document, project_folder: Path | None = None):
         super().__init__()
         self.doc = doc
@@ -317,6 +323,27 @@ class _DocxBuilder(HTMLParser):
         self._stack: list[dict] = []
         self._list_depth = 0
         self._ol_counters: list[int] = []
+        # While inside a <table> the rows are buffered (the number of columns is
+        # only known once every row has been seen) and emitted on </table>.
+        self._table: dict | None = None
+
+    def _picture_into(self, run, attrs: dict[str, str], max_width=_DOCX_MAX_WIDTH) -> None:
+        """Insert one picture into *run*, scaled to the given maximum width."""
+        if self.project_folder is None:
+            return
+        path = resolve_image_src(self.project_folder, attrs.get("src") or "")
+        if path is None or image_px(path) is None:
+            return
+        declared = declared_width_px(attrs)
+        try:
+            shape = run.add_picture(
+                str(path), width=Emu(declared * _EMU_PER_PX) if declared else None
+            )
+            if shape.width > max_width:
+                shape.height = int(shape.height * max_width / shape.width)
+                shape.width = max_width
+        except Exception:  # never let one bad picture break an export
+            return
 
     def _add_image(self, attrs: dict[str, str]) -> None:
         """Insert an inline picture at the current spot, in document order.
@@ -325,22 +352,93 @@ class _DocxBuilder(HTMLParser):
         anything wider than the text column is scaled down with its aspect
         ratio preserved.
         """
-        if self.project_folder is None:
+        self._picture_into(self._get_run(), attrs)
+
+    # -- table buffering ----------------------------------------------------
+
+    def _table_ignore(self) -> bool:
+        return self._table is not None
+
+    def _open_table(self) -> None:
+        self._para = None
+        self._table = {"rows": [], "row": None, "depth": 1}
+
+    def _open_row(self) -> None:
+        if self._table is not None:
+            self._table["row"] = []
+
+    def _open_cell(self, tag: str, attrs: dict[str, str]) -> None:
+        if self._table is None:
             return
-        path = resolve_image_src(self.project_folder, attrs.get("src") or "")
-        if path is None or image_px(path) is None:
+        row = self._table.get("row")
+        if row is None:
+            row = self._table["row"] = []
+        colspan = 1
+        raw = (attrs.get("colspan") or "").strip()
+        if raw.isdigit() and int(raw) > 1:
+            colspan = min(int(raw), 8)
+        row.append({"items": [], "bold": tag == "th", "colspan": colspan, "open": True})
+
+    def _close_cell(self) -> None:
+        row = self._table.get("row") if self._table else None
+        if row:
+            row[-1]["open"] = False
+
+    def _close_row(self) -> None:
+        if self._table is None:
             return
-        declared = declared_width_px(attrs)
+        row = self._table.get("row")
+        if row:
+            self._table["rows"].append(row)
+        self._table["row"] = None
+
+    def _cell_items(self) -> list | None:
+        if self._table is None:
+            return None
+        row = self._table.get("row")
+        if not row or not row[-1].get("open"):
+            return None
+        return row[-1]["items"]
+
+    def _emit_table(self) -> None:
+        table_state = self._table
+        self._table = None
+        self._para = None
+        self._run = None
+        if table_state is None:
+            return
+        rows = [row for row in table_state.get("rows", []) if row]
+        if not rows:
+            return
+        cols = max(len(row) for row in rows)
+        table = self.doc.add_table(rows=len(rows), cols=cols)
         try:
-            run = self._get_run()
-            shape = run.add_picture(
-                str(path), width=Emu(declared * _EMU_PER_PX) if declared else None
-            )
-            if shape.width > _DOCX_MAX_WIDTH:
-                shape.height = int(shape.height * _DOCX_MAX_WIDTH / shape.width)
-                shape.width = _DOCX_MAX_WIDTH
-        except Exception:  # never let one bad picture break an export
-            return
+            table.style = "Table Grid"
+        except Exception:  # a template without the style still gets the table
+            pass
+        cell_width = Emu(int(_DOCX_MAX_WIDTH) // max(1, cols))
+        for r_index, row in enumerate(rows):
+            for c_index, cell in enumerate(row):
+                if c_index >= cols:
+                    break
+                target = table.cell(r_index, c_index)
+                para = target.paragraphs[0]
+                for kind, payload, fmt in cell["items"]:
+                    if kind == "image":
+                        self._picture_into(para.add_run(), payload, max_width=cell_width)
+                        continue
+                    run = para.add_run(payload)
+                    run.bold = bool(cell["bold"] or "strong" in fmt)
+                    run.italic = "em" in fmt
+                    if "code" in fmt:
+                        run.font.name = "Courier New"
+                        run.font.size = Pt(9)
+                # A one-cell row (a title/section/portrait row) spans the table.
+                if len(row) == 1 and cols > 1:
+                    try:
+                        target.merge(table.cell(r_index, cols - 1))
+                    except Exception:
+                        pass
 
     def _push(self, tag: str, attrs):
         fmt = {}
@@ -360,7 +458,31 @@ class _DocxBuilder(HTMLParser):
         attrs_dict = {k: v for k, v in attrs}
         tt = self._top_tag()
 
-        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        if self._table_ignore():
+            # Inside a <table> only the cell text, the marks around it and the
+            # pictures are kept; every other tag is a transparent wrapper.
+            if tag == "table":
+                self._table["depth"] = self._table.get("depth", 1) + 1
+                self._push(tag, attrs)
+            elif tag == "tr":
+                self._open_row()
+            elif tag in ("td", "th"):
+                self._open_cell(tag, attrs_dict)
+            elif tag == "img":
+                items = self._cell_items()
+                if items is not None:
+                    items.append(("image", attrs_dict, frozenset()))
+            elif tag in self.INLINE_TAGS:
+                self._push(tag, attrs)
+            elif tag == "br":
+                items = self._cell_items()
+                if items is not None:
+                    items.append(("text", "\n", frozenset()))
+            return
+
+        if tag == "table":
+            self._open_table()
+        elif tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             self._para = None
             self._push(tag, attrs)
         elif tag == "p":
@@ -407,6 +529,20 @@ class _DocxBuilder(HTMLParser):
                 self._run = self._para.add_run("\n")
 
     def handle_endtag(self, tag):
+        if self._table_ignore():
+            if tag == "table":
+                self._pop()
+                self._table["depth"] = self._table.get("depth", 1) - 1
+                if self._table["depth"] <= 0:
+                    self._emit_table()
+            elif tag in ("td", "th"):
+                self._close_cell()
+            elif tag == "tr":
+                self._close_row()
+            elif tag in self.INLINE_TAGS:
+                self._pop()
+            return
+
         if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             self._pop()
             self._para = None
@@ -440,6 +576,15 @@ class _DocxBuilder(HTMLParser):
             self._pop()
 
     def handle_data(self, data):
+        if self._table_ignore():
+            items = self._cell_items()
+            if items is None:
+                return
+            if not items and not data.strip():
+                return
+            items.append(("text", data, self._cumulative_fmt()))
+            return
+
         tt = self._top_tag()
 
         if tt is None or tt == "body":

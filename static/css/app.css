@@ -997,6 +997,156 @@ a {
   cursor: zoom-out;
 }
 
+/* ---------------- character tables (wiki info box) ---------------- */
+
+/* The box floats to the right of the entry's text, the way a wiki infobox
+   does. The wrapper carries the float so the node's own frame keeps its width
+   (the resize handle writes an inline width on the aside, and a block node's
+   outer DOM can be given a style by the per-part section styling). */
+.ct-wrap {
+  float: right;
+  clear: right;
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 1em 1.4em;
+}
+
+.character-table {
+  width: 340px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.82em;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+.ct-rows {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.ct-rows th,
+.ct-rows td {
+  border-top: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.ct-rows tr:first-child th,
+.ct-rows tr:first-child td {
+  border-top: none;
+}
+
+.ct-rows tr.ct-title th {
+  padding: 8px;
+  font-size: 1.15em;
+  font-weight: 700;
+  text-align: center;
+}
+
+.ct-rows tr.ct-subtitle th {
+  font-size: 0.95em;
+  font-style: italic;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.ct-rows tr.ct-section th {
+  text-align: center;
+  font-weight: 700;
+  background: var(--surface-3);
+}
+
+.ct-rows td.ct-label {
+  width: 38%;
+  color: var(--text-dim);
+}
+
+.ct-rows tr.ct-portrait td {
+  text-align: center;
+}
+
+.ct-rows tr.ct-portrait p {
+  margin: 0;
+}
+
+.ct-rows tr.ct-portrait p + p {
+  margin-top: 0.4em;
+}
+
+.ct-rows tr.ct-portrait td:empty::before {
+  content: "Click or drop a picture";
+  display: block;
+  padding: 14px 6px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+}
+
+.ct-chips {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.ct-wrap:hover .ct-chips,
+.ct-wrap:focus-within .ct-chips {
+  opacity: 1;
+}
+
+.ct-chip {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ct-chip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.ct-chip.danger:hover {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.ct-resize {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  border-radius: 0 0 3px 0;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.ct-wrap:hover .ct-resize,
+.ct-wrap.resizing .ct-resize {
+  opacity: 1;
+}
+
 .ProseMirror p.is-editor-empty::before {
   content: attr(data-placeholder);
   color: var(--text-faint);

@@ -7,7 +7,9 @@ import {
   ASSET_PREFIX,
   MAX_IMAGE_BYTES,
   clampImageWidth,
+  escapeHtmlAttr,
   imageAltFromFileName,
+  imageHtmlTag,
   isImageFile,
   parseImageWidth,
   serializeImageMarkdown,
@@ -124,8 +126,30 @@ assert.equal(
   '<img src="assets/x.png" alt="a &quot;b&quot; &amp; &lt;c&gt;" width="100">'
 );
 
-/* ---------------- alt from a file name ---------------- */
+/* ---------------- the HTML form ---------------- */
 
+// Used wherever Markdown is not parsed back: a resized picture, and every
+// picture inside a character table (that block is raw HTML, so `![alt](src)`
+// would be saved — and shown — as literal text).
+assert.equal(imageHtmlTag({ src: "assets/mara.png" }), '<img src="assets/mara.png">');
+assert.equal(
+  imageHtmlTag({ src: "assets/mara.png", alt: "Mara", title: "Portrait" }),
+  '<img src="assets/mara.png" alt="Mara" title="Portrait">'
+);
+assert.equal(
+  imageHtmlTag({ src: "assets/mara.png", alt: "Mara", width: "240px" }),
+  '<img src="assets/mara.png" alt="Mara" width="240">'
+);
+assert.equal(imageHtmlTag({ src: "assets/x.png", width: 0 }), '<img src="assets/x.png">');
+assert.equal(imageHtmlTag({}), '<img src="">');
+assert.equal(escapeHtmlAttr('a "b" & <c>'), "a &quot;b&quot; &amp; &lt;c&gt;");
+// The sized Markdown form delegates to it, so both stay identical.
+assert.equal(
+  serializeImageMarkdown({ src: "assets/mara.png", alt: "Mara", width: 300 }),
+  imageHtmlTag({ src: "assets/mara.png", alt: "Mara", width: 300 })
+);
+
+/* ---------------- alt from a file name ---------------- */
 assert.equal(imageAltFromFileName("Mara Portrait.png"), "Mara Portrait");
 assert.equal(imageAltFromFileName("C:\\Users\\lain\\shot.jpg"), "shot");
 assert.equal(imageAltFromFileName("noextension"), "noextension");

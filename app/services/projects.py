@@ -430,6 +430,12 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
         pdf.ln(2)
 
         html = pdf_images_html(md_to_html(body), folder, pdf.epw)
+        if not fonts["serif"]:
+            # The built-in core fonts are latin-1 only: a bullet, a typographic
+            # dash or a CJK glyph in the document used to raise inside fpdf2 and
+            # take the whole export down — the opposite of what this fallback is
+            # for, so those characters degrade to "?" instead.
+            html = html.encode("latin-1", "replace").decode("latin-1")
         pdf.set_font(serif_family, "", 11)
         pdf.write_html(html, tag_styles={
             "h1": FontFace(family=serif_family, emphasis="B", size_pt=16),
@@ -496,7 +502,20 @@ h4 { font-size: 1.05em; }
 blockquote { margin: 1em 2em; font-style: italic; color: #444; border-left: 3px solid #bbb; padding-left: 1em; }
 pre, code { font-family: "Courier New", monospace; font-size: 0.9em; }
 pre { background: #f5f5f5; padding: 0.6em; }
-p { margin: 0.5em 0; }""",
+p { margin: 0.5em 0; }
+/* Character tables are in normal flow here rather than floated: a right-hand
+   float is a desktop convenience and reads badly on a phone-sized page. */
+aside.character-table { border: 1px solid #ccc; border-radius: 3px; margin: 0.8em 0; font-size: 0.85em; }
+aside.character-table table.ct-rows { width: 100%; border-collapse: collapse; }
+aside.character-table th, aside.character-table td { border-top: 1px solid #e2e2e2; padding: 4px 6px; text-align: left; vertical-align: top; font-weight: normal; }
+aside.character-table tr:first-child th { border-top: none; }
+aside.character-table tr.ct-title th { font-size: 1.15em; font-weight: bold; text-align: center; }
+aside.character-table tr.ct-subtitle th { text-align: center; font-style: italic; color: #555; }
+aside.character-table tr.ct-section th { text-align: center; font-weight: bold; background: #f2f2f2; }
+aside.character-table td.ct-label { width: 38%; color: #555; }
+aside.character-table tr.ct-portrait td { text-align: center; }
+aside.character-table tr.ct-portrait p { margin: 0; }
+aside.character-table img { max-width: 100%; height: auto; }""",
     )
     book.add_item(css)
 

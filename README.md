@@ -69,6 +69,13 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   Write and Wiki tabs. Drag the corner handle to resize — the size is saved
   with the document — and double-click a picture to see it full size. Pictures
   are stored as real files in the project's `assets/` folder.
+- **Character tables** — The **👤** button in the Wiki ribbon inserts a
+  Fandom-style info box: a title, a subtitle, a portrait slot and label/value
+  rows, floated to the right of the entry so the text wraps around it. Type
+  straight into it (`Enter`/`Tab` jump to the next field), add rows and
+  sections from the chips that appear on hover, and drag its corner to set the
+  width. It is stored as plain HTML in the Markdown and carried into every
+  export.
 - **Link-safe rearranging** — Moving or reordering a document rewrites any
   `[[path]]` links that point to it; renaming a document rewrites links that
   point to it by title, so nothing silently breaks.
@@ -145,6 +152,26 @@ inline HTML (`<img src="assets/mara.png" width="300">`, the same convention as
 inline font styling), because the export path's Markdown parser understands
 attribute lists but the editor's does not.
 
+A **character table** is stored as one raw HTML block, because that is the only
+shape *both* Markdown parsers agree on (the editor's markdown-it and the
+exporters' python-markdown pass it through untouched):
+
+```html
+<aside class="character-table" data-width="340">
+<table class="ct-rows">
+<tr class="ct-title"><th colspan="2">Übel</th></tr>
+<tr class="ct-section"><th colspan="2">Biographical Information</th></tr>
+<tr class="ct-row"><td class="ct-label">Gender</td><td class="ct-value">Female</td></tr>
+</table>
+</aside>
+```
+
+Inside the block the text is not parsed as Markdown, so its class names are a
+contract (they are what the editor matches when it reopens the file) and its
+pictures are always `<img>` tags with a project-relative `src` — never the
+`![alt](src)` form, which would be shown as literal text. `data-width` is
+written only after a corner drag. Everything is still hand-editable.
+
 **Backups** live *next to* the data folder at
 `%LOCALAPPDATA%\IwakuraMemoria\backups\` (Settings → Export & backup → *Back
 up everything now*). Each is a timestamped zip of the whole `data/` layout —
@@ -192,6 +219,15 @@ ZIP. A picture that can't be found — a remote URL, a file you deleted by hand
 — is simply left out of the export rather than breaking it. Pictures are only
 accepted as PNG, JPEG, GIF or WebP (not SVG, which can carry script).
 
+A **character table** is exported too: Word gets a real table (each row keeps
+its label and value cells, the title/section rows span it, and the portrait is
+embedded in its cell), PDF renders it as a two-column table, and EPUB keeps the
+markup with its own stylesheet. In the exports the box sits in the normal text
+flow rather than floating right, and a width set by dragging the corner is not
+carried over. With fpdf2's built-in fallback fonts (a machine with no system
+serif), characters outside latin-1 — a `•`, a typographic dash, CJK — degrade
+to `?` instead of failing the export.
+
 ## Editing notes
 
 - `[[Note Title]]` links to other documents by title (type the brackets
@@ -223,6 +259,21 @@ accepted as PNG, JPEG, GIF or WebP (not SVG, which can carry script).
 - Wiki pages get a **navigation box** (a small rounded card at the top of
   the editor, Fandom-style) listing the document title and its numbered
   headings; clicking one jumps to that section in the editor.
+- **Character tables** are inserted from the **👤** button in the Wiki ribbon
+  (the Write tab's ribbon does not show it, though a table pasted into a
+  chapter still renders). The box arrives with the
+  entry's title, an empty subtitle and portrait, and the fields of the
+  reference infobox — Aliases, Gender, Species, Class, Rank, Affiliation,
+  Relatives, Status, Hair Color, Eye Color, Manga/Anime Debut, Japanese/English
+  VA — grouped under three section headings. Click any cell and type; **Enter**
+  and **Tab** move to the next field and add a new row once you run past the
+  last one, **Shift+Enter** makes a line break inside a cell, and **Backspace**
+  at the start of an empty row folds that row away. The chips that appear when
+  you hover the box add a row or a section, remove the row you are in, or
+  delete the whole box. The portrait is set by clicking or dropping a picture
+  on its slot, and it resizes and opens full size like any other picture.
+  Grabbing the corner handle sets the box width (double-click it for the
+  default); the width is saved with the document.
 - Chapters, notes, wiki entries, and folders can all be moved by dragging
   them in the sidebar: drop on a folder to nest it inside, on a document to
   reorder within the same folder, or on empty space to move to the project
@@ -388,6 +439,7 @@ static/
                            # sanitize, tree-search, image-utils
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
+client/character-table.js  # the wiki info box's TipTap nodes + Markdown form
 ```
 
 ## Word counting
@@ -427,7 +479,15 @@ section and document styling live entirely in frontmatter.
 ## Known limitations
 
 - Markdown round-trips cleanly for prose, headings, formatting, lists, and
-  quotes. Complex HTML/tables will not survive the WYSIWYG conversion.
+  quotes, and for the editor's own raw-HTML markup (inline images, styled
+  spans/paragraphs, character tables). Other hand-written HTML — a `<table>`
+  from somewhere else, a `<div>` wrapper — is still flattened to its text by
+  the WYSIWYG conversion.
+- A character table is the editor's own shape, not an importer: an infobox
+  copied from a Fandom page (a bare `<table class="infobox">`) comes in as
+  flattened text. It holds one portrait, several boxes per entry are allowed,
+  and the right-hand float is an app convenience — exports put the box in the
+  normal text flow, where a dragged width is not carried over.
 - Inline-styled text is stored as `<span style="…">` in the Markdown, and
   per-block aligned text as `<p style="text-align:…">` / `<h2 …>`. A
   hand-written span carrying *both* font-size and font-family keeps only

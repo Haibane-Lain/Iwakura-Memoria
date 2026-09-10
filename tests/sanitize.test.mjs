@@ -66,4 +66,17 @@ function strip(html) {
   assert.match(out, /rest/);
 }
 
+// 8. A quoted character table keeps its structure (and loses event handlers).
+{
+  const out = sanitizeChatHTML(
+    '<aside class="character-table" data-width="340" onclick="alert(1)">' +
+      '<table class="ct-rows"><tr class="ct-row"><td class="ct-label">Gender</td>' +
+      '<td class="ct-value">Female</td></tr></table></aside>'
+  );
+  assert.match(out, /<aside/);
+  assert.match(out, /<table/);
+  assert.match(out, /<td class="ct-label">Gender<\/td>/);
+  assert.equal(out.includes("onclick"), false, "event handler removed");
+}
+
 console.log("sanitize.test.mjs: all assertions passed");

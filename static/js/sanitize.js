@@ -18,6 +18,10 @@ const ALLOW_EMPTY_ATTRS = new Set([
   "a", "p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6",
   "ul", "ol", "li", "blockquote", "pre", "code", "em", "strong", "del", "u",
   "table", "thead", "tbody", "tr", "th", "td", "span", "div", "img",
+  // A character table is one of these (see client/character-table.js); keeping
+  // the element means a document quoted into the chat panel shows its rows
+  // instead of collapsing them into a run of bare text.
+  "aside",
 ]);
 
 const SCRIPTY_URL = /^\s*(javascript|data|vbscript):/i;
