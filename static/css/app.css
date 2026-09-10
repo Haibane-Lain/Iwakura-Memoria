@@ -822,9 +822,12 @@ a {
   padding: 28px 36px 60px;
 }
 
+/* A wiki entry is a reference page, not prose: it gets the window's width
+   (up to a reading cap) instead of the Write tab's narrow reading column.
+   The room it keeps on the right is also where character tables float. */
 .wiki-host .ProseMirror {
   margin: 0;
-  max-width: 860px;
+  max-width: 1200px;
 }
 
 .ProseMirror {
@@ -1236,7 +1239,12 @@ a {
 /* ---------- Navigation box (wiki) ---------- */
 
 .nav-box {
-  width: 100%;
+  /* Compact Fandom-style card: it grows only as far as the longest entry
+     needs, up to the column width, so nothing is clipped and a short entry
+     list does not stretch the card across the page. */
+  width: fit-content;
+  min-width: min(280px, 100%);
+  max-width: 100%;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;

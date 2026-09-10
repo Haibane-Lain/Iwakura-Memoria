@@ -139,7 +139,10 @@ by ordering; folders inside it are ordered like any others.
 
 The **Write tab** shows everything except `worldbuilding/`; the **Wiki tab**
 shows only `worldbuilding/`, so lore lives in its own separate scaffolding
-with the same folder features. The `stats/`, `templates/`, `ai-sessions/`,
+with the same folder features. Wiki entries are laid out as reference pages
+rather than prose: the text uses the window's width up to 1200px, where the
+Write tab keeps a narrow centred column, which leaves room for the character
+tables floating on the right. The `stats/`, `templates/`, `ai-sessions/`,
 `assets/` and `worldbuilding/` paths (and `project.json`, `dictionary.json`)
 are reserved.
 
@@ -258,7 +261,9 @@ to `?` instead of failing the export.
   picture to view it full size (click anywhere or press **Esc** to dismiss).
 - Wiki pages get a **navigation box** (a small rounded card at the top of
   the editor, Fandom-style) listing the document title and its numbered
-  headings; clicking one jumps to that section in the editor.
+  headings; clicking one jumps to that section in the editor. The card stays
+  compact — it widens only as far as its longest entry needs, up to the width
+  of the text column.
 - **Character tables** are inserted from the **👤** button in the Wiki ribbon
   (the Write tab's ribbon does not show it, though a table pasted into a
   chapter still renders). The box arrives with the
