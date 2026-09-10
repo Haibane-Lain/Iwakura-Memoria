@@ -5,7 +5,7 @@ import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
 import { filterTree } from "./tree-search.js";
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
-import { DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
+import { DEFAULT_WIKI_ZOOM, DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
 import { keepScrollTop } from "./scroll-keep.js";
 import {
   el,
@@ -188,7 +188,7 @@ function applyEditorPrefs() {
   root.style.setProperty("--editor-font", fontStack(state.settings.editorFont));
   root.style.setProperty("--editor-size", `${state.settings.editorSize || 18}px`);
   root.style.setProperty("--editor-align", state.settings.editorAlign || "left");
-  root.style.setProperty("--editor-zoom", String(zoomFactor(state.settings.editorZoom)));
+  root.style.setProperty("--editor-zoom", String(zoomFactor(defaultZoomForScope())));
   syncEditorControls();
 }
 
@@ -209,7 +209,17 @@ function effectiveAlign() {
 }
 
 function effectiveZoom() {
-  return docStyle().zoom || state.settings.editorZoom || DEFAULT_ZOOM;
+  return docStyle().zoom || defaultZoomForScope();
+}
+
+// Zoom is the one editor preference with a default *per tab*: see zoom.js.
+function zoomKey(scope) {
+  return scope === "wiki" ? "wikiZoom" : "editorZoom";
+}
+
+function defaultZoomForScope(wiki = isWikiScope()) {
+  return (wiki ? state.settings.wikiZoom : state.settings.editorZoom) ||
+    (wiki ? DEFAULT_WIKI_ZOOM : DEFAULT_ZOOM);
 }
 
 function sectionOverrides() {
@@ -315,7 +325,10 @@ function syncEditorControls() {
     sel.value = String(currentSize());
   });
   document.querySelectorAll(".editor-control-zoom").forEach((sel) => {
-    sel.value = String(currentZoom());
+    // The Settings rows carry the tab they default, so they show that saved
+    // default; the toolbar's select has no scope and follows the open document.
+    const scope = sel.dataset.zoomScope;
+    sel.value = String(scope ? defaultZoomForScope(scope === "wiki") : currentZoom());
   });
   const align = currentAlign();
   document.querySelectorAll(".editor-control-align").forEach((btn) => {
@@ -436,16 +449,26 @@ function applyInlineSize(size) {
   syncEditorControls();
 }
 
-function zoomSelect(target) {
-  const sel = el("select", { class: "toolbar-control size editor-control-zoom", title: "Zoom" }, [
+function zoomSelect(target, scope = "write") {
+  const wiki = scope === "wiki";
+  const sel = el("select", {
+    class: "toolbar-control size editor-control-zoom",
+    title:
+      target === "global"
+        ? `Default zoom for the ${wiki ? "Wiki" : "Write"} tab`
+        : "Zoom",
+    // Marks the two Settings defaults apart from the toolbar's per-document
+    // control (syncEditorControls fills them from different sources).
+    ...(target === "global" ? { dataset: { zoomScope: scope } } : {}),
+  }, [
     ...ZOOM_PRESETS.map((n) => el("option", { value: String(n) }, `${n}%`)),
   ]);
-  sel.value = String(target === "global" ? state.settings.editorZoom || DEFAULT_ZOOM : currentZoom());
+  sel.value = String(target === "global" ? defaultZoomForScope(wiki) : currentZoom());
   sel.addEventListener("change", async () => {
     const zoom = parseInt(sel.value, 10);
     if (!Number.isFinite(zoom)) return;
     if (target === "global") {
-      state.settings = await api.settings.update({ editorZoom: zoom });
+      state.settings = await api.settings.update({ [zoomKey(scope)]: zoom });
       applyEditorPrefs();
       return;
     }
@@ -2040,6 +2063,10 @@ async function renderEditorTab(doc, { wiki }) {
   main.replaceChildren(...children);
 
   if (!doc) {
+    // No document, so no document overrides: the empty host still has to show
+    // the zoom/font/size of the tab it belongs to.
+    state.docStyle = {};
+    applyDocStyle();
     host.replaceChildren(
       el("div", { class: "empty-state" }, [
         el("h2", {}, "Nothing open"),
@@ -3178,7 +3205,7 @@ async function renderSettingsTab() {
       ]),
       el("div", { class: "settings-section" }, [
         el("h2", {}, "Editor defaults"),
-        el("p", { class: "desc" }, "Global default font, size, and alignment for all documents. Each document and section can override these from the editor toolbar."),
+        el("p", { class: "desc" }, "Global default font, size, and alignment for all documents, plus a zoom per tab — font, size and alignment are shared, zoom is not, because a wiki entry is a reference page rather than prose. Each document and section can override these from the editor toolbar."),
         el("div", { class: "field-row" }, [
           el("label", {}, "Font"),
           fontSelect("global"),
@@ -3192,8 +3219,12 @@ async function renderSettingsTab() {
           alignGroup("global"),
         ]),
         el("div", { class: "field-row" }, [
-          el("label", {}, "Zoom"),
-          zoomSelect("global"),
+          el("label", {}, "Write tab zoom"),
+          zoomSelect("global", "write"),
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "Wiki tab zoom"),
+          zoomSelect("global", "wiki"),
         ]),
       ]),
       el("div", { class: "settings-section" }, [
@@ -3351,6 +3382,7 @@ async function init(params) {
       editorSize: settings.editorSize || 18,
       editorAlign: settings.editorAlign || "left",
       editorZoom: settings.editorZoom || DEFAULT_ZOOM,
+      wikiZoom: settings.wikiZoom || DEFAULT_WIKI_ZOOM,
       grammarEnabled: settings.grammarEnabled !== false,
     };
   } catch (err) {

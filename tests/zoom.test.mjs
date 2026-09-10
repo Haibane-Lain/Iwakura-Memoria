@@ -7,13 +7,23 @@
 // would notice it drifting back to a bare `percent / 100`.
 import assert from "node:assert/strict";
 
-import { DEFAULT_ZOOM, ZOOM_PRESETS, ZOOM_SCALE, zoomFactor } from "../static/js/zoom.js";
+import {
+  DEFAULT_WIKI_ZOOM,
+  DEFAULT_ZOOM,
+  ZOOM_PRESETS,
+  ZOOM_SCALE,
+  zoomFactor,
+} from "../static/js/zoom.js";
 
 // The baseline: 100% is twice the raw CSS factor the old numbering used.
 assert.equal(ZOOM_SCALE, 2);
 assert.equal(DEFAULT_ZOOM, 100);
 assert.equal(zoomFactor(100), 2);
 assert.equal(zoomFactor(DEFAULT_ZOOM), 2);
+
+// The Wiki tab starts one step down: it is a reference page, not prose.
+assert.equal(DEFAULT_WIKI_ZOOM, 75);
+assert.equal(zoomFactor(DEFAULT_WIKI_ZOOM), 1.5);
 
 // The rest of the ladder stays relative to that baseline.
 assert.equal(zoomFactor(200), 4);

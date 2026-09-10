@@ -40,7 +40,8 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   pywebview path is kept behind `run.bat --pywebview`.
 - **WYSIWYG editor** — TipTap-based ProseMirror editor with markdown
   round-tripping, wikilinks (`[[Target]]` / `[[Target|alias]]`), per-document
-  and per-section fonts/sizes/alignment, and zoom.
+  and per-section fonts/sizes/alignment, and a default zoom per tab (100% for
+  **Write**, 75% for **Wiki**).
 - **Grammar checking** — Bundled LanguageTool 6.9 Java server, with
   ProseMirror inline underlines, replacement corrections, and a per-project
   ignore dictionary.
@@ -54,7 +55,8 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
 - **Wiki system** — Dedicated `worldbuilding/` tree with templates (Character,
   Location, Organization, Nation, Lore Concept), wikilink auto-resolution,
   backlinks, and a Fandom-style navigation box.
-- **Themes** — Paper, Ink, Typewriter, Gothic, Horror, Fantasy, Sci-Fi.
+- **Themes** — Paper, Ink, Typewriter, Gothic, Horror, Fantasy, Sci-Fi. First
+  launch starts on **Gothic**; whatever you pick is remembered.
 - **Stats** — Daily word counts, streak tracking, and configurable goals with
   a progress bar, a 30-day bar chart, and an optional scrollable **full daily
   history** (every day back to the project's creation, zero days shown dimmed).
@@ -103,7 +105,7 @@ Each project is a free-form scaffolding tree of **folders** and **documents**:
 
 ```
 data/
-  settings.json                    # global settings (theme, word count mode, grammar toggle, AI config)
+  settings.json                    # global settings (theme, word count mode, zoom per tab, grammar toggle, AI config)
   .zoom-rebased                    # marker: stored zoom values use the current 100% scale
   ai-sessions/<project>/           # Lain chat session history
   <project>/
@@ -466,7 +468,10 @@ client/character-table.js  # the wiki info box's TipTap nodes + Markdown form
 Text styling works at three levels — each falls back to the level above it:
 
 1. **Global defaults** — edited in **Settings → Editor defaults**. These are
-   the app-wide fallback for every document.
+   the app-wide fallback for every document. Font, size and alignment are
+   shared by both tabs; **zoom has a default per tab** — **Write** starts at
+   100% and **Wiki** at 75%, because a lore entry is a page to scan rather than
+   prose to read.
 2. **Per document** — stored in the file's YAML frontmatter (`font`, `size`,
    `align`, `zoom`). Sections you've never touched use this.
 3. **Per section** — stored in the frontmatter `styles` map keyed by heading
@@ -485,12 +490,16 @@ The ribbon's **font / size / alignment** controls are context-aware:
 **Zoom** is always document-level, and its percentage is a *reading size*, not
 a raw CSS factor: **100% is the comfortable baseline** (an 18px font renders at
 36px), so 75% is a smaller comfortable size rather than an unusably tiny one.
-Document frontmatter and `editorZoom` in `settings.json` store that same
-percentage. An older numbering measured the CSS factor directly, where this
+The two tabs keep separate defaults (`editorZoom` and `wikiZoom` in
+`settings.json`; 100% and 75% on a fresh install), and a document's own
+frontmatter `zoom` overrides the default of the tab it lives in. An older
+numbering measured the CSS factor directly, where this
 size was called 200%; the app rebases those stored values once, on first
 launch, and writes the `data/.zoom-rebased` marker so it never halves them
 twice. The **Clear** button resets the current selection / section / document
-back to inheriting the level above. Inline font/size styling and block
+back to inheriting the level above — with the cursor outside any heading
+section that drops the document's saved `zoom`, so the entry follows its tab's
+default again. Inline font/size styling and block
 alignment are written into the Markdown body; section and document styling
 live entirely in frontmatter.
 

@@ -23,6 +23,7 @@ class SettingsPatch(BaseModel):
     editorSize: int | None = None
     editorAlign: str | None = None
     editorZoom: int | None = None
+    wikiZoom: int | None = None
     ai: dict | None = None
 
 

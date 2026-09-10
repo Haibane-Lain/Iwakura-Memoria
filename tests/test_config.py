@@ -110,12 +110,24 @@ def test_ensure_dirs_migrates_and_points_data_dir(tmp_path, monkeypatch):
     assert config.DATA_DIR.is_dir()
 
 
+# --- first-launch defaults --------------------------------------------------
+
+
+def test_a_fresh_install_starts_gothic_with_a_zoom_per_tab(tmp_path, monkeypatch):
+    """First launch: the Gothic palette, a 100% Write tab, a 75% Wiki tab."""
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    settings = config.load_settings()
+    assert settings["theme"] == "gothic"
+    assert settings["editorZoom"] == 100
+    assert settings["wikiZoom"] == 75
+
+
 # --- settings read cache (R2) ----------------------------------------------
 
 
 def test_settings_cache_tracks_file_changes(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
-    assert config.load_settings()["theme"] == "paper"
+    assert config.load_settings()["theme"] == config.DEFAULT_SETTINGS["theme"]
 
     config.save_settings({**config.load_settings(), "theme": "dark"})
     assert config.load_settings()["theme"] == "dark"
@@ -123,14 +135,15 @@ def test_settings_cache_tracks_file_changes(tmp_path, monkeypatch):
     # The cache is keyed to the file's existence/mtime: deleting the file
     # yields fresh defaults, never a stale cached value.
     (config.get_settings_path()).unlink()
-    assert config.load_settings()["theme"] == "paper"
+    assert config.load_settings()["theme"] == config.DEFAULT_SETTINGS["theme"]
 
 
 def test_settings_cache_isolated_per_path(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "a" / "data")
     config.save_settings({**config.load_settings(), "theme": "dark"})
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "b" / "data")
-    assert config.load_settings()["theme"] == "paper"  # different file → no bleed
+    # different file → no bleed
+    assert config.load_settings()["theme"] == config.DEFAULT_SETTINGS["theme"]
 
 
 def test_settings_cache_returns_copies(tmp_path, monkeypatch):

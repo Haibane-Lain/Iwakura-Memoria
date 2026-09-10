@@ -36,7 +36,9 @@ DATA_DIR_NAME = "data"
 _MIGRATION_MARKER = ".migration-done"
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "theme": "paper",
+    # First launch only: a stored theme always wins, so changing this never
+    # restyles an existing install.
+    "theme": "gothic",
     "wordCountMode": "auto",
     "autosaveMs": 800,
     "editorFont": "serif",
@@ -44,7 +46,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "editorAlign": "left",
     # Percent of the comfortable reading baseline: 100% renders at CSS zoom 2
     # (documents.rebase_zoom_scale halved the older factor-based numbers once).
+    # Zoom is the one preference with a default *per tab*: the Write tab reads
+    # like a manuscript page at 100%, the Wiki tab is a reference page and is
+    # meant to be scanned, so it starts one step down. Font, size and alignment
+    # stay shared.
     "editorZoom": 100,
+    "wikiZoom": 75,
     "grammarEnabled": True,
     "ai": {},
 }

@@ -10,10 +10,15 @@ export const themes = [
   { id: "sci-fi", label: "Sci-Fi" },
 ];
 
-let current = "paper";
+// First launch only — a stored theme always wins. Kept in step with
+// DEFAULT_SETTINGS["theme"] in app/config.py and the data-theme in index.html
+// (which paints before this module loads).
+export const DEFAULT_THEME = "gothic";
+
+let current = DEFAULT_THEME;
 
 export function apply(name) {
-  if (!themes.some((t) => t.id === name)) name = "paper";
+  if (!themes.some((t) => t.id === name)) name = DEFAULT_THEME;
   current = name;
   document.body.dataset.theme = name;
 }
@@ -37,7 +42,7 @@ export async function load() {
     apply(settings.theme);
     return settings;
   } catch (err) {
-    return { theme: "paper" };
+    return { theme: DEFAULT_THEME };
   }
 }
 
