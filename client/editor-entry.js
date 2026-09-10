@@ -1,4 +1,4 @@
-import { Editor, Extension, Mark, mergeAttributes } from "@tiptap/core";
+import { Editor, Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
@@ -10,6 +10,15 @@ import { Markdown } from "tiptap-markdown";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { DOMSerializer } from "@tiptap/pm/model";
+import {
+  clampImageWidth,
+  imageAltFromFileName,
+  isImageFile,
+  parseImageWidth,
+  serializeImageMarkdown,
+  toServedSrc,
+  toStoredSrc,
+} from "../static/js/image-utils.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
@@ -571,13 +580,275 @@ document.addEventListener("click", (e) => {
   }
 });
 
+/* ---------------- inline images ---------------- */
+
+// A picture is stored as `assets/<name>` in the Markdown and rendered through
+// the app's asset route. The stored form is what the node keeps in its attrs,
+// so the Markdown round-trips untouched; the served form only ever appears in
+// the DOM, and the attribute-level parse rule maps it back — which is what
+// keeps an internal copy/paste (or a hand-edited absolute URL) from writing
+// the served URL into the file.
+function makeAssetImage(imageOpts) {
+  const { projectId, onOpenImage } = imageOpts;
+
+  return Node.create({
+    name: "image",
+    inline: true,
+    group: "inline",
+    draggable: true,
+    selectable: true,
+
+    addAttributes() {
+      return {
+        src: {
+          default: null,
+          parseHTML: (el) => toStoredSrc(el.getAttribute("src")),
+        },
+        alt: { default: null },
+        title: { default: null },
+        // Set by the resize handle; a plain Markdown image has no width.
+        width: {
+          default: null,
+          parseHTML: (el) => parseImageWidth(el.getAttribute("width")),
+        },
+      };
+    },
+
+    parseHTML() {
+      return [{ tag: "img[src]" }];
+    },
+
+    renderHTML({ HTMLAttributes }) {
+      const attrs = { ...HTMLAttributes };
+      return [
+        "img",
+        {
+          ...attrs,
+          src: toServedSrc(projectId, attrs.src),
+          class: "doc-image",
+          loading: "lazy",
+        },
+      ];
+    },
+
+    addStorage() {
+      return {
+        markdown: {
+          serialize(state, node) {
+            state.write(serializeImageMarkdown(node.attrs));
+          },
+        },
+      };
+    },
+
+    addNodeView() {
+      return ({ node, getPos, editor }) => {
+        const wrapper = document.createElement("span");
+        wrapper.className = "image-node";
+
+        const img = document.createElement("img");
+        img.className = "doc-image";
+        img.draggable = true;
+        img.setAttribute("loading", "lazy");
+
+        const missing = document.createElement("span");
+        missing.className = "image-missing";
+
+        const reset = document.createElement("span");
+        reset.className = "image-reset";
+        reset.title = "Reset to the picture's natural size";
+        reset.setAttribute("role", "button");
+        reset.textContent = "↺";
+
+        const handle = document.createElement("span");
+        handle.className = "image-resize-handle";
+        handle.title = "Drag to resize";
+        handle.setAttribute("role", "button");
+
+        wrapper.append(img, missing, reset, handle);
+
+        const apply = (next) => {
+          const src = toServedSrc(projectId, next.attrs.src);
+          img.setAttribute("src", src || "");
+          img.setAttribute("alt", next.attrs.alt || "");
+          if (next.attrs.title) img.setAttribute("title", next.attrs.title);
+          else img.removeAttribute("title");
+          const width = parseImageWidth(next.attrs.width);
+          if (width) {
+            img.style.width = `${width}px`;
+            img.style.height = "auto";
+          } else {
+            img.style.width = "";
+            img.style.height = "";
+          }
+          wrapper.classList.toggle("can-reset", !!width);
+          wrapper.classList.remove("missing", "resizing");
+        };
+        apply(node);
+
+        img.addEventListener("error", () => {
+          missing.textContent = node.attrs.src ? `Missing image: ${node.attrs.src}` : "Missing image";
+          wrapper.classList.add("missing");
+        });
+
+        const currentAttrs = () => {
+          const pos = getPos();
+          if (pos == null) return null;
+          const found = editor.state.doc.nodeAt(pos);
+          if (!found || found.type.name !== "image") return null;
+          return { pos, attrs: found.attrs };
+        };
+
+        const onReset = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const current = currentAttrs();
+          if (!current || current.attrs.width == null) return;
+          editor.view.dispatch(
+            editor.state.tr.setNodeMarkup(current.pos, undefined, { ...current.attrs, width: null })
+          );
+        };
+        reset.addEventListener("mousedown", onReset);
+        reset.addEventListener("click", (event) => event.preventDefault());
+
+        const onHandleDown = (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const startX = event.clientX;
+          const box = img.getBoundingClientRect();
+          const startWidth = box.width || parseImageWidth(node.attrs.width) || img.naturalWidth || 0;
+          const maxWidth = Math.max(40, editor.view.dom.clientWidth);
+          let width = startWidth;
+
+          wrapper.classList.add("resizing");
+          try {
+            handle.setPointerCapture(event.pointerId);
+          } catch {
+            /* capture is a nicety; the drag still works without it */
+          }
+
+          const onMove = (moveEvent) => {
+            width = clampImageWidth(startWidth + (moveEvent.clientX - startX), maxWidth);
+            img.style.width = `${width}px`;
+            img.style.height = "auto";
+          };
+          const onUp = (upEvent) => {
+            handle.removeEventListener("pointermove", onMove);
+            handle.removeEventListener("pointerup", onUp);
+            handle.removeEventListener("pointercancel", onUp);
+            try {
+              handle.releasePointerCapture(upEvent.pointerId);
+            } catch {
+              /* already released */
+            }
+            wrapper.classList.remove("resizing");
+            const current = currentAttrs();
+            if (!current) return;
+            // A click that never moved must not turn a natural-size picture
+            // into an explicitly sized one.
+            if (Math.abs(width - startWidth) < 2 && current.attrs.width == null) return;
+            const next = clampImageWidth(width, maxWidth);
+            if (next === current.attrs.width && next === width) return;
+            if (current.attrs.width === next) return;
+            editor.view.dispatch(
+              editor.state.tr.setNodeMarkup(current.pos, undefined, { ...current.attrs, width: next })
+            );
+          };
+          handle.addEventListener("pointermove", onMove);
+          handle.addEventListener("pointerup", onUp);
+          handle.addEventListener("pointercancel", onUp);
+        };
+        handle.addEventListener("mousedown", (event) => event.preventDefault());
+        handle.addEventListener("pointerdown", onHandleDown);
+
+        img.addEventListener("dblclick", (event) => {
+          if (!onOpenImage) return;
+          event.preventDefault();
+          onOpenImage({
+            src: node.attrs.src,
+            url: toServedSrc(projectId, node.attrs.src),
+            alt: node.attrs.alt || "",
+          });
+        });
+
+        return {
+          dom: wrapper,
+          // Only the controls swallow events; clicks on the picture itself
+          // must still place the caret like any other inline node.
+          stopEvent: (event) => !!event.target.closest(".image-resize-handle, .image-reset"),
+          ignoreMutation: () => true,
+          update: (next) => {
+            if (next.type.name !== "image") return false;
+            apply(next);
+            return true;
+          },
+        };
+      };
+    },
+  });
+}
+
+// Where an inline node can legally be inserted: inside a textblock at (or
+// adjacent to) the requested position. A drop between two blocks lands at a
+// position where an inline node would be invalid.
+function inlineInsertPos(view, pos) {
+  const doc = view.state.doc;
+  const clamped = Math.max(0, Math.min(pos, doc.content.size));
+  const $pos = doc.resolve(clamped);
+  if ($pos.parent.inlineContent) return clamped;
+  if ($pos.nodeAfter && $pos.nodeAfter.isTextblock) return clamped + 1;
+  if ($pos.nodeBefore && $pos.nodeBefore.isTextblock) return clamped - 1;
+  let fallback = null;
+  doc.descendants((node, nodePos) => {
+    if (fallback === null && node.isTextblock) fallback = nodePos + 1;
+    return fallback === null;
+  });
+  return fallback;
+}
+
+async function insertImageFiles(view, files, pos, imageOpts) {
+  const wanted = (files || []).filter(isImageFile);
+  if (!wanted.length || !imageOpts.uploadImage) return;
+  if (imageOpts.onUploadState) imageOpts.onUploadState(true);
+  try {
+    let at = pos;
+    for (const file of wanted) {
+      let info = null;
+      try {
+        info = await imageOpts.uploadImage(file);
+      } catch (err) {
+        if (imageOpts.onImageError) {
+          imageOpts.onImageError((err && err.message) || String(err));
+        }
+        continue;
+      }
+      if (!view || view.isDestroyed || !info || !info.path) continue;
+      const type = view.state.schema.nodes.image;
+      if (!type) continue;
+      const insertAt = inlineInsertPos(view, at);
+      if (insertAt == null) continue;
+      const node = type.create({
+        src: info.path,
+        alt: imageAltFromFileName(file.name),
+        title: null,
+        width: null,
+      });
+      view.dispatch(view.state.tr.insert(insertAt, node));
+      at = insertAt + node.nodeSize;
+    }
+  } finally {
+    if (imageOpts.onUploadState) imageOpts.onUploadState(false);
+  }
+}
+
 function toMarkdown(editor) {
   let md = editor.storage.markdown.getMarkdown();
   md = md.replace(/\\\[/g, "[").replace(/\\\]/g, "]");
   return md;
 }
 
-function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, navWidget }) {
+function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, navWidget, imageOpts }) {
   const editor = new Editor({
     element,
     extensions: [
@@ -595,9 +866,44 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       ...(navWidget ? [NavBox.configure({ navWidget })] : []),
       SectionStyles,
       GrammarExtension,
+      makeAssetImage(imageOpts),
     ],
     content,
-    editorProps: { attributes: {} },
+    editorProps: {
+      attributes: {},
+      // Pictures dropped or pasted into the document. Anything else (moving an
+      // existing node, dropping text, pasting text) is left to ProseMirror —
+      // returning false is what keeps ordinary drag & drop working.
+      handleDrop(view, event) {
+        const dt = event.dataTransfer;
+        if (!dt || !dt.files || !dt.files.length) return false;
+        const files = Array.from(dt.files);
+        if (!files.some(isImageFile)) {
+          if (imageOpts.onImageError) {
+            imageOpts.onImageError("Only PNG, JPEG, GIF and WebP images can be inserted.");
+          }
+          return true;
+        }
+        event.preventDefault();
+        let hit = null;
+        try {
+          hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        } catch {
+          /* no geometry available (e.g. a dropped event without layout) */
+        }
+        insertImageFiles(view, files, hit ? hit.pos : view.state.selection.from, imageOpts);
+        return true;
+      },
+      handlePaste(view, event) {
+        const dt = event.clipboardData;
+        if (!dt || !dt.files || !dt.files.length) return false;
+        const files = Array.from(dt.files);
+        if (!files.some(isImageFile)) return false;
+        event.preventDefault();
+        insertImageFiles(view, files, view.state.selection.from, imageOpts);
+        return true;
+      },
+    },
     onUpdate: ({ editor }) => {
       if (onChange) onChange(toMarkdown(editor));
     },
@@ -633,7 +939,14 @@ window.LainEditor = {
   create(opts) {
     const navWidget = opts.showNav ? document.createElement("div") : null;
     if (navWidget) navWidget.className = "nav-box";
-    const editor = makeEditor({ ...opts, navWidget });
+    const imageOpts = {
+      projectId: opts.projectId || null,
+      uploadImage: opts.uploadImage || null,
+      onImageError: opts.onImageError || null,
+      onUploadState: opts.onUploadState || null,
+      onOpenImage: opts.onOpenImage || null,
+    };
+    const editor = makeEditor({ ...opts, navWidget, imageOpts });
     return {
       editor,
       navEl: navWidget,
@@ -683,6 +996,18 @@ window.LainEditor = {
       },
       insertWikilink(title) {
         this.insertText(`[[${title}]]`);
+      },
+      // Used by the toolbar's picture button and by a drop that lands on the
+      // editor's padding (outside the ProseMirror surface itself): the picture
+      // goes in at the caret.
+      async insertImage(file) {
+        const files = Array.isArray(file) ? file : [file];
+        await insertImageFiles(
+          editor.view,
+          files.filter(isImageFile),
+          editor.state.selection.from,
+          imageOpts
+        );
       },
       setGrammarEnabled(enabled) {
         editor.view.dispatch(editor.state.tr.setMeta("grammarEnabled", !!enabled));

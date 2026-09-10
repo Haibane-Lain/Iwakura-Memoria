@@ -53,6 +53,10 @@ HISTORY_FILENAME = "history.jsonl"
 REORDER_TMP_DIRNAME = ".reorder-tmp"
 WIKI_DIRNAME = "worldbuilding"
 TEMPLATES_DIRNAME = "templates"
+# Uploaded pictures for inline images, one folder per project. Deliberately a
+# visible name: the files are real images the user may want to open in an
+# image editor, and they are included in zip exports and backups.
+ASSETS_DIRNAME = "assets"
 
 # Names that can't be used as user folders (reserved by the app).
 RESERVED_FOLDER_NAMES = {
@@ -60,6 +64,7 @@ RESERVED_FOLDER_NAMES = {
     STATS_DIRNAME,
     REORDER_TMP_DIRNAME,
     WIKI_DIRNAME,
+    ASSETS_DIRNAME,
 }
 
 _PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")

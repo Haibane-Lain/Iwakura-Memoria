@@ -4,10 +4,11 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from urllib.parse import unquote
 
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Emu, Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
 import markdown as md_lib
@@ -18,6 +19,168 @@ from app.services import documents as documents_service
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+
+# Inline images in a document body. The editor writes plain Markdown for an
+# unsized picture and inline HTML (``<img … width="300">``) for a resized one,
+# but a hand-written body can contain either, in any attribute style — so the
+# exporters parse the tags rather than assume a shape.
+_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_IMG_ATTR_RE = re.compile(
+    r"""([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))"""
+)
+IMAGE_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+# 96 CSS px per inch; 1 px = 0.75 pt = 9525 EMU.
+_PX_PER_INCH = 96.0
+_PT_PER_PX = 72.0 / _PX_PER_INCH
+_EMU_PER_PX = 9525
+# Widest a picture may be in a DOCX export (Letter/A4 body width).
+_DOCX_MAX_WIDTH = Inches(6.5)
+
+
+def _img_attrs(tag: str) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for match in _IMG_ATTR_RE.finditer(tag):
+        value = match.group(2)
+        if value is None:
+            value = match.group(3)
+        if value is None:
+            value = match.group(4) or ""
+        attrs[match.group(1).lower()] = value
+    return attrs
+
+
+def _attr_esc(value: Any) -> str:
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def declared_width_px(attrs: dict[str, str]) -> int | None:
+    """The ``width`` attribute in CSS px, when it carries a plain number."""
+    raw = (attrs.get("width") or "").strip().lower().removesuffix("px").strip()
+    try:
+        value = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def resolve_image_src(project_folder: Path, src: str) -> Path | None:
+    """Map a document image ``src`` to a file inside the project, or None.
+
+    Accepts the app's stored form (``assets/<name>``), the served form the
+    editor renders (``/api/projects/<id>/assets/<name>``) and any other
+    project-relative path that exists. Remote and ``data:`` sources are never
+    fetched during an export, so they resolve to None and the picture is left
+    out rather than producing a broken reference.
+    """
+    src = (src or "").strip()
+    if not src or src.startswith(("http://", "https://", "data:", "//", "mailto:")):
+        return None
+    prefix = "/api/projects/"
+    if src.startswith(prefix):
+        parts = src[len(prefix):].split("/")
+        if len(parts) < 3 or parts[1] != config.ASSETS_DIRNAME:
+            return None
+        src = "/".join([config.ASSETS_DIRNAME, *parts[2:]])
+    src = unquote(src.split("?", 1)[0].split("#", 1)[0])
+    base = project_folder.resolve()
+    try:
+        candidate = (project_folder / src).resolve()
+    except (OSError, ValueError):
+        return None
+    if not candidate.is_relative_to(base) or not candidate.is_file():
+        return None
+    return candidate
+
+
+def image_px(path: Path) -> tuple[int, int] | None:
+    """Pixel size of an image, or None when it can't be read as one.
+
+    Doubles as the exporters' readability check: an entry that fails here is
+    dropped from the output instead of being handed to a converter that would
+    raise on it (fpdf2, for one, raises on a file it cannot decode).
+    """
+    try:
+        from PIL import Image
+    except ImportError:  # pragma: no cover - Pillow ships with fpdf2
+        return None
+    try:
+        with Image.open(path) as im:
+            width, height = im.size
+            im.verify()
+    except Exception:
+        return None
+    if width < 1 or height < 1:
+        return None
+    return int(width), int(height)
+
+
+def image_media_type(path: Path) -> str | None:
+    return IMAGE_MEDIA_TYPES.get(path.suffix.lower())
+
+
+def rewrite_images(
+    html: str,
+    project_folder: Path,
+    transform: Callable[[dict[str, str], Path], dict[str, str] | None],
+) -> str:
+    """Rewrite every resolvable ``<img>`` in *html*; drop the rest.
+
+    *transform* receives the tag's attributes and the resolved local file, and
+    returns the attributes to emit (or None to leave the picture out). An image
+    that does not resolve, or that can't be read as an image, is removed
+    entirely — so no converter downstream can trip over it.
+    """
+    def repl(match: "re.Match[str]") -> str:
+        attrs = _img_attrs(match.group(0))
+        path = resolve_image_src(project_folder, attrs.get("src") or "")
+        if path is None or image_px(path) is None:
+            return ""
+        out = transform(attrs, path)
+        if not out:
+            return ""
+        body = " ".join(
+            f'{key}="{_attr_esc(value)}"'
+            for key, value in out.items()
+            if value not in (None, "")
+        )
+        return f"<img {body}>" if body else "<img>"
+
+    return _IMG_TAG_RE.sub(repl, html)
+
+
+def pdf_images_html(html: str, project_folder: Path, content_width_pt: float) -> str:
+    """Point ``<img>`` tags at local files and give each an explicit point width.
+
+    fpdf2 scales an image to its own pixel size when no width is given, so a
+    normal photo would overflow the page; every picture is therefore clamped to
+    the printable width here.
+    """
+    def transform(attrs: dict[str, str], path: Path) -> dict[str, str] | None:
+        size = image_px(path)
+        if size is None:
+            return None
+        natural_pt = size[0] * _PT_PER_PX
+        declared = declared_width_px(attrs)
+        width_pt = min(declared * _PT_PER_PX if declared else natural_pt, content_width_pt)
+        out = {"src": path.as_posix(), "width": f"{width_pt:.1f}"}
+        if attrs.get("alt"):
+            out["alt"] = attrs["alt"]
+        return out
+
+    return rewrite_images(html, project_folder, transform)
+
 
 
 def md_to_html(body: str) -> str:
@@ -145,14 +308,39 @@ def collect_documents(project_id: str, folder_ids: list[str] | None) -> list[tup
 # ---------------------------------------------------------------------------
 
 class _DocxBuilder(HTMLParser):
-    def __init__(self, doc: Document):
+    def __init__(self, doc: Document, project_folder: Path | None = None):
         super().__init__()
         self.doc = doc
+        self.project_folder = project_folder
         self._para = None
         self._run = None
         self._stack: list[dict] = []
         self._list_depth = 0
         self._ol_counters: list[int] = []
+
+    def _add_image(self, attrs: dict[str, str]) -> None:
+        """Insert an inline picture at the current spot, in document order.
+
+        Sizing mirrors the PDF export: an explicit Markdown width wins, and
+        anything wider than the text column is scaled down with its aspect
+        ratio preserved.
+        """
+        if self.project_folder is None:
+            return
+        path = resolve_image_src(self.project_folder, attrs.get("src") or "")
+        if path is None or image_px(path) is None:
+            return
+        declared = declared_width_px(attrs)
+        try:
+            run = self._get_run()
+            shape = run.add_picture(
+                str(path), width=Emu(declared * _EMU_PER_PX) if declared else None
+            )
+            if shape.width > _DOCX_MAX_WIDTH:
+                shape.height = int(shape.height * _DOCX_MAX_WIDTH / shape.width)
+                shape.width = _DOCX_MAX_WIDTH
+        except Exception:  # never let one bad picture break an export
+            return
 
     def _push(self, tag: str, attrs):
         fmt = {}
@@ -189,6 +377,8 @@ class _DocxBuilder(HTMLParser):
                 self._push(tag, attrs)
         elif tag == "a":
             self._push(tag, attrs)
+        elif tag == "img":
+            self._add_image(attrs_dict)
         elif tag == "blockquote":
             self._para = None
             self._push(tag, attrs)
@@ -319,9 +509,14 @@ class _DocxBuilder(HTMLParser):
         return fmt
 
 
-def html_to_docx(doc: Document, html: str, title: str | None = None) -> None:
+def html_to_docx(
+    doc: Document,
+    html: str,
+    title: str | None = None,
+    project_folder: Path | None = None,
+) -> None:
     if title:
         doc.add_heading(str(title), level=1)
-    parser = _DocxBuilder(doc)
+    parser = _DocxBuilder(doc, project_folder)
     parser.feed(html)
     parser.close()

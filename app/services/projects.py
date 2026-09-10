@@ -299,6 +299,14 @@ def export_zip(project_id: str, folder_ids: list[str] | None = None) -> bytes:
         for p in (folder / config.STATS_DIRNAME).rglob("*"):
             if p.is_file() and ".reorder-tmp" not in p.parts:
                 included.add(p)
+        # Pictures are project-wide, so a partial export carries the whole
+        # assets folder — otherwise the exported Markdown would point at
+        # images the archive doesn't contain.
+        assets = folder / config.ASSETS_DIRNAME
+        if assets.is_dir():
+            for p in assets.rglob("*"):
+                if p.is_file():
+                    included.add(p)
 
     buffer = io.BytesIO()
     used: set[str] = set()
@@ -333,7 +341,8 @@ def export_docx(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     from app.services.export import collect_documents, md_to_html, html_to_docx
 
     pid = _safe_id(project_id)
-    meta = _read_meta(project_dir(pid) / config.PROJECT_META_FILENAME)
+    folder = project_dir(pid)
+    meta = _read_meta(folder / config.PROJECT_META_FILENAME)
     project_title = meta.get("title", pid)
 
     docs = collect_documents(project_id, folder_ids)
@@ -355,7 +364,7 @@ def export_docx(project_id: str, folder_ids: list[str] | None = None) -> bytes:
             label = folder_name or "Top-level"
             doc.add_heading(label, level=2)
         html = md_to_html(body)
-        html_to_docx(doc, html, title=doc_title)
+        html_to_docx(doc, html, title=doc_title, project_folder=folder)
 
     buffer = io.BytesIO()
     doc.save(buffer)
@@ -370,10 +379,11 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     from fpdf import FPDF
     from fpdf.fonts import FontFace
 
-    from app.services.export import collect_documents, md_to_html
+    from app.services.export import collect_documents, md_to_html, pdf_images_html
 
     pid = _safe_id(project_id)
-    meta = _read_meta(project_dir(pid) / config.PROJECT_META_FILENAME)
+    folder = project_dir(pid)
+    meta = _read_meta(folder / config.PROJECT_META_FILENAME)
     project_title = meta.get("title", pid)
 
     docs = collect_documents(project_id, folder_ids)
@@ -419,7 +429,7 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
         pdf.cell(0, 7, str(doc_title), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
-        html = md_to_html(body)
+        html = pdf_images_html(md_to_html(body), folder, pdf.epw)
         pdf.set_font(serif_family, "", 11)
         pdf.write_html(html, tag_styles={
             "h1": FontFace(family=serif_family, emphasis="B", size_pt=16),
@@ -440,15 +450,23 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
 
 def export_epub(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     """Build a single .epub file from selected markdown documents."""
+    import hashlib
     import io
     import uuid
 
     from ebooklib import epub
 
-    from app.services.export import collect_documents, md_to_html
+    from app.services.export import (
+        collect_documents,
+        declared_width_px,
+        image_media_type,
+        md_to_html,
+        rewrite_images,
+    )
 
     pid = _safe_id(project_id)
-    meta = _read_meta(project_dir(pid) / config.PROJECT_META_FILENAME)
+    folder = project_dir(pid)
+    meta = _read_meta(folder / config.PROJECT_META_FILENAME)
     project_title = meta.get("title", pid)
 
     docs = collect_documents(project_id, folder_ids)
@@ -482,6 +500,34 @@ p { margin: 0.5em 0; }""",
     )
     book.add_item(css)
 
+    # Pictures are embedded as EPUB resources and the chapter HTML is pointed
+    # at them, so a resized picture keeps its width and one image shared by
+    # several documents is stored once (the digest is the resource name).
+    images_by_digest: dict[str, str] = {}
+
+    def register_image(attrs: dict[str, str], path: Path) -> dict[str, str] | None:
+        media = image_media_type(path)
+        if media is None:
+            return None
+        data = path.read_bytes()
+        digest = hashlib.sha1(data).hexdigest()[:12]
+        name = images_by_digest.get(digest)
+        if name is None:
+            name = f"images/{digest}{path.suffix.lower()}"
+            book.add_item(
+                epub.EpubImage(
+                    uid=f"img_{digest}",
+                    file_name=name,
+                    media_type=media,
+                    content=data,
+                )
+            )
+            images_by_digest[digest] = name
+        out = {"src": name, "alt": attrs.get("alt")}
+        if declared_width_px(attrs):
+            out["width"] = attrs["width"]
+        return out
+
     for folder_name, doc_title, body in docs:
         if folder_name != current_folder:
             current_folder = folder_name
@@ -497,7 +543,7 @@ p { margin: 0.5em 0; }""",
             spine.append(sec)
             toc.append(epub.Link(sec.file_name, label, f"toc_{len(spine)}"))
 
-        html_body = md_to_html(body)
+        html_body = rewrite_images(md_to_html(body), folder, register_image)
         full_html = f"<h3>{doc_title}</h3>\n{html_body}"
         ch = epub.EpubHtml(
             title=doc_title,

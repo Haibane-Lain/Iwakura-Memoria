@@ -26,7 +26,7 @@ To run the tests:
 ```
 .venv\Scripts\pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest tests/ -q
-npm run test:js                          # frontend unit tests (node)
+npm run test:js                          # frontend unit tests (node; rebuilds the bundle first)
 ```
 
 Grammar checking requires **Java 17+** and a LanguageTool server. See the
@@ -64,6 +64,11 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   buttons filters that tree by document title or folder name as you type:
   case-insensitive, hierarchy kept in place, the folders leading to a match
   opened for you, and a live result count beside the box. `Esc` clears it.
+- **Inline images** — Drop one or more pictures onto the editor (or paste a
+  screenshot, or use the 🖼 toolbar button) and they appear inline, in both the
+  Write and Wiki tabs. Drag the corner handle to resize — the size is saved
+  with the document — and double-click a picture to see it full size. Pictures
+  are stored as real files in the project's `assets/` folder.
 - **Link-safe rearranging** — Moving or reordering a document rewrites any
   `[[path]]` links that point to it; renaming a document rewrites links that
   point to it by title, so nothing silently breaks.
@@ -98,6 +103,8 @@ data/
     templates/*.json               # lore templates (Character, Location, …)
     worldbuilding/                 # the Wiki tab's scaffolding root
       characters/mara.md
+    assets/                        # pictures inserted into documents
+      mara-portrait-47896fe724.png
     Part One/                      # any folder, nested as deep as you like
       chapter-one.md               # a chapter (type: chapter)
       character-notes.md           # a note (type: note)
@@ -125,8 +132,18 @@ by ordering; folders inside it are ordered like any others.
 
 The **Write tab** shows everything except `worldbuilding/`; the **Wiki tab**
 shows only `worldbuilding/`, so lore lives in its own separate scaffolding
-with the same folder features. The `stats/`, `templates/`, `ai-sessions/` and
-`worldbuilding/` paths (and `project.json`, `dictionary.json`) are reserved.
+with the same folder features. The `stats/`, `templates/`, `ai-sessions/`,
+`assets/` and `worldbuilding/` paths (and `project.json`, `dictionary.json`)
+are reserved.
+
+Pictures used by documents live in a visible `assets/` folder at the project
+root and are referenced **project-root-relative** — `![alt](assets/mara.png)`
+— because that path never changes when a chapter is moved, reordered or
+renamed (document ids do). The folder is hidden from the sidebar and cannot be
+created as a user folder. A picture that has been *resized* is stored as
+inline HTML (`<img src="assets/mara.png" width="300">`, the same convention as
+inline font styling), because the export path's Markdown parser understands
+attribute lists but the editor's does not.
 
 **Backups** live *next to* the data folder at
 `%LOCALAPPDATA%\IwakuraMemoria\backups\` (Settings → Export & backup → *Back
@@ -169,6 +186,12 @@ The **Export** button in the top bar opens a dialog where you can:
 PDF export uses platform-specific serif/mono fonts (Georgia on
 Windows/macOS, DejaVu on Linux).
 
+Inline pictures are embedded in DOCX, PDF, and EPUB (scaled to the page width
+unless the document sets a width), and the `assets/` folder is included in the
+ZIP. A picture that can't be found — a remote URL, a file you deleted by hand
+— is simply left out of the export rather than breaking it. Pictures are only
+accepted as PNG, JPEG, GIF or WebP (not SVG, which can carry script).
+
 ## Editing notes
 
 - `[[Note Title]]` links to other documents by title (type the brackets
@@ -190,6 +213,13 @@ Windows/macOS, DejaVu on Linux).
   clear button to show everything again; searching never changes which folders
   you had expanded, and leaving a tab clears its filter. Only titles and folder
   names are searched, not document text.
+- **Pictures** go straight into the document: drag an image file from Explorer
+  onto the editor, paste a screenshot with **Ctrl+V**, or use the **🖼** toolbar
+  button. The picture is uploaded into the project's `assets/` folder and
+  shown inline at the drop point (or at the cursor for a paste). Drag the small
+  handle at its bottom-right corner to resize it; the size is saved with the
+  document, and the **↺** chip clears it back to natural size. Double-click a
+  picture to view it full size (click anywhere or press **Esc** to dismiss).
 - Wiki pages get a **navigation box** (a small rounded card at the top of
   the editor, Fandom-style) listing the document title and its numbered
   headings; clicking one jumps to that section in the editor.
@@ -355,7 +385,7 @@ static/
   css/themes.css           # CSS-variable palettes (7 themes)
   css/app.css
   js/                      # api, router, ui, themes, library, project, lain,
-                           # sanitize, tree-search
+                           # sanitize, tree-search, image-utils
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
 ```
@@ -405,3 +435,16 @@ section and document styling live entirely in frontmatter.
   round-trip cleanly).
 - Wikilinks are inserted as literal `[[...]]` text; the Wiki tab and
   backlinks panel cover navigation.
+- Pictures are referenced from the **project root** (`assets/<name>`), so a
+  document nested inside a folder resolves them from the project root in an
+  external Markdown editor — the app itself always resolves them correctly, and
+  the reference survives every move, reorder and rename.
+- Remote `https://` pictures display in the editor but are never downloaded, so
+  they are left out of exports; SVG is refused entirely (it can carry script).
+- Pictures are never deleted automatically. Deleting a document leaves its
+  pictures in `assets/` (they may be used elsewhere), so an unused picture is
+  pruned by hand from that folder. Copying content between projects does not
+  copy the pictures with it — the reference stays but the image shows as
+  missing.
+- Uploaded pictures are stored byte-for-byte (identified and validated with
+  Pillow); they are never re-encoded or compressed.

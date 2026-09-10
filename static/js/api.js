@@ -106,6 +106,29 @@ export const api = {
       get: (id) => api.get(`/api/projects/${encodePath(id)}/dictionary`),
       update: (id, words) => api.put(`/api/projects/${encodePath(id)}/dictionary`, { words }),
     },
+    assets: {
+      // Multipart, so it bypasses the JSON `request` helper (like AI uploads).
+      upload: (pid, file) => {
+        const fd = new FormData();
+        fd.append("file", file);
+        return fetch(`/api/projects/${encodePath(pid)}/assets`, {
+          method: "POST",
+          body: fd,
+        }).then(async (res) => {
+          if (!res.ok) {
+            let detail = `${res.status} ${res.statusText}`;
+            try {
+              const data = await res.json();
+              if (data.detail) detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+            } catch {
+              /* ignore */
+            }
+            throw new Error(detail);
+          }
+          return res.json();
+        });
+      },
+    },
   },
 
   docs: {

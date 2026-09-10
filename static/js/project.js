@@ -4,6 +4,7 @@ import * as theme from "./themes.js";
 import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
 import { filterTree } from "./tree-search.js";
+import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import {
   el,
   toast,
@@ -1651,6 +1652,7 @@ const TOOLBAR = [
   { cmd: "codeBlock", label: "</>", title: "Code block" },
   null,
   { cmd: "linkNote", label: "[[  ]]", title: "Link to a note" },
+  { cmd: "image", label: "🖼", title: "Insert an image (or drag & drop / paste one)" },
 ];
 
 let toolbarButtons = [];
@@ -1728,6 +1730,10 @@ function toolbar() {
 function toolbarCommand(cmd) {
   if (cmd === "linkNote") {
     insertWikilinkDialog();
+    return;
+  }
+  if (cmd === "image") {
+    pickImageFiles();
     return;
   }
   if (state.editorCtrl) state.editorCtrl.run(cmd);
@@ -1817,6 +1823,125 @@ function backlinksPanel() {
   return panel;
 }
 
+/* ---------------- inline images ---------------- */
+
+// Transport for the editor's drag & drop / paste / toolbar insertion. The
+// editor bundle owns the ProseMirror side (drop points, node insertion, the
+// resize handle); everything that needs to know the project and show UI lives
+// here. The size and type checks are duplicated server-side, which is the
+// authoritative one.
+async function uploadImageFile(file) {
+  if (!isImageFile(file)) {
+    throw new Error("Only PNG, JPEG, GIF and WebP images can be inserted.");
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error(`"${file.name || "That image"}" is larger than ${MAX_IMAGE_BYTES / (1024 * 1024)} MB.`);
+  }
+  return api.projects.assets.upload(state.project.id, file);
+}
+
+// Double-clicking a picture (in the editor) opens it full size.
+function showImageOverlay({ url, alt }) {
+  if (!url) return;
+  let closed = false;
+  const image = el("img", { class: "image-lightbox", src: url, alt: alt || "" });
+  const { backdrop, close } = showModal([image]);
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", onKey, true);
+    close();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      finish();
+    }
+  };
+  document.addEventListener("keydown", onKey, true);
+  image.addEventListener("click", finish);
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) finish();
+  });
+}
+
+// A file dropped anywhere outside the editor would otherwise make Chromium
+// (and therefore Electron) navigate the window to that file. This guard keeps
+// the drop from doing anything but inserting a picture.
+function setupFileDropGuard() {
+  const hasFiles = (e) => {
+    const types = e.dataTransfer && e.dataTransfer.types;
+    return !!types && Array.from(types).indexOf("Files") !== -1;
+  };
+  const clearHint = () =>
+    document.querySelectorAll(".editor-host.drop-active").forEach((node) => node.classList.remove("drop-active"));
+
+  document.addEventListener("dragover", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const host = e.target.closest && e.target.closest(".editor-host");
+    if (host) host.classList.add("drop-active");
+  });
+  document.addEventListener("dragleave", (e) => {
+    if (!e.relatedTarget) clearHint();
+  });
+  document.addEventListener("dragend", clearHint);
+  document.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    clearHint();
+    // Inside the ProseMirror surface the editor already handled it (its own
+    // drop listener runs first and inserts at the drop point).
+    if (e.target.closest && e.target.closest(".ProseMirror")) return;
+    const dropped = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+    const files = dropped.filter(isImageFile);
+    if (!files.length) {
+      if (dropped.length) toast("Only PNG, JPEG, GIF and WebP images can be inserted.", "error");
+      return;
+    }
+    const ctrl = state.editorCtrl;
+    if (!ctrl) return;
+    if (e.target.closest && e.target.closest(".editor-host")) {
+      // The editor's padding: no ProseMirror drop position, so insert at the caret.
+      (async () => {
+        for (const file of files) {
+          await ctrl.insertImage(file);
+        }
+      })();
+      return;
+    }
+    toast("Drop images into the editor to insert them");
+  });
+}
+
+// The toolbar's picture button — a file picker, for the times dragging isn't
+// convenient.
+let _imageInput = null;
+
+function pickImageFiles() {
+  if (!state.editorCtrl) return;
+  if (!_imageInput) {
+    _imageInput = el("input", {
+      type: "file",
+      multiple: true,
+      accept: ASSET_ACCEPT,
+      hidden: true,
+      onchange: (e) => {
+        const files = Array.from((e.target && e.target.files) || []);
+        if (e.target) e.target.value = "";
+        (async () => {
+          for (const file of files) {
+            if (state.editorCtrl) await state.editorCtrl.insertImage(file);
+          }
+        })();
+      },
+    });
+    document.body.append(_imageInput);
+  }
+  _imageInput.click();
+}
+
 async function renderEditorTab(doc, { wiki }) {
   if (state.editorCtrl) {
     clearTimeout(state.saveTimer);
@@ -1872,6 +1997,13 @@ async function renderEditorTab(doc, { wiki }) {
       onChange: onEditorUpdate,
       onWikilinkClick,
       showNav: wiki,
+      projectId: state.project.id,
+      uploadImage: uploadImageFile,
+      onImageError: (message) => toast(message, "error"),
+      onUploadState: (busy) => {
+        if (busy) setSaveStatus("pending", "Uploading image…");
+      },
+      onOpenImage: showImageOverlay,
     });
   } catch (err) {
     toast("Editor failed to load", "error");
@@ -3229,5 +3361,6 @@ async function init(params) {
 }
 
 export function register() {
+  setupFileDropGuard();
   router.on("project", init);
 }

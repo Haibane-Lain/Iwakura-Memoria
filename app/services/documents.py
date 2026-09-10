@@ -365,7 +365,11 @@ def _is_orderable_entry(path: Path, project_folder: Path) -> bool:
     """Whether an entry participates in ordering (mirrors ``_children``)."""
     name = path.name
     if path.is_dir():
-        if name.startswith(".") or name in (config.STATS_DIRNAME, config.TEMPLATES_DIRNAME):
+        if name.startswith(".") or name.lower() in (
+            config.STATS_DIRNAME,
+            config.TEMPLATES_DIRNAME,
+            config.ASSETS_DIRNAME,
+        ):
             return False
         if path.parent == project_folder and name.lower() == config.WIKI_DIRNAME:
             return False
@@ -432,6 +436,9 @@ def _children(
                 name.startswith(".")
                 or name == config.STATS_DIRNAME
                 or name == config.TEMPLATES_DIRNAME
+                # The image store is internal: it must never appear as a folder
+                # in the Write, Wiki or "all" tree.
+                or name.lower() == config.ASSETS_DIRNAME
             ):
                 continue
             if exclude_wiki and name.lower() == config.WIKI_DIRNAME:
@@ -505,6 +512,7 @@ def _migrate_folder_order(project_id: str) -> None:
             directory.is_dir()
             and not name.startswith(".")
             and name not in (config.STATS_DIRNAME, config.TEMPLATES_DIRNAME)
+            and name.lower() != config.ASSETS_DIRNAME
         )
 
     def _needs_rename(directory: Path) -> bool:
@@ -795,6 +803,9 @@ def _validate_folder_name(name: str) -> str:
         raise DocumentError("Invalid folder name")
     if (
         name in config.RESERVED_FOLDER_NAMES
+        # Case-insensitively too: Windows filesystems are case-insensitive, so
+        # "Assets" and "assets" are the same directory.
+        or name.lower() in {reserved.lower() for reserved in config.RESERVED_FOLDER_NAMES}
         or name.lower() == config.WIKI_DIRNAME
         or name.startswith(".")
     ):

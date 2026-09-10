@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse
 
 from app import config
 from app.routes import ai as ai_routes
+from app.routes import assets as assets_routes
 from app.routes import backups as backup_routes
 from app.routes import documents as documents_routes
 from app.routes import grammar as grammar_routes
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
 
     app.include_router(settings_routes.router)
     app.include_router(projects_routes.router)
+    app.include_router(assets_routes.router)
     app.include_router(documents_routes.router)
     app.include_router(wiki_routes.wiki_router)
     app.include_router(wiki_routes.stats_router)
