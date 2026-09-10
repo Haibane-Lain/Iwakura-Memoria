@@ -6,6 +6,7 @@ import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
 import { filterTree } from "./tree-search.js";
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import { DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
+import { keepScrollTop } from "./scroll-keep.js";
 import {
   el,
   toast,
@@ -683,7 +684,7 @@ async function renameProject(e) {
   }
 }
 
-function renderTree(scrollEl) {
+function renderTree(scrollEl, { keepScroll = false } = {}) {
   const wiki = isWikiScope();
   const tree = activeTree() || { folders: [], documents: [] };
 
@@ -727,7 +728,7 @@ function renderTree(scrollEl) {
   } else {
     frag.append(renderLevel(root, wiki ? "worldbuilding" : ""));
   }
-  scrollEl.replaceChildren(frag);
+  keepScrollTop(scrollEl, () => scrollEl.replaceChildren(frag), keepScroll);
   if (hadFocus) {
     const next = scrollEl.querySelector(".tree-search-input");
     if (next) {
@@ -1582,7 +1583,10 @@ async function openDocument(docId) {
     if (wiki) state.wikiDocId = docId;
     else state.writeDocId = docId;
     setActiveTab(state.currentTab);
-    renderSidebar();
+    // This re-render only moves the .active highlight, so the list must not
+    // move with it (see keepScrollTop: Chromium nudges a scrolled container's
+    // offset when its children are replaced).
+    renderSidebar({ keepScroll: true });
     await renderEditorTab(doc, { wiki });
   } catch (err) {
     console.warn("openDocument failed", docId, err);
@@ -3313,9 +3317,9 @@ function setActiveTab(tab) {
 
 /* ---------------- render shell ---------------- */
 
-function renderSidebar() {
+function renderSidebar({ keepScroll = false } = {}) {
   const scroll = document.querySelector(".sidebar-scroll");
-  if (scroll) renderTree(scroll);
+  if (scroll) renderTree(scroll, { keepScroll });
 }
 
 async function init(params) {

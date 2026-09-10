@@ -1,10 +1,12 @@
-"""Layout contracts for the Wiki tab's text column and Contents card.
+"""Layout contracts for the Wiki tab's text column, Contents card and sidebar.
 
 The Wiki tab is deliberately not the Write tab's narrow reading column: a wiki
 entry uses the window's width (up to a cap) so a wide window is not mostly
 empty, and its Contents card is a compact Fandom-style box that widens only
-when a heading needs the room. The JS tests run in jsdom, which has no layout
-engine, so the rules themselves are asserted here.
+when a heading needs the room. The sidebar keeps its scroll position while a
+document is opened, because Chromium nudges a scrolled container when its
+children are replaced. The JS tests run in jsdom, which has no layout engine,
+so the rules themselves are asserted here.
 
 Run from the workspace root:
 
@@ -16,6 +18,7 @@ import re
 from pathlib import Path
 
 CSS_PATH = Path(__file__).resolve().parent.parent / "static" / "css" / "app.css"
+PROJECT_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "project.js"
 WRITE_COLUMN = 760
 WIKI_COLUMN_MIN = 1000
 CONTENTS_MIN = 200
@@ -66,3 +69,46 @@ def test_contents_box_is_compact_and_grows_with_its_content():
     assert re.search(r"width\s*:\s*fit-content", decls)
     assert _px(decls, "min-width", ".nav-box") >= CONTENTS_MIN
     assert re.search(r"max-width\s*:\s*100%", decls)
+
+
+def test_opening_a_document_keeps_the_sidebar_scroll_position():
+    """The sidebar re-render that an entry click triggers only moves the
+    ``.active`` highlight, so the list must not move with it.
+
+    Chromium re-picks the scroll anchor of a scrolled container when its
+    children are replaced and nudges the offset even though every row comes
+    back identical: measured on a real 123-row wiki sidebar (621px tall,
+    no layout change at all) the offset moved +21px from scrollTop 543 and
+    from 1000, +63px from 2000, while a list short enough not to scroll —
+    and a whole-library list scrolled to the top — stayed put. A plain
+    ``replaceChildren`` of cloned nodes reproduced it with no app code
+    involved, so the fix is to restore the offset around the re-render, on
+    the entry-open path only. jsdom has no layout engine and cannot show the
+    nudge, hence the wiring is pinned here.
+    """
+    js = PROJECT_JS.read_text(encoding="utf-8")
+
+    assert re.search(r'import \{ keepScrollTop \} from "\./scroll-keep\.js"', js), (
+        "project.js must import keepScrollTop from ./scroll-keep.js"
+    )
+    assert re.search(r"function renderTree\(scrollEl, \{ keepScroll = false \} = \{\}\)", js), (
+        "renderTree must accept the keepScroll option"
+    )
+    assert re.search(
+        r"keepScrollTop\(scrollEl, \(\) => scrollEl\.replaceChildren\(frag\), keepScroll\)", js
+    ), "renderTree must replace its children through keepScrollTop"
+    assert not re.search(r"(?m)^\s*scrollEl\.replaceChildren\(frag\);", js), (
+        "renderTree must not replace its children directly"
+    )
+    assert re.search(r"function renderSidebar\(\{ keepScroll = false \} = \{\}\)", js), (
+        "renderSidebar must forward the option"
+    )
+    assert re.search(r"renderTree\(scroll, \{ keepScroll \}\)", js), (
+        "renderSidebar must pass the option on to renderTree"
+    )
+    assert js.count("keepScroll: true") == 1, (
+        "exactly one caller — opening a document — may pin the list"
+    )
+    assert re.search(r"renderSidebar\(\{ keepScroll: true \}\)", js), (
+        "openDocument is the caller that pins the list"
+    )

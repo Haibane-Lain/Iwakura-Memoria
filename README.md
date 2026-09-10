@@ -442,7 +442,8 @@ static/
   css/themes.css           # CSS-variable palettes (7 themes)
   css/app.css
   js/                      # api, router, ui, themes, library, project, lain,
-                           # sanitize, tree-search, image-utils
+                           # sanitize, tree-search, image-utils, fonts, zoom,
+                           # scroll-keep
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
 client/character-table.js  # the wiki info box's TipTap nodes + Markdown form
