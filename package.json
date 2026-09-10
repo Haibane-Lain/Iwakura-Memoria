@@ -8,8 +8,8 @@
     "build": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap",
     "watch": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap --watch",
     "test:sanitize": "node tests/sanitize.test.mjs",
-    "test:wiki": "node tests/wiki-search.test.mjs",
-    "test:js": "npm run test:sanitize && npm run test:wiki"
+    "test:search": "node tests/tree-search.test.mjs",
+    "test:js": "npm run test:sanitize && npm run test:search"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

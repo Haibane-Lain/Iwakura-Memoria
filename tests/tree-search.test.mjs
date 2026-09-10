@@ -1,8 +1,8 @@
-// Node test for the wiki sidebar search filter (static/js/wiki-search.js).
-// Run: node tests/wiki-search.test.mjs  (or `npm run test:wiki`)
+// Node test for the sidebar search filter (static/js/tree-search.js).
+// Run: node tests/tree-search.test.mjs  (or `npm run test:search`)
 import assert from "node:assert/strict";
 
-import { filterWikiTree } from "../static/js/wiki-search.js";
+import { filterTree } from "../static/js/tree-search.js";
 
 const doc = (id, title) => ({ id, title, kind: "note", words: 1 });
 
@@ -51,7 +51,7 @@ const folderIds = (node) => (node.folders || []).map((f) => f.id);
 // 1. An empty query returns the tree untouched and never forces a folder open.
 for (const empty of ["", "   ", null, undefined]) {
   const tree = fixture();
-  const res = filterWikiTree(tree, empty);
+  const res = filterTree(tree, empty);
   assert.equal(res.tree, tree, `query ${JSON.stringify(empty)} returns the same tree`);
   assert.equal(res.count, 4, "all documents counted");
   assert.equal(res.openIds.size, 0, "nothing forced open");
@@ -59,7 +59,7 @@ for (const empty of ["", "   ", null, undefined]) {
 
 // 2. Title match keeps ancestors, drops matched-out branches.
 {
-  const res = filterWikiTree(fixture(), "ari");
+  const res = filterTree(fixture(), "ari");
   assert.deepEqual(ids(res.tree), [], "root has no direct matches");
   assert.deepEqual(folderIds(res.tree), [CHARACTERS], "only the ancestor folder survives");
   assert.deepEqual(ids(res.tree.folders[0]), [ARIA], "sibling folder and non-matches dropped");
@@ -70,7 +70,7 @@ for (const empty of ["", "   ", null, undefined]) {
 
 // 3. Matching is case-insensitive and works mid-word.
 {
-  const res = filterWikiTree(fixture(), "SHIRO");
+  const res = filterTree(fixture(), "SHIRO");
   assert.deepEqual(folderIds(res.tree), [PLACES]);
   assert.deepEqual(ids(res.tree.folders[0]), [SHIRO]);
   assert.equal(res.count, 1);
@@ -80,7 +80,7 @@ for (const empty of ["", "   ", null, undefined]) {
 // 4. A folder whose own name matches keeps its whole subtree; only that
 //    folder is force-opened (nested folders keep their normal expand state).
 {
-  const res = filterWikiTree(fixture(), "characters");
+  const res = filterTree(fixture(), "characters");
   assert.deepEqual(folderIds(res.tree), [CHARACTERS]);
   assert.deepEqual(folderIds(res.tree.folders[0]), [ANTAGONISTS], "descendant folder kept");
   assert.deepEqual(ids(res.tree.folders[0]).sort(), [ARIA], "own document kept");
@@ -91,7 +91,7 @@ for (const empty of ["", "   ", null, undefined]) {
 
 // 5. Deeply nested match force-opens every ancestor on the path.
 {
-  const res = filterWikiTree(fixture(), "vane");
+  const res = filterTree(fixture(), "vane");
   assert.deepEqual(folderIds(res.tree), [CHARACTERS]);
   assert.deepEqual(folderIds(res.tree.folders[0]), [ANTAGONISTS]);
   assert.deepEqual(ids(res.tree.folders[0].folders[0]), [VANE]);
@@ -101,7 +101,7 @@ for (const empty of ["", "   ", null, undefined]) {
 
 // 6. No matches at all yields an empty tree plus a zero count.
 {
-  const res = filterWikiTree(fixture(), "zzzznope");
+  const res = filterTree(fixture(), "zzzznope");
   assert.deepEqual(res.tree.folders, []);
   assert.deepEqual(res.tree.documents, []);
   assert.deepEqual(res.tree.entries, []);
@@ -111,7 +111,7 @@ for (const empty of ["", "   ", null, undefined]) {
 
 // 7. `entries` keeps the original order, filtered to ids that survived.
 {
-  const res = filterWikiTree(fixture(), "note");
+  const res = filterTree(fixture(), "note");
   assert.deepEqual(res.tree.entries, [{ kind: "doc", id: LOOSE }]);
   assert.deepEqual(ids(res.tree), [LOOSE]);
   assert.equal(res.count, 1);
@@ -121,8 +121,8 @@ for (const empty of ["", "   ", null, undefined]) {
 {
   const tree = fixture();
   const before = JSON.stringify(tree);
-  filterWikiTree(tree, "aria");
-  filterWikiTree(tree, "vane");
+  filterTree(tree, "aria");
+  filterTree(tree, "vane");
   assert.equal(JSON.stringify(tree), before, "fixture unchanged");
 }
 
@@ -130,18 +130,39 @@ for (const empty of ["", "   ", null, undefined]) {
 //    back to folder-then-document order.
 {
   const tree = { folders: [], documents: [doc("worldbuilding/1-x", "Xylophone")] };
-  const res = filterWikiTree(tree, "xylo");
+  const res = filterTree(tree, "xylo");
   assert.equal("entries" in res.tree, false);
   assert.deepEqual(ids(res.tree), ["worldbuilding/1-x"]);
 }
 
-// 10. An empty wiki (no folders, no documents) is handled without throwing.
+// 10. An empty tree (no folders, no documents) is handled without throwing.
 {
-  const res = filterWikiTree({ folders: [], documents: [] }, "aria");
+  const res = filterTree({ folders: [], documents: [] }, "aria");
   assert.deepEqual(res.tree.folders, []);
   assert.deepEqual(res.tree.documents, []);
   assert.equal(res.count, 0);
-  assert.deepEqual(filterWikiTree(null, "").count, 0, "null tree tolerated");
+  assert.deepEqual(filterTree(null, "").count, 0, "null tree tolerated");
 }
 
-console.log("wiki-search: all assertions passed");
+// 11. The same filter serves the Write scope: chapters and notes match on
+//     title, and the wiki-specific vocabulary is irrelevant to it.
+{
+  const tree = {
+    folders: [
+      folder("01-part-one", "Part One", [], [doc("01-part-one/01-dawn", "Dawn"), doc("01-part-one/02-dusk", "Dusk")]),
+    ],
+    documents: [doc("01-prologue", "Prologue")],
+    entries: [
+      { kind: "folder", id: "01-part-one" },
+      { kind: "doc", id: "01-prologue" },
+    ],
+  };
+  const res = filterTree(tree, "dusk");
+  assert.deepEqual(folderIds(res.tree), ["01-part-one"], "chapter's folder kept");
+  assert.deepEqual(ids(res.tree.folders[0]), ["01-part-one/02-dusk"], "sibling chapter dropped");
+  assert.deepEqual(ids(res.tree), [], "non-matching root note dropped");
+  assert.equal(res.count, 1);
+  assert.deepEqual([...res.openIds], ["01-part-one"]);
+}
+
+console.log("tree-search: all assertions passed");

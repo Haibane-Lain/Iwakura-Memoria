@@ -3,7 +3,7 @@ import * as router from "./router.js";
 import * as theme from "./themes.js";
 import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
-import { filterWikiTree } from "./wiki-search.js";
+import { filterTree } from "./tree-search.js";
 import {
   el,
   toast,
@@ -41,11 +41,12 @@ const state = {
   statsThrottledAt: 0,
   wikiThrottledAt: 0,
   wikiQuery: "",
+  writeQuery: "",
 };
 
-// Folders the current wiki search render must show expanded. Display-only:
-// searching never edits state.wikiExpanded.
-let _wikiSearchOpen = new Set();
+// Folders the current sidebar search render must show expanded. Display-only:
+// searching never edits state.expanded / state.wikiExpanded.
+let _treeSearchOpen = new Set();
 
 let lainCtrl = null;
 let _creating = false;
@@ -65,6 +66,16 @@ function isWikiScope() {
 
 function activeTree() {
   return isWikiScope() ? state.wikiTree : state.tree;
+}
+
+// Each scope keeps its own search text, like the paired expanded sets.
+function treeQuery() {
+  return isWikiScope() ? state.wikiQuery : state.writeQuery;
+}
+
+function setTreeQuery(query) {
+  if (isWikiScope()) state.wikiQuery = query;
+  else state.writeQuery = query;
 }
 
 function collectTree(node) {
@@ -679,18 +690,17 @@ function renderTree(scrollEl) {
   // Typing re-renders the whole sidebar, and renderSidebar() is also reached
   // from autosave and tree mutations. Remember the caret so the box keeps
   // focus and position across a replaceChildren().
-  const prevInput = wiki ? scrollEl.querySelector(".tree-search-input") : null;
+  const prevInput = scrollEl.querySelector(".tree-search-input");
   const hadFocus = !!prevInput && document.activeElement === prevInput;
   const caret = hadFocus ? [prevInput.selectionStart, prevInput.selectionEnd] : null;
 
-  const { tree: shown, openIds, count } = wiki
-    ? filterWikiTree(tree, state.wikiQuery)
-    : { tree, openIds: new Set(), count: 0 };
-  _wikiSearchOpen = openIds;
+  // The filter is scope-agnostic; only the tree and the box's wording differ.
+  const { tree: shown, openIds, count } = filterTree(tree, treeQuery());
+  _treeSearchOpen = openIds;
 
   const frag = document.createDocumentFragment();
+  frag.append(treeSearchRow(count));
   if (wiki) {
-    frag.append(wikiSearchRow(count));
     frag.append(
       el("div", { class: "tree-toolbar" }, [
         el("button", { class: "mini-add wide", title: "New wiki entry", onclick: () => newWikiEntry("") }, "+ Entry"),
@@ -728,34 +738,35 @@ function renderTree(scrollEl) {
 }
 
 function emptyTreeHint(wiki) {
-  if (!wiki) return "Create a folder, chapter, or note to begin.";
-  const query = state.wikiQuery.trim();
-  if (query) return `No entries match "${query}".`;
-  return "Create a folder or lore entry to begin.";
+  const query = treeQuery().trim();
+  if (query) return `No matches for "${query}".`;
+  return wiki ? "Create a folder or lore entry to begin." : "Create a folder, chapter, or note to begin.";
 }
 
-function wikiSearchRow(count) {
-  const active = state.wikiQuery.trim() !== "";
+function treeSearchRow(count) {
+  const active = treeQuery().trim() !== "";
   const input = el("input", {
     class: "tree-search-input",
     type: "search",
-    placeholder: "Search wiki…",
-    title: "Filter wiki entries and folders by name",
-    value: state.wikiQuery,
+    placeholder: isWikiScope() ? "Search wiki…" : "Search chapters & notes…",
+    title: isWikiScope()
+      ? "Filter wiki entries and folders by name"
+      : "Filter chapters, notes, and folders by name",
+    value: treeQuery(),
     oninput: (e) => {
-      state.wikiQuery = e.target.value;
+      setTreeQuery(e.target.value);
       renderSidebar();
     },
     // Chromium's native clear button fires `search` (and `input`).
     onsearch: (e) => {
-      state.wikiQuery = e.target.value;
+      setTreeQuery(e.target.value);
       renderSidebar();
     },
     onkeydown: (e) => {
-      if (e.key !== "Escape" || !state.wikiQuery) return;
+      if (e.key !== "Escape" || !treeQuery()) return;
       // Keep this from reaching the document-level context-menu handler.
       e.stopPropagation();
-      state.wikiQuery = "";
+      setTreeQuery("");
       renderSidebar();
     },
   });
@@ -796,7 +807,7 @@ function renderFolderRow(folder, parentId) {
   const wiki = isWikiScope();
   // A search renders matches (and their ancestors) open without touching the
   // user's own expand state.
-  const searchOpen = wiki && _wikiSearchOpen.has(folder.id);
+  const searchOpen = _treeSearchOpen.has(folder.id);
   const expanded = searchOpen || (wiki ? state.wikiExpanded : state.expanded).has(folder.id);
   const head = el(
     "div",
@@ -1248,6 +1259,8 @@ async function newDocument(kind, folder) {
       folder: folder || null,
     });
     await flushSave();
+    // A live filter would hide the chapter/note we just made; show the full tree.
+    state.writeQuery = "";
     await afterTreeChange();
     await refreshWiki();
     await openDocument(doc.id);
@@ -1505,7 +1518,7 @@ async function newFolder(parent) {
     await api.folders.create(state.project.id, name.trim(), parent || null);
     if (parent) (isWikiScope() ? state.wikiExpanded : state.expanded).add(parent);
     // A live filter would hide the folder we just made; show the full tree.
-    if (isWikiScope()) state.wikiQuery = "";
+    setTreeQuery("");
     await afterTreeChange();
   } catch (err) {
     toast(err.message, "error");
@@ -3066,9 +3079,10 @@ async function switchTab(tab) {
   const main = document.getElementById("main-content");
   if (main) main.style.opacity = "0";
   try {
-  // Leaving the Wiki tab drops its search, so arriving there always shows the
-  // full tree rather than a stale filter hiding entries.
+  // Leaving a tab drops its search, so arriving there always shows the full
+  // tree rather than a stale filter hiding documents.
   if (tab !== "wiki") state.wikiQuery = "";
+  if (tab !== "write") state.writeQuery = "";
   if (tab === "write" || tab === "wiki") {
     await flushSave();
     const wiki = tab === "wiki";
@@ -3129,8 +3143,9 @@ function renderSidebar() {
 }
 
 async function init(params) {
-  // A fresh project starts with an unfiltered wiki sidebar.
+  // A fresh project starts with unfiltered sidebars.
   state.wikiQuery = "";
+  state.writeQuery = "";
   try {
     const settings = await api.settings.get();
     state.settings = {

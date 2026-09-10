@@ -1,9 +1,9 @@
-// Sidebar search for the wiki tree: filters entries by title and folders by
-// name, keeping the hierarchy in place.
+// Sidebar search for a document tree (Write or Wiki): filters documents by
+// title and folders by name, keeping the hierarchy in place.
 //
-// Pure and DOM-free so `tests/wiki-search.test.mjs` can drive it in Node.
+// Pure and DOM-free so `tests/tree-search.test.mjs` can drive it in Node.
 // The input and output share the tree shape returned by
-// `GET /api/projects/{id}/tree?scope=wiki`: each level is
+// `GET /api/projects/{id}/tree?scope=…`: each level is
 // `{ folders, documents, entries? }`.
 //
 // Never mutates the tree it is given — a filtered query builds new node
@@ -26,7 +26,7 @@ function _matches(name, query) {
  *   `openIds` lists folders that must render expanded (each match and every
  *   ancestor leading to one); `count` is the number of documents shown.
  */
-export function filterWikiTree(tree, query) {
+export function filterTree(tree, query) {
   const root = tree || { folders: [], documents: [] };
   const q = String(query == null ? "" : query).trim().toLowerCase();
   const openIds = new Set();
