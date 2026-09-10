@@ -5,8 +5,9 @@ entry uses the window's width (up to a cap) so a wide window is not mostly
 empty, and its Contents card is a compact Fandom-style box that widens only
 when a heading needs the room. The sidebar keeps its scroll position while a
 document is opened, because Chromium nudges a scrolled container when its
-children are replaced. The JS tests run in jsdom, which has no layout engine,
-so the rules themselves are asserted here.
+children are replaced, and its search box is pinned outside the scroller so it
+stays visible however long the tree gets. The JS tests run in jsdom, which has
+no layout engine, so the rules themselves are asserted here.
 
 Run from the workspace root:
 
@@ -91,7 +92,7 @@ def test_opening_a_document_keeps_the_sidebar_scroll_position():
     assert re.search(r'import \{ keepScrollTop \} from "\./scroll-keep\.js"', js), (
         "project.js must import keepScrollTop from ./scroll-keep.js"
     )
-    assert re.search(r"function renderTree\(scrollEl, \{ keepScroll = false \} = \{\}\)", js), (
+    assert re.search(r"function renderTree\(sidebarEl, \{ keepScroll = false \} = \{\}\)", js), (
         "renderTree must accept the keepScroll option"
     )
     assert re.search(
@@ -103,7 +104,7 @@ def test_opening_a_document_keeps_the_sidebar_scroll_position():
     assert re.search(r"function renderSidebar\(\{ keepScroll = false \} = \{\}\)", js), (
         "renderSidebar must forward the option"
     )
-    assert re.search(r"renderTree\(scroll, \{ keepScroll \}\)", js), (
+    assert re.search(r"renderTree\(bar, \{ keepScroll \}\)", js), (
         "renderSidebar must pass the option on to renderTree"
     )
     assert js.count("keepScroll: true") == 1, (
@@ -111,4 +112,41 @@ def test_opening_a_document_keeps_the_sidebar_scroll_position():
     )
     assert re.search(r"renderSidebar\(\{ keepScroll: true \}\)", js), (
         "openDocument is the caller that pins the list"
+    )
+
+
+def test_the_sidebar_search_box_is_pinned_outside_the_scroller():
+    """The search box must stay visible however far the tree is scrolled.
+
+    It is a sibling of the scroller, not its first child: inside, it would
+    scroll away with the list (and Chromium would have something to reveal
+    when the box is refocused after a re-render, which is what used to pull a
+    long list back to the top).
+    """
+    js = PROJECT_JS.read_text(encoding="utf-8")
+
+    assert re.search(r'const pin = el\("div", \{ class: "sidebar-pin" \}\)', js), (
+        "sidebar() must build a pinned strip for the search box"
+    )
+    assert re.search(r"(?m)^\s*pin,\n\s*scroll\n\s*\);", js), (
+        "the pinned strip must sit above the scroller"
+    )
+    assert re.search(r'pinEl\.replaceChildren\(treeSearchRow\(count\)\)', js), (
+        "the search box must be rendered into the pinned strip"
+    )
+    assert not re.search(r"frag\.append\(treeSearchRow\(count\)\)", js), (
+        "the search box must not be rendered into the scroller's contents"
+    )
+    assert re.search(
+        r'const pinEl = sidebarEl\.querySelector\("\.sidebar-pin"\)', js
+    ), "renderTree must find the pinned strip from the sidebar"
+
+    # The strip keeps its natural height and cannot be squeezed by a long tree,
+    # so it is the scroller below it — and only that — that gives.
+    decls = _block(".sidebar-pin")
+    assert re.search(r"flex\s*:\s*0\s+0\s+auto", decls), (
+        ".sidebar-pin must not grow or shrink with the tree"
+    )
+    assert not re.search(r"overflow\s*:\s*(auto|scroll)", decls), (
+        ".sidebar-pin must not be scrollable itself"
     )

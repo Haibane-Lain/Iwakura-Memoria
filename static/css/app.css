@@ -366,13 +366,21 @@ a {
   overflow: hidden;
 }
 
+/* Pinned above the scroller: the search box must stay reachable no matter how
+   far down the tree the list is scrolled. */
+.sidebar-pin {
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
 .sidebar-scroll {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
 }
 
-.sidebar-scroll.drag-root {
+.sidebar-scroll.drag-root,
+.sidebar-pin.drag-root {
   outline: 2px dashed var(--accent);
   outline-offset: -4px;
   border-radius: var(--radius-sm);

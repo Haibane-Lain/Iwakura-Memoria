@@ -637,6 +637,9 @@ async function updateTopbar() {
 
 function sidebar() {
   const sidebarEl = el("div", { class: "sidebar" });
+  // The search box is pinned between the tabs and the scroller so it stays
+  // visible however long the tree below it gets.
+  const pin = el("div", { class: "sidebar-pin" });
   const scroll = el("div", { class: "sidebar-scroll" });
   sidebarEl.append(
     el("div", { class: "sidebar-head" }, [
@@ -664,10 +667,14 @@ function sidebar() {
         }, label)
       )
     ),
+    pin,
     scroll
   );
   sidebarEl._scroll = scroll;
   setupRootDrop(scroll);
+  // The pinned strip is sidebar space too, so dropping onto it still means
+  // "move to the root" — as it did when the search box scrolled with the list.
+  setupRootDrop(pin);
   return sidebarEl;
 }
 
@@ -684,14 +691,19 @@ async function renameProject(e) {
   }
 }
 
-function renderTree(scrollEl, { keepScroll = false } = {}) {
+function renderTree(sidebarEl, { keepScroll = false } = {}) {
   const wiki = isWikiScope();
   const tree = activeTree() || { folders: [], documents: [] };
+
+  // The search box lives in the pinned strip, the toolbar and the tree in the
+  // scroller underneath it.
+  const pinEl = sidebarEl.querySelector(".sidebar-pin");
+  const scrollEl = sidebarEl.querySelector(".sidebar-scroll");
 
   // Typing re-renders the whole sidebar, and renderSidebar() is also reached
   // from autosave and tree mutations. Remember the caret so the box keeps
   // focus and position across a replaceChildren().
-  const prevInput = scrollEl.querySelector(".tree-search-input");
+  const prevInput = pinEl.querySelector(".tree-search-input");
   const hadFocus = !!prevInput && document.activeElement === prevInput;
   const caret = hadFocus ? [prevInput.selectionStart, prevInput.selectionEnd] : null;
 
@@ -700,7 +712,6 @@ function renderTree(scrollEl, { keepScroll = false } = {}) {
   _treeSearchOpen = openIds;
 
   const frag = document.createDocumentFragment();
-  frag.append(treeSearchRow(count));
   if (wiki) {
     frag.append(
       el("div", { class: "tree-toolbar" }, [
@@ -728,14 +739,19 @@ function renderTree(scrollEl, { keepScroll = false } = {}) {
   } else {
     frag.append(renderLevel(root, wiki ? "worldbuilding" : ""));
   }
-  keepScrollTop(scrollEl, () => scrollEl.replaceChildren(frag), keepScroll);
+  // The box carries the query, the wording and the hit count, so it is rebuilt
+  // every render — outside the scroller, where that cannot move the list. It is
+  // refocused before the list is restored, since focusing a box that never
+  // scrolls out of view has nothing to reveal.
+  pinEl.replaceChildren(treeSearchRow(count));
   if (hadFocus) {
-    const next = scrollEl.querySelector(".tree-search-input");
+    const next = pinEl.querySelector(".tree-search-input");
     if (next) {
       next.focus();
       next.setSelectionRange(caret[0], caret[1]);
     }
   }
+  keepScrollTop(scrollEl, () => scrollEl.replaceChildren(frag), keepScroll);
 }
 
 function emptyTreeHint(wiki) {
@@ -3318,8 +3334,8 @@ function setActiveTab(tab) {
 /* ---------------- render shell ---------------- */
 
 function renderSidebar({ keepScroll = false } = {}) {
-  const scroll = document.querySelector(".sidebar-scroll");
-  if (scroll) renderTree(scroll, { keepScroll });
+  const bar = document.querySelector(".sidebar");
+  if (bar) renderTree(bar, { keepScroll });
 }
 
 async function init(params) {

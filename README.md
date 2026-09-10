@@ -63,7 +63,9 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
 - **Sidebar search** — A search box above the **Write** and **Wiki** sidebar
   buttons filters that tree by document title or folder name as you type:
   case-insensitive, hierarchy kept in place, the folders leading to a match
-  opened for you, and a live result count beside the box. `Esc` clears it.
+  opened for you, and a live result count beside the box. `Esc` clears it. The
+  box is pinned below the tabs, so it stays in reach however far down a long
+  tree you have scrolled.
 - **Inline images** — Drop one or more pictures onto the editor (or paste a
   screenshot, or use the 🖼 toolbar button) and they appear inline, in both the
   Write and Wiki tabs. Drag the corner handle to resize — the size is saved
@@ -252,7 +254,9 @@ to `?` instead of failing the export.
   own name matches keeps its whole subtree. Press **Esc** or use the box's
   clear button to show everything again; searching never changes which folders
   you had expanded, and leaving a tab clears its filter. Only titles and folder
-  names are searched, not document text.
+  names are searched, not document text. The box itself sits outside the
+  scrolling part of the sidebar — the buttons and the tree scroll under it —
+  so it is always there, even at the bottom of a long tree.
 - **Pictures** go straight into the document: drag an image file from Explorer
   onto the editor, paste a screenshot with **Ctrl+V**, or use the **🖼** toolbar
   button. The picture is uploaded into the project's `assets/` folder and
