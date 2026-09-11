@@ -9,6 +9,9 @@ static/dist/
 __pycache__/
 *.pyc
 LanguageTool 6.9/
+# WordNet 3.0 for offline Lookup — drop it next to the code (or set
+# IWAKURA_DICT_DIR); see the README's Lookup section.
+WordNet 3.0/
 
 # Distribution build outputs (scripts/build/build.bat).
 scripts/build/_bundle/

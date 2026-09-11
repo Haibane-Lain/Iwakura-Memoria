@@ -308,9 +308,11 @@ WordNet 3.0/
 ```
 
 WordNet is free from https://wordnet.princeton.edu/ (the 3.0 database,
-`WordNet-3.0.tar.gz`). A packaged build ships it under `extraResources` and
-passes `IWAKURA_DICT_DIR`, so packaged users need no setup. When the data is
-missing, Lookup says so instead of failing, and everything else keeps working.
+`WordNet-3.0.tar.gz`). In development, drop the folder next to the code; a
+packaged build can include it by adding `WordNet 3.0/` to `extraResources` (as
+`wordnet`), which the Electron shell already passes as `IWAKURA_DICT_DIR`. When
+the data is missing, Lookup says so instead of failing, and everything else
+keeps working.
 
 ## Export
 
@@ -457,7 +459,9 @@ The script, in order:
    `scripts/build/`** and the package manifest is in `electron/package.json`’s
    `build` block).
 4. Runs electron-builder, bundling `server/`, `LanguageTool 6.9/` as
-   `languagetool/`, and a JRE as `jre/` into the installer.
+   `languagetool/`, and a JRE as `jre/` into the installer. (Add
+   `WordNet 3.0/` as `wordnet/` too if you want offline Lookup in the
+   installer; the shell already passes its path.)
 
 The installer lands at `dist/electron/Iwakura Memoria Setup*.exe`.
 

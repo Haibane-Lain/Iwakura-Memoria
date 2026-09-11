@@ -12,6 +12,7 @@ export default [
       ".venv/**",
       "_jre/**",
       "LanguageTool 6.9/**",
+      "WordNet 3.0/**",
       "static/lib/**",
       "static/dist/**",
       "dist/**",

@@ -83,11 +83,14 @@ async function startServer() {
   // Tell the server where the bundled LanguageTool + JRE live so grammar works
   // without a system Java. Under dev these env vars are unset and the server
   // falls back to its own `LanguageTool 6.9/` + system `java` (see grammar.py).
+  // Same idea for Lookup: a packaged build may ship WordNet as
+  // extraResources/wordnet; dev falls back to `WordNet 3.0/` (see lookup.py).
   const env = {
     ...process.env,
     IWAKURA_RESOURCES_DIR: RES,
     IWAKURA_LT_DIR: path.join(RES, "languagetool"),
     IWAKURA_JRE_DIR: path.join(RES, "jre"),
+    IWAKURA_DICT_DIR: path.join(RES, "wordnet"),
   };
 
   // cwd: dev uses the repo root; packaged uses the writable user-data dir
