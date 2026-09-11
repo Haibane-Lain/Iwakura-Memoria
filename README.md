@@ -26,7 +26,7 @@ To run the tests:
 ```
 .venv\Scripts\pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest tests/ -q
-npm run test:js                          # frontend unit tests (node; rebuilds the bundle first)
+npm run test:js                          # frontend tests (node; unit + shell smoke; rebuilds the bundle first)
 ```
 
 To lint (both must pass in CI alongside the tests):

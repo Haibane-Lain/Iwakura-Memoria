@@ -15,7 +15,8 @@
     "test:chartable": "node tests/editor-chartable.test.mjs",
     "test:zoom": "node tests/zoom.test.mjs",
     "test:scrollkeep": "node tests/scroll-keep.test.mjs",
-    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable && npm run test:zoom && npm run test:scrollkeep"
+    "test:smoke": "node tests/app-smoke.test.mjs",
+    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
