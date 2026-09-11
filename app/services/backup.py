@@ -7,8 +7,9 @@ extracts back to the ``data/`` layout. Backups live next to the data dir
 
 Transient junk is skipped: staged ``.reorder-tmp`` renumbers, atomic-write
 ``*.tmp`` leftovers, the ``.trash`` recycle bin, the ``.snapshots`` version
-history, and hidden files. Old backups beyond ``_BACKUP_KEEP`` are pruned
-automatically after each new one.
+history, and hidden files. Comment bodies (``.comments``) are content, so they
+are the one hidden tree that *is* backed up. Old backups beyond
+``_BACKUP_KEEP`` are pruned automatically after each new one.
 """
 from __future__ import annotations
 
@@ -43,6 +44,10 @@ def _iter_backup_paths() -> list[Path]:
 
 
 def _skip_entry(path: Path) -> bool:
+    # Comment bodies are not transient junk: keep them so a restore gets the
+    # review notes back with the documents they annotate.
+    if config.COMMENTS_DIRNAME in path.parts:
+        return False
     return (
         config.REORDER_TMP_DIRNAME in path.parts
         or config.TRASH_DIRNAME in path.parts

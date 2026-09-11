@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from app import config
+from app.services import comments as comments_service
 from app.services import documents as documents_service
 from app.services import snapshots as snapshots_service
 from app.services import trash as trash_service
@@ -234,6 +235,7 @@ def delete_project(project_id: str) -> None:
     shutil.rmtree(folder)
     trash_service.delete_project_trash(pid)
     snapshots_service.delete_project_snapshots(pid)
+    comments_service.delete_project_comments(pid)
 
 
 def get_document_tree(project_id: str, scope: str = "write") -> dict[str, Any]:

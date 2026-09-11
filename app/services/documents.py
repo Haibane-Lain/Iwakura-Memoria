@@ -26,6 +26,7 @@ from typing import Any
 import yaml
 
 from app import config
+from app.services import comments as comments_service
 from app.services import snapshots as snapshots_service
 from app.services import trash as trash_service
 
@@ -822,9 +823,10 @@ def rewrite_wikilink_ids(project_id: str, id_map: dict[str, str]) -> int:
 def _apply_id_renames(project_id: str, id_map: dict[str, str]) -> None:
     """A move, reorder, or folder rename changed document ids: rewrite the
     wikilinks that pointed at them and move each affected document's
-    snapshots alongside it."""
+    snapshots and comments alongside it."""
     rewrite_wikilink_ids(project_id, id_map)
     snapshots_service.rekey_map(project_id, id_map)
+    comments_service.rekey_map(project_id, id_map)
 
 
 def rewrite_wikilink_titles(project_id: str, old_title: str, new_title: str) -> int:

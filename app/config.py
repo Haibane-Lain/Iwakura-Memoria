@@ -69,6 +69,10 @@ TRASH_DIRNAME = ".trash"
 # sibling of the projects) so it can never show up in a tree, a word count, a
 # wikilink scan, or an export, and it is deliberately excluded from backups.
 SNAPSHOTS_DIRNAME = ".snapshots"
+# Comment bodies, anchored in the document by an inline `data-cid` marker.
+# At the data root for the same reason as the trash and snapshots; unlike
+# those, it is content, so backups keep it.
+COMMENTS_DIRNAME = ".comments"
 WIKI_DIRNAME = "worldbuilding"
 TEMPLATES_DIRNAME = "templates"
 # Uploaded pictures for inline images, one folder per project. Deliberately a

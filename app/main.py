@@ -15,6 +15,7 @@ from app import config
 from app.routes import ai as ai_routes
 from app.routes import assets as assets_routes
 from app.routes import backups as backup_routes
+from app.routes import comments as comments_routes
 from app.routes import documents as documents_routes
 from app.routes import grammar as grammar_routes
 from app.routes import projects as projects_routes
@@ -198,6 +199,7 @@ def create_app() -> FastAPI:
     app.include_router(search_routes.router)
     app.include_router(trash_routes.router)
     app.include_router(snapshot_routes.router)
+    app.include_router(comments_routes.router)
     app.include_router(backup_routes.router)
 
     config.STATIC_DIR.mkdir(parents=True, exist_ok=True)
