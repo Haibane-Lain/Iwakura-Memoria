@@ -38,7 +38,7 @@ async function check(label, fn) {
   }
 }
 
-function open(content) {
+function open(content, items) {
   const host = dom.window.document.getElementById("m");
   host.replaceChildren();
   const ctrl = dom.window.LainEditor.create({
@@ -51,6 +51,7 @@ function open(content) {
     onImageError: () => {},
     onUploadState: () => {},
     onOpenImage: () => {},
+    getWikilinkItems: () => items || [],
   });
   return { host, ctrl, close: () => ctrl.destroy() };
 }
@@ -307,6 +308,71 @@ await check("the slash menu closes when its trigger is deleted", () => {
   assert.ok(slashMenu());
   s.ctrl.editor.chain().deleteRange({ from: 1, to: 2 }).run();
   assert.equal(slashMenu(), null);
+  s.close();
+});
+
+/* ---------------- wikilink autocomplete ---------------- */
+
+const wikiMenu = () => dom.window.document.querySelector(".wikilink-menu");
+
+await check("typing [[ opens the title list and filters it", () => {
+  dismissMenu();
+  const s = open("", [
+    { id: "a", title: "Alice", hint: "Chars" },
+    { id: "b", title: "Albert", hint: "" },
+    { id: "c", title: "Mara", hint: "" },
+  ]);
+  s.ctrl.editor.chain().insertContent("See [[").run();
+  const menu = wikiMenu();
+  assert.ok(menu, "the menu opens on [[");
+  assert.equal(menu.querySelectorAll(".wikilink-item").length, 3);
+
+  s.ctrl.editor.chain().insertContent("al").run();
+  const labels = [...wikiMenu().querySelectorAll(".wikilink-item-label")].map((n) => n.textContent);
+  assert.deepEqual(labels, ["Alice", "Albert"], "only matches remain, prefix-ranked");
+  s.close();
+  dismissMenu();
+});
+
+await check("choosing a title completes the link", () => {
+  dismissMenu();
+  const s = open("", [{ id: "a", title: "Alice", hint: "" }]);
+  s.ctrl.editor.chain().insertContent("See [[Al").run();
+  const item = wikiMenu().querySelector(".wikilink-item");
+  assert.ok(item, "a match is offered");
+  item.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(wikiMenu(), null, "the menu closes");
+  assert.equal(s.ctrl.getMarkdown(), "See [[Alice]]");
+  s.close();
+});
+
+await check("offers a literal link when no title matches", () => {
+  dismissMenu();
+  const s = open("", [{ id: "a", title: "Alice", hint: "" }]);
+  s.ctrl.editor.chain().insertContent("[[Zeta").run();
+  const create = wikiMenu().querySelector(".wikilink-item-new");
+  assert.ok(create, "the create row is offered");
+  create.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(s.ctrl.getMarkdown(), "[[Zeta]]");
+  s.close();
+});
+
+await check("does not reopen inside an already-closed link", () => {
+  dismissMenu();
+  const s = open("[[Alice]]", [{ id: "a", title: "Alice", hint: "" }]);
+  // Caret between the brackets, after "Ali" (position 6 in a leading paragraph).
+  s.ctrl.editor.chain().setTextSelection(6).run();
+  assert.equal(wikiMenu(), null, "no menu while editing inside a link");
+  s.close();
+});
+
+await check("the wikilink menu closes when its trigger is deleted", () => {
+  dismissMenu();
+  const s = open("", [{ id: "a", title: "Alice", hint: "" }]);
+  s.ctrl.editor.chain().insertContent("[[").run();
+  assert.ok(wikiMenu());
+  s.ctrl.editor.chain().deleteRange({ from: 1, to: 3 }).run();
+  assert.equal(wikiMenu(), null);
   s.close();
 });
 

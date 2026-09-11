@@ -671,6 +671,7 @@ function mountPaneEditor(pane, doc) {
       },
       onOpenImage: shell.showImageOverlay,
       onPickPortrait: (pos) => shell.pickImageFiles(pos),
+      getWikilinkItems: () => wikilinkItemsFor(doc.id),
     });
   } catch {
     toast("Editor failed to load", "error");
@@ -707,6 +708,22 @@ async function addWordToDictionary(ctrl, word) {
   if (ctrl.editor) {
     ctrl.editor.view.dispatch(ctrl.editor.state.tr.setMeta("forceGrammar", true));
   }
+}
+
+// Titles the `[[wikilink]]` autocomplete offers: every Write and Wiki document
+// except the one being edited (linking to yourself is never useful). The hint
+// is the containing folder path, so two similarly named notes are tellable
+// apart. Read live each time the popup opens, so renames are picked up.
+function wikilinkItemsFor(currentDocId) {
+  return allDocs()
+    .filter((doc) => doc.id !== currentDocId)
+    .map((doc) => ({ id: doc.id, title: doc.title, hint: wikilinkFolderHint(doc) }));
+}
+
+function wikilinkFolderHint(doc) {
+  const parts = String(doc.id || "").split("/");
+  parts.pop();
+  return parts.map((segment) => segment.replace(/^\d+-/, "")).join("/");
 }
 
 // Redraw the whole editor tab from pane state: tab strip, one shared toolbar,

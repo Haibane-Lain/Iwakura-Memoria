@@ -32,6 +32,7 @@ import {
   makeInlineMarkExtensions,
 } from "./editor-primitives.js";
 import { makeSlashMenuExtension } from "./slash-menu.js";
+import { makeWikilinkMenuExtension } from "./wikilink-menu.js";
 import { wordRange } from "./word-at.js";
 import {
   applyCommentsMeta,
@@ -967,7 +968,7 @@ function toMarkdown(editor) {
   return md;
 }
 
-function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, navWidget, imageOpts }) {
+function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, navWidget, imageOpts, getWikilinkItems }) {
   const editor = new Editor({
     element,
     extensions: [
@@ -991,6 +992,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       ...makeTaskListExtensions(),
       ...makeInlineMarkExtensions(),
       makeSlashMenuExtension(),
+      makeWikilinkMenuExtension(getWikilinkItems),
       makeCommentsExtension(),
       ...makeCharacterTableNodes(imageOpts),
     ],
