@@ -387,7 +387,8 @@ const GrammarExtension = Extension.create({
 
 const FontSize = Mark.create({
   name: "fontSize",
-  inclusive: false,
+  // Inclusive so a size chosen with the caret applies to what is typed next.
+  inclusive: true,
   addAttributes() {
     return { size: { default: null } };
   },
@@ -411,7 +412,8 @@ const FontSize = Mark.create({
 
 const FontFamily = Mark.create({
   name: "fontFamily",
-  inclusive: false,
+  // Inclusive so a family chosen with the caret applies to what is typed next.
+  inclusive: true,
   addAttributes() {
     return { family: { default: null } };
   },

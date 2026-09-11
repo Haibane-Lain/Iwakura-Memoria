@@ -216,6 +216,23 @@ await check("text color sets, round-trips and clears", () => {
   s.close();
 });
 
+await check("a color chosen at the caret applies to everything typed next", () => {
+  const s = open("");
+  s.ctrl.setTextColor("#8a2be2");
+  // One transaction per character, the way a keyboard types.
+  for (const ch of "asdasd") s.ctrl.editor.chain().insertContent(ch).run();
+  assert.equal(s.ctrl.getMarkdown(), '<span style="color:#8a2be2">asdasd</span>');
+  s.close();
+});
+
+await check("a size chosen at the caret applies to everything typed next", () => {
+  const s = open("");
+  s.ctrl.editor.chain().focus().setMark("fontSize", { size: "24" }).run();
+  for (const ch of "big") s.ctrl.editor.chain().insertContent(ch).run();
+  assert.equal(s.ctrl.getMarkdown(), '<span style="font-size: 24px;">big</span>');
+  s.close();
+});
+
 await check("inline marks inside a character-table cell survive", () => {
   const box = [
     '<aside class="character-table">',

@@ -95,7 +95,10 @@ export function makeTaskListExtensions() {
 // empty `<span>` to its Markdown).
 const TextColor = Mark.create({
   name: "textColor",
-  inclusive: false,
+  // Inclusive so a color chosen with the caret (stored marks) keeps applying as
+  // the user types, the way bold/highlight do. With it off only the first
+  // character picks up the color.
+  inclusive: true,
   addAttributes() {
     return { color: { default: null } };
   },
