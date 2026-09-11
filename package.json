@@ -21,6 +21,7 @@
     "test:commentspanel": "node tests/comments-panel.test.mjs",
     "test:lookup": "node tests/lookup-dialog.test.mjs",
     "test:wordat": "node tests/word-at.test.mjs",
+    "test:wikilinksuggest": "node tests/wikilink-suggest.test.mjs",
     "test:history": "node tests/editor-history.test.mjs",
     "test:pool": "node tests/editor-pool.test.mjs",
     "test:tabs": "node tests/doc-tabs.test.mjs",
@@ -31,7 +32,7 @@
     "test:zoom": "node tests/zoom.test.mjs",
     "test:scrollkeep": "node tests/scroll-keep.test.mjs",
     "test:smoke": "node tests/app-smoke.test.mjs",
-    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable && npm run test:primitives && npm run test:comments && npm run test:commentspanel && npm run test:lookup && npm run test:wordat && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:editorprefs && npm run test:workspace && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
+    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable && npm run test:primitives && npm run test:comments && npm run test:commentspanel && npm run test:lookup && npm run test:wordat && npm run test:wikilinksuggest && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:editorprefs && npm run test:workspace && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
