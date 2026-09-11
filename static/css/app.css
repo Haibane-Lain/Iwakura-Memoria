@@ -2327,22 +2327,26 @@ a {
   padding: 6px 2px;
 }
 
-.rep-sentence {
+.rep-sentence,
+.rep-phrase {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 
-.rep-sentence:last-child {
+.rep-sentence:last-child,
+.rep-phrase:last-child {
   border-bottom: none;
 }
 
-.rep-sentence-text {
+.rep-sentence-text,
+.rep-phrase-text {
   font-size: 13px;
   font-style: italic;
   color: var(--text);
 }
 
-.rep-sentence-meta {
+.rep-sentence-meta,
+.rep-phrase-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

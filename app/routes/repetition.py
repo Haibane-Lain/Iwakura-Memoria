@@ -34,8 +34,15 @@ class SentenceOptions(BaseModel):
     minWords: int = 6
 
 
+class PhraseOptions(BaseModel):
+    minWords: int = 2
+    maxWords: int = 5
+    minCount: int = 3
+
+
 class RepetitionOptions(BaseModel):
     words: WordOptions = Field(default_factory=WordOptions)
+    phrases: PhraseOptions = Field(default_factory=PhraseOptions)
     sentences: SentenceOptions = Field(default_factory=SentenceOptions)
 
 
@@ -61,6 +68,9 @@ def repetition_check(project_id: str, payload: RepetitionRequest):
             ignore_stopwords=words.ignoreStopwords,
             ignore_dictionary=words.ignoreDictionary,
             ignore_proper_nouns=words.ignoreProperNouns,
+            phrase_min_words=payload.options.phrases.minWords,
+            phrase_max_words=payload.options.phrases.maxWords,
+            phrase_min_count=payload.options.phrases.minCount,
             sentence_min_words=payload.options.sentences.minWords,
         )
     except FileNotFoundError as exc:

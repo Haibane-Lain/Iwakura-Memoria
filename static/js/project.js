@@ -3018,6 +3018,9 @@ async function renderRepetitionDialog() {
   const optMinCount = el("input", { type: "number", min: 2, max: 1000, value: 4 });
   const optMinLength = el("input", { type: "number", min: 1, max: 40, value: 4 });
   const optWindow = el("input", { type: "number", min: 1, max: 1000, value: 50 });
+  const optPhraseMin = el("input", { type: "number", min: 2, max: 10, value: 2 });
+  const optPhraseMax = el("input", { type: "number", min: 2, max: 12, value: 5 });
+  const optPhraseCount = el("input", { type: "number", min: 2, max: 1000, value: 3 });
   const optSentence = el("input", { type: "number", min: 1, max: 1000, value: 6 });
   const optStop = el("input", { type: "checkbox" });
   optStop.checked = true;
@@ -3031,6 +3034,9 @@ async function renderRepetitionDialog() {
       optionRow("Flag words used at least", optMinCount),
       optionRow("Ignore words shorter than", optMinLength),
       optionRow("Flag repeats within (words)", optWindow),
+      optionRow("Shortest phrase (words)", optPhraseMin),
+      optionRow("Longest phrase (words)", optPhraseMax),
+      optionRow("Flag phrases used at least", optPhraseCount),
       optionRow("Ignore repeated sentences under", optSentence),
       optionRow("Ignore common words", optStop),
       optionRow("Ignore proper nouns", optProper),
@@ -3062,21 +3068,31 @@ async function renderRepetitionDialog() {
   function renderResults(result) {
     const wordSection = section("Overused words", "count · per 10k · documents", wordRows(result.overused, "overuse"));
     const echoSection = section("Nearby echoes", "same word reused close together", wordRows(result.echoes, "echo"));
+    const jump = (docId, text) => async () => {
+      close();
+      await openDocument(docId);
+      if (!revealText(text)) toast("Opened the document");
+    };
+    const phraseItems = result.phrases.map((item) =>
+      el("div", { class: "rep-phrase" }, [
+        el("div", { class: "rep-phrase-text" }, `“${item.phrase}”`),
+        el("div", { class: "rep-phrase-meta" }, [
+          el("span", { class: "rep-count" }, `${item.count}×`),
+          el("span", { class: "rep-per10k" }, `${item.per10k}/10k`),
+          ...item.occurrences.map((occ) =>
+            el("button", { class: "rep-chip", title: "Open this document", onclick: jump(occ.docId, item.phrase) }, occ.title)
+          ),
+        ]),
+      ])
+    );
+    const phraseSection = section("Repeated phrases", "longest repeated form", phraseItems);
     const sentenceItems = result.sentences.map((item) =>
       el("div", { class: "rep-sentence" }, [
         el("div", { class: "rep-sentence-text" }, `“${item.text}”`),
         el("div", { class: "rep-sentence-meta" }, [
           el("span", { class: "rep-count" }, `${item.count}×`),
           ...item.occurrences.map((occ) =>
-            el("button", {
-              class: "rep-chip",
-              title: "Open this document",
-              onclick: async () => {
-                close();
-                await openDocument(occ.docId);
-                if (!revealText(occ.text)) toast("Opened the document");
-              },
-            }, occ.title)
+            el("button", { class: "rep-chip", title: "Open this document", onclick: jump(occ.docId, occ.text) }, occ.title)
           ),
         ]),
       ])
@@ -3084,21 +3100,24 @@ async function renderRepetitionDialog() {
     const sentenceSection = section("Repeated sentences", "exact matches", sentenceItems);
 
     // "Words" covers both word sections so choosing it never hides the echoes.
+    const sections = {
+      words: [wordSection, echoSection],
+      phrases: [phraseSection],
+      sentences: [sentenceSection],
+    };
+    const allSections = Object.values(sections).flat();
     const stored = localStorage.getItem(LS_REP_FILTER);
     const filterSelect = el(
       "select",
       { class: "rep-filter", id: "rep-filter", title: "Which findings to show" },
-      [["all", "All"], ["words", "Words"], ["sentences", "Sentences"]].map(
+      [["all", "All"], ["words", "Words"], ["phrases", "Phrases"], ["sentences", "Sentences"]].map(
         ([value, label]) => el("option", { value }, label)
       )
     );
-    filterSelect.value = stored === "words" || stored === "sentences" ? stored : "all";
+    filterSelect.value = sections[stored] ? stored : "all";
     const applyFilter = () => {
-      const showWords = filterSelect.value !== "sentences";
-      const showSentences = filterSelect.value !== "words";
-      wordSection.hidden = !showWords;
-      echoSection.hidden = !showWords;
-      sentenceSection.hidden = !showSentences;
+      const visible = filterSelect.value === "all" ? allSections : sections[filterSelect.value];
+      for (const node of allSections) node.hidden = !visible.includes(node);
     };
     filterSelect.addEventListener("change", () => {
       localStorage.setItem(LS_REP_FILTER, filterSelect.value);
@@ -3114,6 +3133,7 @@ async function renderRepetitionDialog() {
       filterRow,
       wordSection,
       echoSection,
+      phraseSection,
       sentenceSection
     );
     applyFilter();
@@ -3140,6 +3160,11 @@ async function renderRepetitionDialog() {
             ignoreStopwords: optStop.checked,
             ignoreDictionary: true,
             ignoreProperNouns: optProper.checked,
+          },
+          phrases: {
+            minWords: repInt(optPhraseMin, 2),
+            maxWords: repInt(optPhraseMax, 5),
+            minCount: repInt(optPhraseCount, 3),
           },
           sentences: { minWords: repInt(optSentence, 6) },
         },

@@ -1,4 +1,4 @@
-"""Repetition analysis: overused words, nearby echoes and repeated sentences.
+"""Repetition analysis: overused words, nearby echoes, repeated phrases and sentences.
 
 Pure stdlib — this is a local writing aid, and the project deliberately carries
 no NLP dependency for it. :func:`app.services.documents.iter_documents` resolves
@@ -10,6 +10,13 @@ Word pass
     the project dictionary and (optionally) is not a proper noun. *Overuse*
     counts content tokens across the whole scope; *echoes* are the same content
     token reappearing within ``proximity_window`` tokens of itself.
+
+Phrase pass
+    Within each sentence, word n-grams of ``phrase_min_words`` to
+    ``phrase_max_words`` words are counted; stopword-only runs are dropped.
+    A repeated family is reported once, as its longest form: a shorter phrase
+    survives only when it repeats more often on its own than the longer phrase
+    that contains it.
 
 Sentence pass
     Sentences are split on ``.!?…`` (plus the CJK ``。！？``), tolerating common
@@ -54,9 +61,15 @@ STOPWORDS = frozenset(
 
 _MAX_OVERUSED = 200
 _MAX_ECHOES = 200
+_MAX_PHRASES = 200
 _MAX_SENTENCES = 200
 _MAX_DOCS = 8
 _MAX_OCCURRENCES = 20
+
+# Distinct n-grams are far more numerous than words; on a very large scope cap
+# them so a pathological project cannot balloon memory. Normal projects never
+# approach this.
+_MAX_PHRASE_KEYS = 250_000
 
 
 def _clean_markdown(text: str) -> str:
@@ -157,6 +170,67 @@ def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
 
+def _collect_phrases(
+    sentence_tokens: list[tuple[str, str]],
+    doc: dict[str, Any],
+    phrase_stats: dict[tuple[str, ...], dict[str, Any]],
+    min_words: int,
+    max_words: int,
+) -> None:
+    """Count word n-grams for one sentence (never across a sentence boundary)."""
+    total = len(sentence_tokens)
+    for size in range(min_words, max_words + 1):
+        if size > total:
+            break
+        for start in range(total - size + 1):
+            gram = sentence_tokens[start : start + size]
+            key = tuple(token[0] for token in gram)
+            if all(token in STOPWORDS for token in key):
+                continue
+            stat = phrase_stats.get(key)
+            if stat is None:
+                if len(phrase_stats) >= _MAX_PHRASE_KEYS:
+                    continue
+                stat = phrase_stats[key] = {
+                    "count": 0,
+                    "display": " ".join(token[1] for token in gram),
+                    "docs": set(),
+                    "occurrences": [],
+                }
+            stat["count"] += 1
+            stat["docs"].add(doc["title"])
+            if len(stat["occurrences"]) < _MAX_OCCURRENCES and all(
+                occ["docId"] != doc["id"] for occ in stat["occurrences"]
+            ):
+                stat["occurrences"].append({"docId": doc["id"], "title": doc["title"]})
+
+
+def _maximal_phrases(
+    phrase_stats: dict[tuple[str, ...], dict[str, Any]],
+    min_count: int,
+    min_words: int,
+) -> list[tuple[str, ...]]:
+    """Reduce each repeated family to its longest form.
+
+    A phrase is dropped when a longer phrase containing it repeats at least as
+    often; a shorter phrase that repeats more often on its own survives.
+    """
+    candidates = {key: stat for key, stat in phrase_stats.items() if stat["count"] >= min_count}
+    covered: dict[tuple[str, ...], int] = {}
+    kept: list[tuple[str, ...]] = []
+    for key in sorted(candidates, key=lambda item: (-len(item), item)):
+        count = candidates[key]["count"]
+        if count <= covered.get(key, 0):
+            continue
+        kept.append(key)
+        for size in range(min_words, len(key)):
+            for start in range(len(key) - size + 1):
+                sub = key[start : start + size]
+                if count > covered.get(sub, 0):
+                    covered[sub] = count
+    return kept
+
+
 def analyze(
     project_id: str,
     *,
@@ -169,24 +243,33 @@ def analyze(
     ignore_stopwords: bool = True,
     ignore_dictionary: bool = True,
     ignore_proper_nouns: bool = True,
+    phrase_min_words: int = 2,
+    phrase_max_words: int = 5,
+    phrase_min_count: int = 3,
     sentence_min_words: int = 6,
 ) -> dict[str, Any]:
     """Run the repetition check over the selected documents.
 
     Returns ``overused`` (word counts at/above ``word_min_count``), ``echoes``
-    (same word reappearing within ``proximity_window`` tokens) and ``sentences``
-    (exact duplicates with at least ``sentence_min_words`` words).
+    (same word reappearing within ``proximity_window`` tokens), ``phrases``
+    (repeated n-grams of ``phrase_min_words``–``phrase_max_words`` words, each
+    family reduced to its longest form) and ``sentences`` (exact duplicates with
+    at least ``sentence_min_words`` words).
     """
     docs = documents_service.iter_documents(project_id, folders=folders, documents=documents)
     dictionary_words = {w.strip().lower() for w in (dictionary or []) if w and w.strip()}
     min_length = _clamp(word_min_length, 1, 40)
     min_count = _clamp(word_min_count, 2, 1000)
     window = _clamp(proximity_window, 1, 1000)
+    min_phrase_words = _clamp(phrase_min_words, 2, 10)
+    max_phrase_words = _clamp(phrase_max_words, min_phrase_words, 12)
+    min_phrase_count = _clamp(phrase_min_count, 2, 1000)
     min_sentence_words = _clamp(sentence_min_words, 1, 1000)
 
     total_words = 0
     word_stats: dict[str, dict[str, Any]] = {}
     echo_stats: dict[str, dict[str, Any]] = {}
+    phrase_stats: dict[tuple[str, ...], dict[str, Any]] = {}
     sentence_groups: dict[str, dict[str, Any]] = {}
 
     for doc in docs:
@@ -210,6 +293,7 @@ def analyze(
         tokens: list[tuple[str, str, bool, bool]] = []
         for sentence in sentences:
             raw_tokens = _TOKEN_RE.findall(sentence)
+            sentence_tokens: list[tuple[str, str]] = []
             for index, raw in enumerate(raw_tokens):
                 norm = raw.translate(_QUOTES).lower().strip("'-")
                 if not norm:
@@ -220,6 +304,8 @@ def analyze(
                     and not (ignore_dictionary and norm in dictionary_words)
                 )
                 tokens.append((norm, raw, index == 0, is_content))
+                sentence_tokens.append((norm, raw))
+            _collect_phrases(sentence_tokens, doc, phrase_stats, min_phrase_words, max_phrase_words)
 
         last: dict[str, int] = {}
         for position, (norm, raw, is_initial, is_content) in enumerate(tokens):
@@ -298,6 +384,22 @@ def analyze(
     truncated_echoes = len(echoes) > _MAX_ECHOES
     echoes = echoes[:_MAX_ECHOES]
 
+    phrases: list[dict[str, Any]] = []
+    for key in _maximal_phrases(phrase_stats, min_phrase_count, min_phrase_words):
+        stat = phrase_stats[key]
+        phrases.append(
+            {
+                "phrase": stat["display"],
+                "count": stat["count"],
+                "per10k": round(stat["count"] / total_words * 10000, 1) if total_words else 0.0,
+                "documents": sorted(stat["docs"])[:_MAX_DOCS],
+                "occurrences": stat["occurrences"][:_MAX_OCCURRENCES],
+            }
+        )
+    phrases.sort(key=lambda item: (-item["count"], item["phrase"].lower()))
+    truncated_phrases = len(phrases) > _MAX_PHRASES
+    phrases = phrases[:_MAX_PHRASES]
+
     sentences: list[dict[str, Any]] = []
     for group in sentence_groups.values():
         if len(group["occurrences"]) < 2:
@@ -318,10 +420,12 @@ def analyze(
         "words": total_words,
         "overused": overused,
         "echoes": echoes,
+        "phrases": phrases,
         "sentences": sentences,
         "truncated": {
             "overused": truncated_overused,
             "echoes": truncated_echoes,
+            "phrases": truncated_phrases,
             "sentences": truncated_sentences,
         },
     }

@@ -30,6 +30,10 @@ def _echoes(result):
     return {item["word"]: item for item in result["echoes"]}
 
 
+def _phrases(result):
+    return {item["phrase"].lower(): item for item in result["phrases"]}
+
+
 # --- words ------------------------------------------------------------------
 
 
@@ -136,6 +140,79 @@ def test_cjk_sentences_are_split_and_deduplicated(data_dir, make_project):
     assert result["sentences"][0]["count"] == 2
 
 
+# --- phrases ----------------------------------------------------------------
+
+
+def test_repeated_phrases_are_counted(data_dir, make_project):
+    make_project("proj")
+    _doc(
+        data_dir / "proj" / "01.md",
+        "",
+        "She walked to the old house. He walked to the old house. They walked to the old house.",
+    )
+
+    phrases = _phrases(repetition_service.analyze("proj"))
+    assert phrases["walked to the old house"]["count"] == 3
+
+
+def test_phrases_do_not_cross_sentence_boundaries(data_dir, make_project):
+    make_project("proj")
+    _doc(
+        data_dir / "proj" / "01.md",
+        "",
+        "Alpha beta gamma. Delta epsilon zeta. Alpha beta gamma. Delta epsilon zeta.",
+    )
+
+    phrases = _phrases(repetition_service.analyze("proj", phrase_min_count=2))
+    assert "gamma delta" not in phrases  # would only repeat if phrases spanned sentences
+    assert phrases["alpha beta gamma"]["count"] == 2
+
+
+def test_stopword_only_phrases_are_ignored(data_dir, make_project):
+    make_project("proj")
+    _doc(data_dir / "proj" / "01.md", "", "of the and a. the old house. the old house.")
+
+    phrases = _phrases(repetition_service.analyze("proj", phrase_min_count=2))
+    assert "of the and a" not in phrases
+    assert phrases["the old house"]["count"] == 2
+
+
+def test_phrase_length_bounds_are_honored(data_dir, make_project):
+    make_project("proj")
+    _doc(data_dir / "proj" / "01.md", "", "one two three four five six seven " * 2)
+
+    result = repetition_service.analyze(
+        "proj", phrase_min_words=4, phrase_max_words=4, phrase_min_count=2
+    )
+    assert result["phrases"]
+    for item in result["phrases"]:
+        assert len(item["phrase"].split()) == 4
+
+
+def test_only_the_longest_form_of_a_phrase_family_is_reported(data_dir, make_project):
+    make_project("proj")
+    _doc(data_dir / "proj" / "01.md", "", "at the end of the day " * 3)
+
+    phrases = _phrases(repetition_service.analyze("proj"))
+    assert phrases["at the end of the"]["count"] == 3
+    assert "the end of the" not in phrases  # subsumed by the longer repeat
+    assert "end of the" not in phrases
+
+
+def test_phrase_scope_limits_the_scan(data_dir, make_project):
+    make_project("proj")
+    root = data_dir / "proj"
+    _doc(root, "Act 1/01-a.md", "Opened the ancient door quietly.")
+    _doc(root, "Act 2/01-b.md", "Opened the ancient door quietly.")
+
+    everything = repetition_service.analyze("proj", phrase_min_count=2)
+    assert "opened the ancient door quietly" in _phrases(everything)
+
+    act_one = repetition_service.analyze("proj", folders=["Act 1"], phrase_min_count=2)
+    assert act_one["documents"] == 1
+    assert act_one["phrases"] == []  # a single copy inside the scope
+
+
 # --- selection --------------------------------------------------------------
 
 
@@ -199,3 +276,4 @@ def test_repetition_route_and_404(tmp_path, monkeypatch):
     payload = result.json()
     assert payload["documents"] == 1
     assert any(item["word"] == "wolf" for item in payload["overused"])
+    assert any(item["phrase"].lower() == "the wolf" for item in payload["phrases"])

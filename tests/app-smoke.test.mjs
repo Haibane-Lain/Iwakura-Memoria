@@ -176,6 +176,15 @@ const REPETITION = {
   words: 10,
   overused: [{ word: "wolf", count: 5, per10k: 100.0, documents: ["Scene One"], proper: false }],
   echoes: [{ word: "sighed", count: 2, minGap: 4, documents: ["Scene One"] }],
+  phrases: [
+    {
+      phrase: "the old house",
+      count: 3,
+      per10k: 60.0,
+      documents: ["Scene One"],
+      occurrences: [{ docId: "Act 1/01-a", title: "Scene One" }],
+    },
+  ],
   sentences: [
     {
       text: "The wolf ran.",
@@ -183,7 +192,7 @@ const REPETITION = {
       occurrences: [{ docId: "Act 1/01-a", title: "Scene One", text: "The wolf ran." }],
     },
   ],
-  truncated: { overused: false, echoes: false, sentences: false },
+  truncated: { overused: false, echoes: false, phrases: false, sentences: false },
 };
 const EMPTY_WIKI = { notes: [], links: [], backlinks: {}, broken: {}, linkCounts: {} };
 const SETTINGS = {
@@ -304,6 +313,7 @@ await check("the project shell boots against a mocked API", async () => {
   await waitFor(() => dialog.querySelector(".rep-summary"));
   assert.match(dialog.textContent, /Overused words/);
   assert.match(dialog.textContent, /Nearby echoes/);
+  assert.match(dialog.textContent, /Repeated phrases/);
   assert.match(dialog.textContent, /Repeated sentences/);
   assert.match(dialog.querySelector(".rep-summary").textContent, /words across/);
 
@@ -312,10 +322,11 @@ await check("the project shell boots against a mocked API", async () => {
   assert.ok(filter, "results filter exists");
   const sectionWith = (text) =>
     [...dialog.querySelectorAll(".rep-section")].find((node) => node.textContent.includes(text));
-  filter.value = "sentences";
+  filter.value = "phrases";
   filter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-  assert.ok(sectionWith("Overused words").hidden, "Words hidden for the Sentences filter");
-  assert.ok(!sectionWith("Repeated sentences").hidden, "Sentences shown for the Sentences filter");
+  assert.ok(!sectionWith("Repeated phrases").hidden, "Phrases shown for the Phrases filter");
+  assert.ok(sectionWith("Overused words").hidden, "Words hidden for the Phrases filter");
+  assert.ok(sectionWith("Repeated sentences").hidden, "Sentences hidden for the Phrases filter");
   filter.value = "all";
   filter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   assert.ok(!sectionWith("Overused words").hidden, "All shows the word sections again");
