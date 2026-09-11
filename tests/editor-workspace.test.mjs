@@ -244,6 +244,27 @@ await check("split panes save independently", async () => {
   dom.window.close();
 });
 
+await check("revision mode opens the comments panel and closes it again", async () => {
+  const dom = makeDom();
+  installFetch();
+  const { ctx, workspace } = await freshWorkspace();
+  const slot = {};
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  const pane = ctx.panes.primary;
+  assert.equal(pane.revisionMode, false);
+
+  await workspace.toggleRevisionMode();
+  assert.equal(pane.revisionMode, true, "revision mode turns on");
+  assert.ok(pane.commentsPanel.classList.contains("open"), "the panel opens");
+
+  await workspace.toggleRevisionMode();
+  assert.equal(pane.revisionMode, false, "revision mode turns off");
+  assert.ok(!pane.commentsPanel.classList.contains("open"), "the panel closes");
+  dom.window.close();
+});
+
 if (failures) {
   console.error(`editor-workspace: ${failures} check(s) failed`);
   process.exit(1);

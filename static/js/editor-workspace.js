@@ -700,6 +700,7 @@ export async function toggleRevisionMode() {
   } else {
     pane.ctrl.setGrammarEnabled(state.settings.grammarEnabled);
     pane.commentsPanel.stopReview();
+    pane.commentsPanel.classList.remove("open");
   }
   shell.refreshToolbar();
 }
