@@ -1,7 +1,10 @@
+import { Extension } from "@tiptap/core";
 import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
 
 // The wiki's info box is stored as raw HTML: an `<aside class="character-table">`
 // wrapping `<table class="ct-rows">` with `ct-*` rows and cells. Once a generic
@@ -48,4 +51,37 @@ export function makeTableExtensions() {
   });
 
   return [TableNode, Row, Header, Cell];
+}
+
+// Task lists (GFM `- [ ]` / `- [x]`). tiptap-markdown installs
+// `markdown-it-task-lists` for parsing and serializes the `[ ]`/`[x]` marker
+// directly, so no custom Markdown work is needed here.
+//
+// tiptap-markdown gives bullet/ordered lists a `tight` attribute that keeps
+// their items on consecutive lines, but it does not know about task lists — so a
+// tight `- [ ]` list would otherwise serialize with a blank line between every
+// item. This mirrors the same attribute for `taskList`.
+const TaskListTight = Extension.create({
+  name: "taskListTight",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["taskList"],
+        attributes: {
+          tight: {
+            default: true,
+            parseHTML: (element) =>
+              element.getAttribute("data-tight") === "true" || !element.querySelector("p"),
+            renderHTML: (attributes) => ({
+              "data-tight": attributes.tight ? "true" : null,
+            }),
+          },
+        },
+      },
+    ];
+  },
+});
+
+export function makeTaskListExtensions() {
+  return [TaskList, TaskItem.configure({ nested: true }), TaskListTight];
 }

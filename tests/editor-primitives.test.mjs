@@ -136,6 +136,39 @@ await check("a generic table and a character table coexist", () => {
   s.close();
 });
 
+await check("a task list round-trips tightly and its checkboxes toggle", () => {
+  const source = "- [ ] one\n- [x] two\n- [ ] three";
+  const s = open(source);
+  assert.equal(s.ctrl.getMarkdown(), source, "no blank lines are inserted between items");
+  const boxes = s.host.querySelectorAll('input[type="checkbox"]');
+  assert.equal(boxes.length, 3);
+
+  // Check the first item the way the node view does (a change event).
+  const first = boxes[0];
+  first.checked = true;
+  first.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(
+    s.ctrl.getMarkdown(),
+    "- [x] one\n- [x] two\n- [ ] three",
+    "ticking a box is saved as [x]"
+  );
+
+  // And untick the second.
+  const second = s.host.querySelectorAll('input[type="checkbox"]')[1];
+  second.checked = false;
+  second.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(s.ctrl.getMarkdown(), "- [x] one\n- [ ] two\n- [ ] three");
+  s.close();
+});
+
+await check("inserting a task list starts an item", () => {
+  const s = open("");
+  s.ctrl.run("taskList");
+  assert.equal(s.ctrl.getMarkdown().trimEnd(), "- [ ]");
+  assert.equal(s.host.querySelectorAll('ul[data-type="taskList"]').length, 1);
+  s.close();
+});
+
 if (failures) {
   console.log(`editor-primitives: ${failures} check(s) failed`);
   process.exit(1);

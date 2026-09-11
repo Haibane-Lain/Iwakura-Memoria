@@ -1685,6 +1685,7 @@ const TOOLBAR = [
   { cmd: "blockquote", label: "❝", title: "Blockquote" },
   { cmd: "bulletList", label: "• List", title: "Bullet list" },
   { cmd: "orderedList", label: "1. List", title: "Ordered list" },
+  { cmd: "taskList", label: "☑", title: "Task list (checkboxes)" },
   { cmd: "codeBlock", label: "</>", title: "Code block" },
   { cmd: "table", label: "▦", title: "Insert a table (3×3 with a header row)" },
   null,
@@ -1858,6 +1859,7 @@ function refreshToolbar() {
     else if (cmd === "blockquote") active = editor.isActive("blockquote");
     else if (cmd === "bulletList") active = editor.isActive("bulletList");
     else if (cmd === "orderedList") active = editor.isActive("orderedList");
+    else if (cmd === "taskList") active = editor.isActive("taskList");
     else if (cmd === "codeBlock") active = editor.isActive("codeBlock");
     else if (cmd === "h1") active = editor.isActive("heading", { level: 1 });
     else if (cmd === "h2") active = editor.isActive("heading", { level: 2 });

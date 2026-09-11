@@ -12,6 +12,8 @@ import markdown as md_lib
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Emu, Inches, Pt, RGBColor
+from markdown.extensions import Extension
+from markdown.treeprocessors import Treeprocessor
 
 from app import config
 from app.services import documents as documents_service
@@ -182,11 +184,44 @@ def pdf_images_html(html: str, project_folder: Path, content_width_pt: float) ->
 
 
 
+_TASK_MARKER_RE = re.compile(r"^\[([ xX])\]\s+")
+_TASK_GLYPHS = {"checked": "\u2611", "unchecked": "\u2610"}
+
+
+class _TaskListTreeprocessor(Treeprocessor):
+    """Turn GFM task markers into checkbox glyphs for the exporters.
+
+    python-markdown has no task-list extension, so ``- [ ]`` would otherwise
+    reach every exporter as the literal text ``[ ]``. A glyph is just a
+    character, so one implementation carries through DOCX, PDF and EPUB alike.
+    (The PDF core-font fallback degrades it to ``?`` along with any other
+    non-latin-1 glyph, which is its normal behaviour.)
+    """
+
+    def run(self, root):
+        for item in root.iter("li"):
+            text = item.text or ""
+            match = _TASK_MARKER_RE.match(text)
+            if not match:
+                continue
+            glyph = _TASK_GLYPHS["checked" if match.group(1).lower() == "x" else "unchecked"]
+            item.text = f"{glyph} {text[match.end():]}"
+            classes = item.get("class", "").split()
+            classes.append("task-list-item")
+            item.set("class", " ".join(classes))
+        return root
+
+
+class _TaskListExtension(Extension):
+    def extendMarkdown(self, md):  # noqa: N802 - markdown's API name
+        md.treeprocessors.register(_TaskListTreeprocessor(md), "tasklist", 5)
+
+
 def md_to_html(body: str) -> str:
     body = _WIKILINK_RE.sub(r"\1", body)
     return md_lib.markdown(
         body,
-        extensions=["extra", "codehilite", "sane_lists"],
+        extensions=["extra", "codehilite", "sane_lists", _TaskListExtension()],
         output_format="html5",
     )
 

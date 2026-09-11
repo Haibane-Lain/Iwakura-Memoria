@@ -26,7 +26,7 @@ import {
   portraitTargetAt,
   setPortraitFromFiles,
 } from "./character-table.js";
-import { makeTableExtensions } from "./editor-primitives.js";
+import { makeTableExtensions, makeTaskListExtensions } from "./editor-primitives.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
@@ -906,6 +906,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       GrammarExtension,
       makeAssetImage(imageOpts),
       ...makeTableExtensions(),
+      ...makeTaskListExtensions(),
       ...makeCharacterTableNodes(imageOpts),
     ],
     content,
@@ -1133,6 +1134,7 @@ window.LainEditor = {
         else if (command === "table") {
           chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true });
         }
+        else if (command === "taskList") chain.toggleTaskList();
         else if (command === "h1") chain.toggleHeading({ level: 1 });
         else if (command === "h2") chain.toggleHeading({ level: 2 });
         else if (command === "h3") chain.toggleHeading({ level: 3 });
