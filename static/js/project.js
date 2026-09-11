@@ -1797,7 +1797,7 @@ function repetitionBtn() {
 function searchBtn() {
   const btn = el("button", {
     class: "tool-btn",
-    title: "Search all documents in this project (Ctrl+F)",
+    title: "Find & replace across documents (Ctrl+F)",
     onclick: () => renderSearchDialog(),
   }, "Find");
   return btn;
@@ -3380,6 +3380,11 @@ async function renderSearchDialog() {
     class: "search-input",
     placeholder: "Search all documents…",
   });
+  const replaceInput = el("input", {
+    type: "text",
+    class: "search-input search-replace-input",
+    placeholder: "Replace with…",
+  });
   const caseBox = el("input", { type: "checkbox", id: "search-case" });
   const wordBox = el("input", { type: "checkbox", id: "search-word" });
   const scopeSelect = el(
@@ -3465,6 +3470,68 @@ async function renderSearchDialog() {
     }
   }
 
+  // The fields shared by the preview search and the replace itself.
+  function replaceBase() {
+    const scope = scopeSelect.value;
+    return {
+      query: input.value.trim(),
+      scope,
+      selection:
+        scope === "document"
+          ? { folders: [], documents: [state.currentDocId] }
+          : null,
+      options: { caseSensitive: caseBox.checked, wholeWord: wordBox.checked },
+    };
+  }
+
+  async function replaceAll() {
+    const query = input.value.trim();
+    if (!query) {
+      input.focus();
+      return;
+    }
+    if (scopeSelect.value === "document" && !state.currentDocId) {
+      toast("No document is open", "error");
+      return;
+    }
+    statusEl.textContent = "Previewing…";
+    try {
+      // Make sure the open document's latest text is on disk before the sweep.
+      await flushSave();
+      const preview = await api.projects.search(state.project.id, replaceBase());
+      statusEl.textContent = "";
+      if (!preview.totalMatches) {
+        toast("Nothing to replace");
+        return;
+      }
+      const docs = preview.documentsMatched;
+      const ok = await confirmDialog({
+        title: "Replace all?",
+        message:
+          `Replace ${formatNumber(preview.totalMatches)} occurrence${preview.totalMatches === 1 ? "" : "s"} ` +
+          `in ${formatNumber(docs)} document${docs === 1 ? "" : "s"} with “${replaceInput.value}”. ` +
+          "Each document is snapshotted first, so a mistake can be undone from History.",
+        confirmText: "Replace all",
+        danger: false,
+      });
+      if (!ok) return;
+      statusEl.textContent = "Replacing…";
+      const result = await api.projects.replace(state.project.id, {
+        ...replaceBase(),
+        replacement: replaceInput.value,
+      });
+      statusEl.textContent = "";
+      toast(
+        `Replaced ${formatNumber(result.totalReplacements)} in ${formatNumber(result.documentsChanged)} document${result.documentsChanged === 1 ? "" : "s"}`
+      );
+      await refreshAfterReplace(result.results.map((entry) => entry.docId));
+      run();
+    } catch (err) {
+      statusEl.textContent = "";
+      toast(err.message, "error");
+    }
+  }
+
   const jump = async (docId, hit) => {
     close();
     await openDocument(docId);
@@ -3482,15 +3549,25 @@ async function renderSearchDialog() {
       run();
     }
   });
+  replaceInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      replaceAll();
+    }
+  });
   caseBox.addEventListener("change", run);
   wordBox.addEventListener("change", run);
   scopeSelect.addEventListener("change", run);
 
   const { backdrop, modal, close } = showModal([
-    el("h3", {}, "Search"),
+    el("h3", {}, "Find & replace"),
     el("div", { class: "search-bar" }, [
       input,
       el("button", { class: "icon-btn primary", onclick: run }, "Search"),
+    ]),
+    el("div", { class: "search-bar search-replace-bar" }, [
+      replaceInput,
+      el("button", { class: "icon-btn", onclick: replaceAll }, "Replace all"),
     ]),
     el("div", { class: "search-options" }, [
       el("label", { class: "export-check-label" }, [caseBox, " Case sensitive"]),
@@ -3516,6 +3593,7 @@ const SNAPSHOT_REASON_LABELS = {
   manual: "Manual",
   "before-restore": "Before restore",
   ai: "Lain",
+  replace: "Before replace",
 };
 
 function snapshotReasonLabel(reason) {
@@ -3548,6 +3626,35 @@ async function afterSnapshotRestore(docId) {
   else state.writeDocId = docId;
   const doc = await api.docs.get(state.project.id, docId);
   await renderEditorTab(doc, { wiki });
+}
+
+// A project-wide replace wrote documents behind the editor cache's back. Drop
+// each changed warm editor; reload the open one from disk if it changed.
+async function refreshAfterReplace(docIds) {
+  const changed = new Set(docIds || []);
+  if (!changed.size) return;
+  for (const id of changed) {
+    if (editorPool.activeId === id) {
+      discardActiveEditor();
+    } else {
+      const ctrl = editorPool.forget(id);
+      if (ctrl) {
+        try {
+          ctrl.destroy();
+        } catch {
+          /* already gone */
+        }
+      }
+    }
+  }
+  await refreshTree();
+  await refreshWiki();
+  updateTopbar();
+  if (state.currentDocId && changed.has(state.currentDocId)) {
+    const wiki = state.currentDocId.startsWith("worldbuilding/");
+    const doc = await api.docs.get(state.project.id, state.currentDocId);
+    await renderEditorTab(doc, { wiki });
+  }
 }
 
 function renderSnapshotsDialog() {
@@ -4353,7 +4460,7 @@ async function init(params) {
 export function register() {
   setupFileDropGuard();
   router.on("project", init);
-  // Ctrl/Cmd+F (and Ctrl/Cmd+Shift+F) opens the project-wide search, on any tab.
+  // Ctrl/Cmd+F (and Ctrl/Cmd+Shift+F) opens the Find & replace dialog.
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "F" || e.key === "f")) {
       if (!state.project) return;

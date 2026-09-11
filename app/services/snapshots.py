@@ -48,6 +48,7 @@ REASON_AUTO = "auto"
 REASON_MANUAL = "manual"
 REASON_BEFORE_RESTORE = "before-restore"
 REASON_AI = "ai"
+REASON_REPLACE = "replace"
 
 _PUBLIC_KEYS = ("id", "docId", "title", "kind", "createdAt", "reason", "words", "manual", "size")
 

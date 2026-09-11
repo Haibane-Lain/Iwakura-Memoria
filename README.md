@@ -83,12 +83,17 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   opened for you, and a live result count beside the box. `Esc` clears it. The
   box is pinned below the tabs, so it stays in reach however far down a long
   tree you have scrolled.
-- **Full-text search** — The **Find** toolbar button (or **Ctrl+F**) searches
-  the *contents* of every document, not just titles. Case-insensitive by
-  default, with **Case sensitive** and **Whole word** toggles and a scope
-  selector (whole project, Write, Wiki, or the current document). Results are
-  grouped by document with a highlighted snippet per hit; click one to open the
-  document and select that exact match.
+- **Find & replace** — The **Find** toolbar button (or **Ctrl+F**, including
+  **Ctrl+Shift+F**) searches the *contents* of every document, not just titles.
+  Case-insensitive by default, with **Case sensitive** and **Whole word**
+  toggles and a scope selector (whole project, Write, Wiki, or the current
+  document). Results are grouped by document with a highlighted snippet per
+  hit; click one to open the document and select that exact match. The dialog
+  also has a *Replace* field and **Replace all in {scope}**: replacement works
+  on the stored Markdown but only in prose — code, HTML tags, image paths, link
+  destinations, and `[[wikilink]]` targets are left alone — and snapshots every
+  changed document first (as **Before replace** in its **History**), so the
+  whole sweep is reversible.
 - **Inline images** — Drop one or more pictures onto the editor (or paste a
   screenshot, or use the 🖼 toolbar button) and they appear inline, in both the
   Write and Wiki tabs. Drag the corner handle to resize — the size is saved

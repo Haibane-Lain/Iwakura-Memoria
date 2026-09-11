@@ -214,6 +214,16 @@ const SEARCH = {
     },
   ],
 };
+const REPLACE_RESULT = {
+  query: "wolf",
+  replacement: "fox",
+  scope: "all",
+  caseSensitive: false,
+  wholeWord: false,
+  documentsChanged: 1,
+  totalReplacements: 1,
+  results: [{ docId: "Act 1/01-a", title: "Scene One", folder: "Act 1", count: 1 }],
+};
 const EMPTY_WIKI = { notes: [], links: [], backlinks: {}, broken: {}, linkCounts: {} };
 const SETTINGS = {
   theme: "gothic",
@@ -248,6 +258,7 @@ const PROJECT_ROUTES = [
   [/\/api\/projects\/demo\/stats$/, () => STATS],
   [/\/api\/projects\/demo\/repetition\/check$/, () => REPETITION],
   [/\/api\/projects\/demo\/search$/, () => SEARCH],
+  [/\/api\/projects\/demo\/replace$/, () => REPLACE_RESULT],
   [/\/api\/projects\/demo\/templates$/, () => []],
   [/\/api\/projects\/demo\/trash$/, () => []],
   [/\/api\/projects\/demo\/snapshots/, () => []],
@@ -282,7 +293,7 @@ await check("every static/js module evaluates under jsdom", async () => {
 
 await check("the project shell boots against a mocked API", async () => {
   const dom = makeDom();
-  const { unmatched } = installFetch(PROJECT_ROUTES);
+  const { calls, unmatched } = installFetch(PROJECT_ROUTES);
   const capture = captureErrors(dom);
 
   const project = await importJs("project.js");
@@ -356,7 +367,7 @@ await check("the project shell boots against a mocked API", async () => {
 
   // Full-text search: open the Find dialog, run a query, and confirm the hit
   // renders with its match highlighted.
-  const findBtn = doc.querySelector('.tool-btn[title^="Search all documents"]');
+  const findBtn = doc.querySelector('.tool-btn[title^="Find & replace"]');
   assert.ok(findBtn, "find ribbon button exists");
   // Ctrl+F opens the dialog (the toolbar button does too).
   doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
@@ -368,6 +379,24 @@ await check("the project shell boots against a mocked API", async () => {
   await waitFor(() => searchDialog.querySelector(".search-hit"));
   assert.match(searchDialog.querySelector(".search-summary").textContent, /1 match in 1 document/);
   assert.ok(searchDialog.querySelector(".search-hit mark"), "the match is highlighted");
+
+  // The same dialog sweeps replacements across the scope: preview, confirm,
+  // then the replace endpoint.
+  const replaceInput = searchDialog.querySelector(".search-replace-input");
+  assert.ok(replaceInput, "replace field exists");
+  replaceInput.value = "fox";
+  const replaceBtn = [...searchDialog.querySelectorAll(".icon-btn")].find(
+    (btn) => btn.textContent === "Replace all"
+  );
+  assert.ok(replaceBtn, "replace all button exists");
+  replaceBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const confirmBtn = await waitFor(() =>
+    [...doc.querySelectorAll(".icon-btn.primary")].find(
+      (btn) => btn.textContent === "Replace all"
+    )
+  );
+  confirmBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => calls.some((call) => call === "POST /api/projects/demo/replace"));
 
   // Document history opens from the toolbar. With no document open it points
   // at the empty state; the list/preview/restore paths are backend-tested.

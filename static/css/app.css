@@ -2404,6 +2404,10 @@ a {
   border-color: var(--accent);
 }
 
+.search-replace-bar {
+  margin-top: 0;
+}
+
 .search-options {
   display: flex;
   flex-wrap: wrap;

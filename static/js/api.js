@@ -109,6 +109,8 @@ export const api = {
       api.post(`/api/projects/${encodePath(id)}/repetition/check`, payload),
     search: (id, payload) =>
       api.post(`/api/projects/${encodePath(id)}/search`, payload),
+    replace: (id, payload) =>
+      api.post(`/api/projects/${encodePath(id)}/replace`, payload),
     dictionary: {
       get: (id) => api.get(`/api/projects/${encodePath(id)}/dictionary`),
       update: (id, words) => api.put(`/api/projects/${encodePath(id)}/dictionary`, { words }),
