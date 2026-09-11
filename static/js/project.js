@@ -1672,41 +1672,99 @@ async function renameCurrentDoc(newTitle) {
 
 /* ---------------- write tab ---------------- */
 
-const TOOLBAR = [
-  { cmd: "undo", label: "↶", title: "Undo" },
-  { cmd: "redo", label: "↷", title: "Redo" },
-  null,
-  { cmd: "h1", label: "H1", title: "Heading 1" },
-  { cmd: "h2", label: "H2", title: "Heading 2" },
-  { cmd: "h3", label: "H3", title: "Heading 3" },
-  null,
-  { cmd: "bold", label: "B", title: "Bold", strong: true },
-  { cmd: "italic", label: "I", title: "Italic", strong: true },
-  { cmd: "underline", label: "U", title: "Underline", strong: true },
-  { cmd: "strike", label: "S", title: "Strikethrough", strong: true },
-  { cmd: "highlight", label: "▮", title: "Highlight" },
-  { cmd: "color", label: "A", title: "Text color" },
-  { cmd: "subscript", label: "A₂", title: "Subscript" },
-  { cmd: "superscript", label: "A²", title: "Superscript" },
-  null,
-  { cmd: "blockquote", label: "❝", title: "Blockquote" },
-  { cmd: "bulletList", label: "• List", title: "Bullet list" },
-  { cmd: "orderedList", label: "1. List", title: "Ordered list" },
-  { cmd: "taskList", label: "☑", title: "Task list (checkboxes)" },
-  { cmd: "codeBlock", label: "</>", title: "Code block" },
-  { cmd: "table", label: "▦", title: "Insert a table (3×3 with a header row)" },
-  null,
-  { cmd: "linkNote", label: "[[  ]]", title: "Link to a note" },
-  { cmd: "comment", label: "💬", title: "Comment on the selected text (Ctrl+Alt+M)" },
-  { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" },
-  { cmd: "image", label: "🖼", title: "Insert an image (or drag & drop / paste one)" },
-  // The wiki's info box. The toolbar is shared with the Write tab, so the
-  // button is marked wiki-only rather than living in a second toolbar.
+// The ribbon is a list of labelled groups, each holding one or two rows of
+// items. An item is either a command definition (rendered as a `.tool-btn`) or
+// a factory function that returns a control node (the grammar toggle, the font
+// selects, the alignment group). Rows are explicit so the reading order stays
+// left-to-right; a pure CSS column-wrap would order `B, U, …` down a column.
+const RIBBON = [
   {
-    cmd: "charTable",
-    label: "👤",
-    title: "Insert a character table (info box on the right)",
-    wikiOnly: true,
+    label: "History",
+    rows: [
+      [{ cmd: "undo", label: "↶", title: "Undo" }],
+      [{ cmd: "redo", label: "↷", title: "Redo" }],
+    ],
+  },
+  {
+    label: "Headings",
+    rows: [[
+      { cmd: "h1", label: "H1", title: "Heading 1" },
+      { cmd: "h2", label: "H2", title: "Heading 2" },
+      { cmd: "h3", label: "H3", title: "Heading 3" },
+    ]],
+  },
+  {
+    label: "Format",
+    rows: [
+      [
+        { cmd: "bold", label: "B", title: "Bold", strong: true },
+        { cmd: "italic", label: "I", title: "Italic", strong: true },
+        { cmd: "underline", label: "U", title: "Underline", strong: true },
+        { cmd: "strike", label: "S", title: "Strikethrough", strong: true },
+      ],
+      [
+        { cmd: "highlight", label: "▮", title: "Highlight" },
+        { cmd: "color", label: "A", title: "Text color" },
+        { cmd: "subscript", label: "A₂", title: "Subscript" },
+        { cmd: "superscript", label: "A²", title: "Superscript" },
+      ],
+    ],
+  },
+  {
+    label: "Blocks",
+    rows: [
+      [
+        { cmd: "blockquote", label: "❝", title: "Blockquote" },
+        { cmd: "bulletList", label: "• List", title: "Bullet list" },
+        { cmd: "orderedList", label: "1. List", title: "Ordered list" },
+      ],
+      [
+        { cmd: "taskList", label: "☑", title: "Task list (checkboxes)" },
+        { cmd: "codeBlock", label: "</>", title: "Code block" },
+        { cmd: "table", label: "▦", title: "Insert a table (3×3 with a header row)" },
+      ],
+    ],
+  },
+  {
+    label: "Insert",
+    rows: [
+      [
+        { cmd: "linkNote", label: "[[ ]]", text: "Link", title: "Link to a note" },
+        { cmd: "comment", label: "💬", text: "Comment", title: "Comment on the selected text (Ctrl+Alt+M)" },
+      ],
+      [
+        { cmd: "image", label: "🖼", text: "Image", title: "Insert an image (or drag & drop / paste one)" },
+        // The wiki's info box. The ribbon is shared with the Write tab, so the
+        // button is marked wiki-only rather than living in a second toolbar.
+        {
+          cmd: "charTable",
+          label: "👤",
+          text: "Wiki",
+          title: "Insert a character table (info box on the right)",
+          wikiOnly: true,
+        },
+      ],
+    ],
+  },
+  {
+    label: "Tools",
+    rows: [
+      [
+        grammarToggle,
+        dictionaryBtn,
+        repetitionBtn,
+        { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" },
+      ],
+      [searchBtn, historyBtn, splitToggle],
+    ],
+  },
+  {
+    label: "Style",
+    rows: [[() => fontSelect("context"), () => sizeSelect("context"), () => zoomSelect("context")]],
+  },
+  {
+    label: "Align",
+    rows: [[() => alignGroup("context"), styleTargetChip, clearStyleButton]],
   },
 ];
 
@@ -1789,51 +1847,81 @@ function historyBtn() {
   }, "History");
 }
 
+// A button for a command definition. When the definition carries a `text`
+// label the icon and the word are laid out side by side, so actions like
+// Insert → Image read as themselves instead of a lone emoji.
+function commandButton(def) {
+  const children = def.text
+    ? [
+        el("span", { class: "tool-btn-icon" }, def.label),
+        el("span", { class: "tool-btn-text" }, def.text),
+      ]
+    : def.label;
+  return el("button", {
+    class: "tool-btn",
+    title: def.title,
+    dataset: { cmd: def.cmd },
+    style: def.strong ? { fontWeight: "800" } : {},
+    onclick: (e) => toolbarCommand(def.cmd, e.currentTarget),
+  }, children);
+}
+
+function splitToggle() {
+  return el("button", {
+    class: `tool-btn${state.split ? " active" : ""}`,
+    title: "Split the editor into two panes (Ctrl+\\)",
+    onclick: () => toggleSplit(),
+  }, "Split");
+}
+
+function styleTargetChip() {
+  return el("span", {
+    class: "style-target",
+    id: "style-target",
+    title: "What the style controls apply to",
+  }, "Document");
+}
+
+function clearStyleButton() {
+  return el("button", {
+    class: "tool-btn",
+    title: "Clear styling for the current selection/section/document",
+    onclick: resetContextStyle,
+  }, "Clear");
+}
+
+// Render one ribbon item: a factory is called for a control node, a definition
+// becomes a `.tool-btn` and joins the list `refreshToolbar` walks.
+function renderRibbonItem(item, wiki) {
+  if (typeof item === "function") return item();
+  if (item.wikiOnly && !wiki) return null;
+  const btn = commandButton(item);
+  toolbarButtons.push({ def: item, btn });
+  return btn;
+}
+
 function toolbar(wiki) {
   closeColorMenu();
   const bar = el("div", { class: "editor-toolbar" });
   toolbarButtons = [];
-  for (const def of TOOLBAR) {
-    if (def === null) {
-      bar.append(el("div", { class: "toolbar-sep" }));
-      continue;
+  for (const group of RIBBON) {
+    const body = el("div", { class: "ribbon-group-body" });
+    for (const row of group.rows) {
+      const rowEl = el("div", { class: "ribbon-row" });
+      for (const item of row) {
+        const node = renderRibbonItem(item, wiki);
+        if (node) rowEl.append(node);
+      }
+      if (rowEl.childNodes.length) body.append(rowEl);
     }
-    if (def.wikiOnly && !wiki) continue;
-    const btn = el("button", {
-      class: "tool-btn",
-      title: def.title,
-      dataset: { cmd: def.cmd },
-      style: def.strong ? { fontWeight: "800" } : {},
-      onclick: (e) => toolbarCommand(def.cmd, e.currentTarget),
-    }, def.label);
-    bar.append(btn);
-    toolbarButtons.push({ def, btn });
+    // A whole group can vanish (the Wiki button on the Write tab); drop its
+    // frame too so no empty column is left behind.
+    if (!body.childNodes.length) continue;
+    bar.append(el("div", { class: "ribbon-group" }, [
+      body,
+      el("div", { class: "ribbon-group-label" }, group.label),
+    ]));
   }
-  bar.append(
-    el("div", { class: "toolbar-sep" }),
-    grammarToggle(),
-    dictionaryBtn(),
-    repetitionBtn(),
-    searchBtn(),
-    historyBtn(),
-    el("button", {
-      class: `tool-btn${state.split ? " active" : ""}`,
-      title: "Split the editor into two panes (Ctrl+\\)",
-      onclick: () => toggleSplit(),
-    }, "Split"),
-    el("div", { class: "toolbar-sep" }),
-    fontSelect("context"),
-    sizeSelect("context"),
-    zoomSelect("context"),
-    el("div", { class: "toolbar-sep" }),
-    alignGroup("context"),
-    el("span", { class: "style-target", id: "style-target", title: "What the style controls apply to" }, "Document"),
-    el("button", {
-      class: "tool-btn",
-      title: "Clear styling for the current selection/section/document",
-      onclick: resetContextStyle,
-    }, "Clear")
-  );
   syncEditorControls();
   return bar;
 }

@@ -51,7 +51,7 @@ Legend for hooks: where the work would plug into the current code.
 - [ ] **Link / inline-code / horizontal-rule toolbar buttons** `P1` `S`
   - The `link`, inline `code`, and `horizontalRule` capabilities exist in the
     editor but no ribbon button reaches them; add a link dialog
-    (`setLink`/`unlink`). Hooks: `TOOLBAR` in `static/js/project.js`,
+    (`setLink`/`unlink`). Hooks: `RIBBON` in `static/js/project.js`,
     `run(command)` in `client/editor-entry.js`.
 
 - [ ] **Per-document language + native spellcheck control** `P2` `S`

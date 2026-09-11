@@ -351,6 +351,16 @@ await check("the project shell boots against a mocked API", async () => {
     .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   assert.ok(!doc.querySelector(".color-popover"), "choosing a swatch closes the palette");
 
+  // The ribbon is grouped into labelled, stacked sections.
+  const ribbonGroups = doc.querySelectorAll(".editor-toolbar .ribbon-group");
+  assert.ok(ribbonGroups.length >= 6, `the ribbon renders grouped sections (${ribbonGroups.length})`);
+  const captions = [...doc.querySelectorAll(".ribbon-group-label")].map((n) => n.textContent);
+  for (const caption of ["Format", "Insert", "Tools"]) {
+    assert.ok(captions.includes(caption), `the ${caption} group is captioned`);
+  }
+  const linkBtn = doc.querySelector('.tool-btn[title="Link to a note"]');
+  assert.ok(linkBtn && linkBtn.querySelector(".tool-btn-text"), "icon buttons carry a text label");
+
   // The repetition dialog is the biggest new UI surface: open it, run a check
   // against the mocked endpoint, and confirm all three result sections render.
   const repeatBtn = doc.querySelector('.tool-btn[title^="Repetition check"]');

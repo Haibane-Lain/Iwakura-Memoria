@@ -833,12 +833,83 @@ a {
 
 .editor-toolbar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 4px 0;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* A ribbon group stacks one or two rows and carries a small caption. */
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 9px;
+  border-left: 1px solid var(--border);
+}
+
+.ribbon-group:first-child {
+  border-left: none;
+  padding-left: 2px;
+}
+
+.ribbon-group-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.ribbon-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ribbon-group-label {
+  margin-top: 3px;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+/* Ribbon-sized controls so two rows fit the shared height. */
+.editor-toolbar .tool-btn {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 7px;
+  font-size: 12.5px;
+  gap: 5px;
+}
+
+.editor-toolbar .tool-btn-text {
+  font-weight: 500;
+}
+
+.editor-toolbar .toolbar-control {
+  height: 28px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.editor-toolbar .toolbar-control.font {
+  min-width: 128px;
+}
+
+.editor-toolbar .toolbar-control.size {
+  min-width: 54px;
+}
+
+.editor-toolbar .style-target {
+  margin-left: 0;
+  padding: 3px 7px;
+  font-size: 11px;
+  max-width: 150px;
 }
 
 .doc-header {
@@ -897,13 +968,6 @@ a {
   opacity: 0.5;
 }
 
-.toolbar-sep {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-  margin: 0 4px;
-}
-
 .toolbar-control {
   padding: 4px 8px;
   border-radius: var(--radius-sm);
@@ -944,10 +1008,6 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.toolbar-sep + .style-target {
-  margin-left: 0;
 }
 
 .editor-wrap {
