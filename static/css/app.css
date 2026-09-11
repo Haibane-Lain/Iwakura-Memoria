@@ -1647,6 +1647,139 @@ a {
   font-family: var(--font-editor);
 }
 
+/* ---------- Comments panel ---------- */
+
+.comments-panel .panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.comments-panel .panel-title {
+  margin-bottom: 0;
+}
+
+.panel-head-spacer {
+  flex: 1;
+}
+
+.mini-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mini-btn:hover {
+  background: var(--surface-3);
+}
+
+.mini-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.mini-btn.danger {
+  color: var(--danger, #b34747);
+}
+
+.comment-composer-wrap,
+.comment-edit-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+}
+
+.comment-composer,
+.comment-edit {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comment-item {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  cursor: pointer;
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
+.comment-item:hover {
+  background: var(--surface-3);
+}
+
+.comment-item.resolved {
+  border-left-color: var(--border);
+  opacity: 0.7;
+}
+
+.comment-item.active {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.comment-item.detached,
+.comment-item.orphan {
+  border-left-color: var(--warn);
+}
+
+.comment-quote {
+  font-style: italic;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.comment-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-meta {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.comment-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.icon-btn.has-comments {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* ---------- Navigation box (wiki) ---------- */
 
 .nav-box {

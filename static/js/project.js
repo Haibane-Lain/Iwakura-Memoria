@@ -82,6 +82,7 @@ const {
   updateTreeWords,
   afterSnapshotRestore,
   refreshAfterReplace,
+  startComment,
 } = workspace;
 
 // Folders the current sidebar search render must show expanded. Display-only:
@@ -1695,6 +1696,7 @@ const TOOLBAR = [
   { cmd: "table", label: "▦", title: "Insert a table (3×3 with a header row)" },
   null,
   { cmd: "linkNote", label: "[[  ]]", title: "Link to a note" },
+  { cmd: "comment", label: "💬", title: "Comment on the selected text (Ctrl+Alt+M)" },
   { cmd: "image", label: "🖼", title: "Insert an image (or drag & drop / paste one)" },
   // The wiki's info box. The toolbar is shared with the Write tab, so the
   // button is marked wiki-only rather than living in a second toolbar.
@@ -1847,6 +1849,10 @@ function toolbarCommand(cmd, button) {
     if (state.editorCtrl) {
       state.editorCtrl.insertCharacterTable({ title: docTitle(state.currentDocId) });
     }
+    return;
+  }
+  if (cmd === "comment") {
+    startComment();
     return;
   }
   if (cmd === "color") {
@@ -3030,6 +3036,14 @@ export function register() {
       if (!state.project) return;
       e.preventDefault();
       openFindReplace();
+    }
+  });
+  // Ctrl/Cmd+Alt+M comments on the selected text.
+  document.addEventListener("keydown", (e) => {
+    if (!state.project) return;
+    if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      startComment();
     }
   });
   // Tab shortcuts: Ctrl+W closes, Ctrl+Tab / Ctrl+Shift+Tab cycle, Ctrl+1..9

@@ -262,6 +262,7 @@ const PROJECT_ROUTES = [
   [/\/api\/projects\/demo\/templates$/, () => []],
   [/\/api\/projects\/demo\/trash$/, () => []],
   [/\/api\/projects\/demo\/snapshots/, () => []],
+  [/\/api\/projects\/demo\/comments/, () => []],
   [/\/api\/projects\/demo$/, () => PROJECT],
   [/\/api\/backups$/, () => []],
 ];

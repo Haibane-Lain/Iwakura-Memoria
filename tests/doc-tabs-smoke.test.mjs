@@ -158,6 +158,7 @@ const ROUTES = [
   [/\/api\/projects\/demo\/dictionary$/, () => ({ words: [] })],
   [/\/api\/projects\/demo\/wiki$/, () => EMPTY_WIKI],
   [/\/api\/projects\/demo\/stats$/, () => STATS],
+  [/\/api\/projects\/demo\/comments/, () => []],
   [
     /\/api\/projects\/demo\/documents\/[^/]+$/,
     (href, method) => {

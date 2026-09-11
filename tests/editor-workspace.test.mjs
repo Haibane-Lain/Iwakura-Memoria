@@ -84,6 +84,9 @@ function installFetch() {
       }
       return jsonResponse(DOCS[id] || {});
     }
+    if (/\/api\/projects\/demo\/comments/.test(href)) {
+      return jsonResponse([]);
+    }
     return jsonResponse({}, 404);
   };
   return { saved };
@@ -107,6 +110,12 @@ function makeFakeEditor(slot) {
         setDictionaryWords() {},
         setGrammarEnabled() {},
         setOnAddToDictionary() {},
+        getCommentRanges: () => [],
+        setComments() {},
+        setComment() {},
+        removeComment() {},
+        removeComments() {},
+        revealComment() { return false; },
         activate() {},
         deactivate() {},
         destroy() {},

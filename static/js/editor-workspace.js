@@ -25,6 +25,7 @@ import { fontStack } from "./fonts.js";
 import { zoomFactor } from "./zoom.js";
 import { defaultZoomForScope as resolveDefaultZoom } from "./editor-prefs.js";
 import { prettyPath } from "./doc-tree.js";
+import { commentsPanel } from "./comments-panel.js";
 
 /* ---------------- tab persistence ---------------- */
 
@@ -562,6 +563,7 @@ export async function renderEditorTab(doc, { wiki, pane } = {}) {
 // Build one pane's chrome (header, editor host, backlinks, status) and stash the
 // element references on the pane record so focus and saving can reach them.
 function renderPane(pane, doc) {
+  pane.activeCommentId = null;
   const header = docHeader(doc, pane);
   const mount = el("div", { class: "editor-mount" });
   const host = el("div", { class: "editor-host" + (pane.wiki ? " wiki-host" : "") }, [mount]);
@@ -569,17 +571,41 @@ function renderPane(pane, doc) {
   host.style.setProperty("--editor-size", `${state.settings.editorSize || 18}px`);
   host.style.setProperty("--editor-align", state.settings.editorAlign || "left");
   host.style.setProperty("--editor-zoom", String(zoomFactor(resolveDefaultZoom(state.settings, pane.wiki))));
-  const panel = backlinksPanel(pane);
-  const wrap = el("div", { class: "editor-wrap" }, [host, panel]);
+
+  const comments = commentsPanel({
+    projectId: state.project.id,
+    pane,
+    syncComments: (items) => syncPaneComments(pane, items),
+    onCount: (items) => updateCommentsButton(pane, items),
+  });
+  const backlinks = backlinksPanel(pane);
+  const panels = [comments, backlinks];
+  const wrap = el("div", { class: "editor-wrap" }, [host, ...panels]);
+
+  // One side panel is open at a time; the buttons in the status bar switch it.
+  const togglePanel = (target) => {
+    const willOpen = !target.classList.contains("open");
+    for (const p of panels) p.classList.remove("open");
+    if (!willOpen) return;
+    target.classList.add("open");
+    if (target === comments) comments._reload();
+  };
+
   const wordsEl = el("span", { class: "st-words" }, "0 words");
   const saveEl = el("span", { class: "st-save status-save" }, "Ready");
+  const commentsBtn = el("button", {
+    class: "icon-btn",
+    title: "Comments on the focused document",
+    onclick: () => togglePanel(comments),
+  }, "Comments");
   const status = el("div", { class: "editor-status" }, [
     wordsEl,
     el("div", { class: "spacer" }),
+    commentsBtn,
     el("button", {
       class: "icon-btn",
       title: "Toggle backlinks",
-      onclick: () => panel.classList.toggle("open"),
+      onclick: () => togglePanel(backlinks),
     }, "Backlinks"),
     saveEl,
   ]);
@@ -596,10 +622,64 @@ function renderPane(pane, doc) {
   pane.root = root;
   pane.host = host;
   pane.mount = mount;
-  pane.panel = panel;
+  pane.panel = backlinks;
+  pane.commentsPanel = comments;
+  pane.commentsBtn = commentsBtn;
   pane.wordsEl = wordsEl;
   pane.saveEl = saveEl;
   return root;
+}
+
+// Paint a pane's comment decorations from its sidecar list, and flag any marker
+// with no body (an unlinked anchor left by an external edit).
+function syncPaneComments(pane, items) {
+  pane.comments = items || [];
+  const ctrl = pane.ctrl;
+  if (!ctrl) return;
+  const known = new Set(pane.comments.map((c) => c.id));
+  const meta = {};
+  for (const comment of pane.comments) meta[comment.id] = { resolved: !!comment.resolved };
+  for (const range of ctrl.getCommentRanges()) {
+    if (!known.has(range.cid)) meta[range.cid] = { orphan: true };
+  }
+  if (pane.activeCommentId && meta[pane.activeCommentId]) {
+    meta[pane.activeCommentId] = { ...meta[pane.activeCommentId], active: true };
+  }
+  ctrl.setComments(meta);
+}
+
+function updateCommentsButton(pane, items) {
+  if (!pane.commentsBtn) return;
+  const open = (items || []).filter((c) => !c.resolved).length;
+  pane.commentsBtn.textContent = open ? `Comments (${open})` : "Comments";
+  pane.commentsBtn.classList.toggle("has-comments", open > 0);
+}
+
+// The ribbon's Comment button and Ctrl+Alt+M land here: capture the focused
+// pane's selection and hand it to that pane's comments panel.
+export function startComment() {
+  const pane = activePane();
+  if (!pane || !pane.ctrl || !pane.commentsPanel) {
+    toast("Open a document to comment on it", "info");
+    return;
+  }
+  const editor = pane.ctrl.editor;
+  const { from, to } = editor.state.selection;
+  if (from === to) {
+    toast("Select some text to comment on", "info");
+    return;
+  }
+  const $from = editor.state.doc.resolve(from);
+  const $to = editor.state.doc.resolve(to);
+  if (!$from.sameParent($to) || !$from.parent.isTextblock) {
+    toast("Select text within a single paragraph", "info");
+    return;
+  }
+  pane.commentsPanel.beginComment({
+    from,
+    to,
+    quote: editor.state.doc.textBetween(from, to, " "),
+  });
 }
 
 function mountPaneEditor(pane, doc) {
@@ -745,6 +825,7 @@ export async function renderEditorView() {
   shell.applyDocStyle();
   for (const { pane } of rendered) {
     if (pane.panel) pane.panel._render();
+    if (pane.commentsPanel) pane.commentsPanel._reload();
     updateLiveWords(pane);
   }
   if (active.ctrl) {

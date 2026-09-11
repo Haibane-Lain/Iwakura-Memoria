@@ -201,6 +201,22 @@ export const api = {
       api.del(`/api/projects/${encodePath(pid)}/snapshots?docId=${encodeURIComponent(docId)}`),
   },
 
+  comments: {
+    list: (pid, docId) =>
+      api.get(`/api/projects/${encodePath(pid)}/comments?docId=${encodeURIComponent(docId)}`),
+    create: (pid, payload) => api.post(`/api/projects/${encodePath(pid)}/comments`, payload),
+    update: (pid, commentId, payload) =>
+      api.put(`/api/projects/${encodePath(pid)}/comments/${encodePath(commentId)}`, payload),
+    remove: (pid, commentId, docId) =>
+      api.del(
+        `/api/projects/${encodePath(pid)}/comments/${encodePath(commentId)}?docId=${encodeURIComponent(docId)}`
+      ),
+    clear: (pid, docId, resolvedOnly = false) =>
+      api.del(
+        `/api/projects/${encodePath(pid)}/comments?docId=${encodeURIComponent(docId)}${resolvedOnly ? "&resolvedOnly=true" : ""}`
+      ),
+  },
+
   templates: {
     list: (pid) => api.get(`/api/projects/${encodePath(pid)}/templates`),
     create: (pid, name, sections) =>
