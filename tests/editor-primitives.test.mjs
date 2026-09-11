@@ -309,6 +309,16 @@ await check("getSelectionText reports the selected range", () => {
   s.close();
 });
 
+await check("typewriter mode toggles without a layout engine", () => {
+  const s = open("alpha beta");
+  // jsdom has no geometry, so the recenter must quietly no-op rather than throw.
+  s.ctrl.setTypewriterMode(true);
+  s.ctrl.editor.chain().setTextSelection(6).run();
+  assert.equal(s.ctrl.getMarkdown(), "alpha beta");
+  s.ctrl.setTypewriterMode(false);
+  s.close();
+});
+
 /* ---------------- slash menu ---------------- */
 
 await check("typing / opens the slash menu and filters it", () => {

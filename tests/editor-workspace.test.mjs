@@ -109,6 +109,7 @@ function makeFakeEditor(slot) {
         getText: () => String(ctrl._md || "").replace(/\s+/g, " ").trim(),
         setDictionaryWords() {},
         setGrammarEnabled() {},
+        setTypewriterMode() {},
         setOnAddToDictionary() {},
         setOnWordMenu() {},
         setOnLookupWord() {},

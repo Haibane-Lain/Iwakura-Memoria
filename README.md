@@ -148,6 +148,13 @@ install; see [Lookup](#lookup).
   independently, and both keep their undo history while open. Right-click a tab
   or a sidebar document to send it to the companion pane; the split pairing is
   remembered per project.
+- **Focus & typewriter modes** — The topbar **Focus** button (or
+  **Ctrl+Shift+D**) hides the sidebar, toolbar, tab strip, document header and
+  status bar so the writing surface fills the window; the topbar itself stays, so
+  the button reads **Exit focus** (the tab shortcuts still switch documents).
+  **Typewriter** keeps the caret near the vertical middle of the editor as you
+  type, in either mode. Both choices are remembered across restarts
+  (`focusMode` / `typewriterMode` in `settings.json`).
 - **Autosave** — Configurable debounce; last-ditch save on tab close.
 - **Undo that follows you** — Each document you visit keeps its editor warm, so
   **Ctrl+Z** still steps back through edits you made before switching to another
@@ -181,7 +188,7 @@ Each project is a free-form scaffolding tree of **folders** and **documents**:
 
 ```
 data/
-  settings.json                    # global settings (theme, word count mode, zoom per tab, grammar toggle, AI config)
+  settings.json                    # global settings (theme, word count mode, zoom per tab, grammar toggle, focus & typewriter modes, AI config)
   .zoom-rebased                    # marker: stored zoom values use the current 100% scale
   ai-sessions/<project>/           # Lain chat session history
   .trash/<project>/                # deleted entries, restorable from Settings -> Trash

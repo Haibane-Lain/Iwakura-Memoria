@@ -33,6 +33,7 @@ import {
 } from "./editor-primitives.js";
 import { makeSlashMenuExtension } from "./slash-menu.js";
 import { makeWikilinkMenuExtension } from "./wikilink-menu.js";
+import { centerCaret, makeTypewriterExtension } from "./typewriter.js";
 import { wordRange } from "./word-at.js";
 import {
   applyCommentsMeta,
@@ -246,6 +247,9 @@ let _grammarDictionaryWords = [];
 let _grammarAddToDictCallback = null;
 let _onLookupWord = null;
 let _grammarBusy = false;
+// Typewriter mode is a view preference shared by every editor in the window,
+// read live by the plugin so flipping it never rebuilds an editor.
+let _typewriterEnabled = false;
 
 function _grammarHash(text) {
   let h = 0;
@@ -993,6 +997,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       ...makeInlineMarkExtensions(),
       makeSlashMenuExtension(),
       makeWikilinkMenuExtension(getWikilinkItems),
+      makeTypewriterExtension(() => _typewriterEnabled),
       makeCommentsExtension(),
       ...makeCharacterTableNodes(imageOpts),
     ],
@@ -1257,6 +1262,13 @@ window.LainEditor = {
       setGrammarEnabled(enabled) {
         editor.view.dispatch(editor.state.tr.setMeta("grammarEnabled", !!enabled));
         if (enabled) _grammarSchedule(editor.view);
+      },
+      // Typewriter mode: keep the caret near the middle. Enabling it recenters
+      // right away so the current line snaps into place without waiting for a
+      // keystroke.
+      setTypewriterMode(enabled) {
+        _typewriterEnabled = !!enabled;
+        if (_typewriterEnabled) centerCaret(editor.view);
       },
       setDictionaryWords(words) {
         _grammarDictionaryWords = Array.isArray(words) ? words : [];

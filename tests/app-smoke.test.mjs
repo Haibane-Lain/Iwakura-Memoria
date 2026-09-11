@@ -313,6 +313,18 @@ await check("the project shell boots against a mocked API", async () => {
   assert.ok(doc.querySelector("#app .main"), "main pane rendered");
   assert.equal(capture.errors.length, 0, `boot threw: ${capture.errors.map(String).join("; ")}`);
 
+  // Focus mode toggles a class on #app; the chrome is hidden by CSS only, so
+  // the sidebar and toolbar stay in the DOM.
+  const focusBtn = doc.getElementById("btn-focus");
+  assert.ok(focusBtn, "the Focus button renders");
+  focusBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.ok(doc.getElementById("app").classList.contains("focus-mode"), "focus mode turns on");
+  assert.equal(focusBtn.textContent, "Exit focus");
+  focusBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.ok(!doc.getElementById("app").classList.contains("focus-mode"), "focus mode turns off");
+  assert.equal(focusBtn.textContent, "Focus");
+  assert.ok(doc.getElementById("btn-typewriter"), "the Typewriter button renders");
+
   // Switching tabs exercises the largest, most cross-coupled render functions.
   const click = (tab) =>
     doc

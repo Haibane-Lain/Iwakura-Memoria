@@ -11,12 +11,13 @@ Legend for hooks: where the work would plug into the current code.
 
 ## Tier 1 — core writing experience (remaining)
 
-- [ ] **Focus / distraction-free mode + typewriter scrolling** `P1` `M`
-  - Hide the sidebar, toolbar, doc header and status bar behind one toggle;
-    optionally keep the caret vertically centered (typewriter mode).
-  - Hooks: workspace grid in `static/css/app.css` (~355), `topbar()`/`sidebar()`
-    in `static/js/project.js`; caret centering is a ProseMirror plugin in
-    `client/editor-entry.js`. Persist the toggle in `settings.json`.
+- [x] **Focus / distraction-free mode + typewriter scrolling** `P1` `M` — shipped:
+  the topbar **Focus** button (or **Ctrl+Shift+D**) hides the sidebar, toolbar,
+  tab strip, doc header and status bar behind a `.focus-mode` class on `#app`;
+  the topbar stays so the button flips to **Exit focus**. **Typewriter** keeps
+  the caret near the middle of the editor's scroll area (pure arithmetic in
+  `client/typewriter-math.js`, the ProseMirror plugin in `client/typewriter.js`).
+  Both persist as `focusMode` / `typewriterMode` in `settings.json`.
 
 - [x] **Document tabs, recent documents, split view** `P2` `L` — shipped:
   a tab strip over the warm-editor pool, a per-project collapsible **Recent**

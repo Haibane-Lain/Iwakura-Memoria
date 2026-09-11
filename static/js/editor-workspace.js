@@ -118,6 +118,7 @@ export function setActivePane(name) {
     if (p === pane) {
       p.ctrl.activate();
       p.ctrl.setGrammarEnabled(pane.revisionMode ? false : state.settings.grammarEnabled);
+      p.ctrl.setTypewriterMode(state.settings.typewriterMode);
     } else {
       p.ctrl.deactivate();
     }

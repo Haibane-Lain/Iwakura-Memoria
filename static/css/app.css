@@ -255,6 +255,11 @@ a {
   color: #fff;
 }
 
+.icon-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .link-btn {
   border: none;
   background: none;
@@ -356,6 +361,21 @@ a {
   display: grid;
   grid-template-columns: 280px 1fr;
   height: calc(100vh - 52px - var(--titlebar-h, 0px));
+}
+
+/* Focus mode hides the surrounding chrome and lets the editor take the full
+   width. The topbar stays put, so the toggle that leaves the mode is always
+   reachable (Ctrl+Shift+D also works). */
+.focus-mode .workspace {
+  grid-template-columns: 1fr;
+}
+
+.focus-mode .sidebar,
+.focus-mode .editor-toolbar,
+.focus-mode .doc-tabs,
+.focus-mode .doc-header,
+.focus-mode .editor-status {
+  display: none;
 }
 
 .sidebar {

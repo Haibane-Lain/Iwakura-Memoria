@@ -584,6 +584,8 @@ function topbar() {
     ]),
     el("div", { class: "topbar-spacer" }),
     el("span", { id: "tb-goal", class: "chip" }),
+    focusBtn(),
+    typewriterBtn(),
     el("button", {
       class: "icon-btn",
       onclick: () => renderExportDialog(state.project.id),
@@ -616,6 +618,64 @@ async function updateTopbar() {
   } catch {
     /* ignore */
   }
+}
+
+/* ---------------- focus / typewriter mode ---------------- */
+
+function focusBtn() {
+  const on = !!state.settings.focusMode;
+  return el("button", {
+    class: `icon-btn${on ? " active" : ""}`,
+    id: "btn-focus",
+    title: "Focus mode — hide the sidebar, toolbar and status bars (Ctrl+Shift+D)",
+    onclick: toggleFocusMode,
+  }, on ? "Exit focus" : "Focus");
+}
+
+function typewriterBtn() {
+  const on = !!state.settings.typewriterMode;
+  return el("button", {
+    class: `icon-btn${on ? " active" : ""}`,
+    id: "btn-typewriter",
+    title: "Typewriter mode — keep the caret vertically centred",
+    onclick: toggleTypewriterMode,
+  }, "Typewriter");
+}
+
+// The class lives on `#app`, so the whole workspace (and the per-pane headers
+// and status bars) react to it from one place.
+function applyFocusMode() {
+  const on = !!state.settings.focusMode;
+  const root = document.getElementById("app");
+  if (root) root.classList.toggle("focus-mode", on);
+  const btn = document.getElementById("btn-focus");
+  if (btn) {
+    btn.classList.toggle("active", on);
+    btn.textContent = on ? "Exit focus" : "Focus";
+  }
+}
+
+function applyTypewriterMode() {
+  const on = !!state.settings.typewriterMode;
+  const btn = document.getElementById("btn-typewriter");
+  if (btn) btn.classList.toggle("active", on);
+  if (state.editorCtrl && state.editorCtrl.setTypewriterMode) {
+    state.editorCtrl.setTypewriterMode(on);
+  }
+}
+
+function toggleFocusMode() {
+  state.settings.focusMode = !state.settings.focusMode;
+  applyFocusMode();
+  // Hiding the chrome changes the editor's height, so recenter the caret.
+  applyTypewriterMode();
+  api.settings.update({ focusMode: state.settings.focusMode }).catch(() => {});
+}
+
+function toggleTypewriterMode() {
+  state.settings.typewriterMode = !state.settings.typewriterMode;
+  applyTypewriterMode();
+  api.settings.update({ typewriterMode: state.settings.typewriterMode }).catch(() => {});
 }
 
 /* ---------------- sidebar ---------------- */
@@ -3108,11 +3168,15 @@ async function init(params) {
       editorZoom: settings.editorZoom || DEFAULT_ZOOM,
       wikiZoom: settings.wikiZoom || DEFAULT_WIKI_ZOOM,
       grammarEnabled: settings.grammarEnabled !== false,
+      focusMode: settings.focusMode === true,
+      typewriterMode: settings.typewriterMode === true,
     };
   } catch (err) {
     console.warn("settings unavailable", err);
   }
   applyEditorPrefs();
+  applyFocusMode();
+  applyTypewriterMode();
 
   try {
     state.project = await api.projects.get(params.id);
@@ -3229,6 +3293,11 @@ export function register() {
   // jump, Ctrl+\ toggles the split pane. Only while a project is open.
   document.addEventListener("keydown", (e) => {
     if (!state.project || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (e.shiftKey && (e.key === "D" || e.key === "d")) {
+      e.preventDefault();
+      toggleFocusMode();
+      return;
+    }
     if (e.key === "\\") {
       e.preventDefault();
       toggleSplit();
