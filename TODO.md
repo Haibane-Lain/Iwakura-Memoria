@@ -115,10 +115,16 @@ Legend for hooks: where the work would plug into the current code.
     "move/copy" path that also carries referenced assets (the README notes
     images do not travel today).
 
-- [ ] **Thesaurus / dictionary lookup / readability / style linter** `P3` `M`
-  - The "dictionary" is only a LanguageTool ignore list. Add a local thesaurus
-    and a readability score (Flesch–Kincaid etc.) over the repetition/search
-    prose cleanup.
+- [x] **Thesaurus / dictionary lookup** `P3` `M` — shipped: offline WordNet
+  (`app/services/lookup.py`, `app/routes/lookup.py`) behind a **🔎 Lookup**
+  dialog (`static/js/lookup-dialog.js`) with click-to-replace, reachable from
+  the ribbon, an editor right-click, and the grammar tooltip. The project
+  "dictionary" was renamed **Spelling** so the two are not confused. The
+  readability half is tracked separately below.
+
+- [ ] **Readability / style linter** `P3` `M`
+  - Flesch–Kincaid and similar scores over the repetition/search prose cleanup,
+    plus a passive-voice / adverb pass.
   - Hooks: new service beside `app/services/repetition.py`; toolbar dialog.
 
 ---

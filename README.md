@@ -40,7 +40,8 @@ npm run lint                               # JavaScript (eslint.config.mjs)
 ```
 
 Grammar checking requires **Java 17+** and a LanguageTool server. See the
-[Grammar](#grammar-checking) section below.
+[Grammar](#grammar-checking) section below. Lookup needs a local **WordNet 3.0**
+install; see [Lookup](#lookup).
 
 ## Features
 
@@ -54,9 +55,12 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   **Write**, 75% for **Wiki**).
 - **Grammar checking** — Bundled LanguageTool 6.9 Java server, with
   ProseMirror inline underlines, replacement corrections, and a per-project
-  ignore dictionary.
-- **Per-project dictionary** — Words you add to the dictionary are filtered
-  from grammar results across the entire project.
+  spelling list.
+- **Spelling list** — Words you add are filtered from grammar results across
+  the entire project.
+- **Lookup** — Select a word (or right-click it) and open **🔎 Lookup** for
+  offline definitions, example sentences and synonyms/antonyms; click a synonym
+  to replace the selection. Also reachable from the grammar tooltip.
 - **Repetition check** — The **Repeat** toolbar button scans any combination of
   folders and chapters for overused words, words echoed close together,
   repeated phrases, and repeated sentences. Pick the scope from the
@@ -182,7 +186,7 @@ data/
   .snapshots/<project>/            # per-document version history (preview + restore)
   <project>/
     project.json                   # title, daily goal, timestamps
-    dictionary.json                # per-project grammar ignore list
+    dictionary.json                # per-project spelling list (grammar ignore list)
     stats/history.jsonl            # word-count deltas (compacted on the fly to one summed line per day; all days kept)
     templates/*.json               # lore templates (Character, Location, …)
     worldbuilding/                 # the Wiki tab's scaffolding root
@@ -272,14 +276,41 @@ exit, and restarts are instant.
 - Underlines appear inline in the editor with a 1.5s debounce.
 - Click an underline to see the error message and replacement suggestions.
 - Apply a replacement to automatically correct the text.
-- Click **Add to dictionary** to ignore a word across all documents in the
+- Click **Add … to spelling** to ignore a word across all documents in the
   project (stored in the project's `dictionary.json`).
-- Open the **Dict** toolbar button to view, search, add, or remove dictionary
+- Open the **Spelling** toolbar button to view, search, add, or remove those
   words.
 
 Toggling grammar off hides the underlines; the bundled server still starts
 at boot (it's already running and shared, so there's nothing to save). You
 can also set `"grammarEnabled": false` in `data/settings.json`.
+
+## Lookup
+
+The **🔎 Lookup** button (in the ribbon's Reference group) shows definitions,
+example sentences, synonyms and antonyms for a word. It also opens from a
+right-click on a word in the editor, and from the **Synonyms for "…"** link in
+a grammar tooltip. Clicking a synonym or antonym replaces the word in the
+document — the selection if it still holds the looked-up word, otherwise the
+caret — so it doubles as a thesaurus.
+
+The data is **WordNet 3.0**, read locally; nothing is sent anywhere. Point the
+app at it with an `IWAKURA_DICT_DIR` environment variable, or place a
+`WordNet 3.0/` folder next to the code (the same way the LanguageTool folder is
+located). The folder holds the standard `dict/` files:
+
+```
+WordNet 3.0/
+  dict/
+    data.noun  data.verb  data.adj  data.adv
+    index.noun index.verb index.adj index.adv
+    noun.exc   verb.exc   adj.exc   adv.exc
+```
+
+WordNet is free from https://wordnet.princeton.edu/ (the 3.0 database,
+`WordNet-3.0.tar.gz`). A packaged build ships it under `extraResources` and
+passes `IWAKURA_DICT_DIR`, so packaged users need no setup. When the data is
+missing, Lookup says so instead of failing, and everything else keeps working.
 
 ## Export
 

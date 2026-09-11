@@ -624,10 +624,10 @@ function _grammarShowTooltip(errorEl) {
     const addBtn = document.createElement("button");
     addBtn.className = "grammar-dict-btn";
     if (alreadyIn) {
-      addBtn.textContent = `"${matchedWord}" in dictionary`;
+      addBtn.textContent = `"${matchedWord}" in spelling`;
       addBtn.disabled = true;
     } else {
-      addBtn.textContent = `Add "${matchedWord}" to dictionary`;
+      addBtn.textContent = `Add "${matchedWord}" to spelling`;
       addBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         _grammarAddToDictCallback(matchedWord);

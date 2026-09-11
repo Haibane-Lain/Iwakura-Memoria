@@ -1,4 +1,4 @@
-// Per-project dictionary dialog (the LanguageTool ignore list). A leaf module:
+// Per-project spelling dialog (the LanguageTool ignore list). A leaf module:
 // it owns the overlay and persistence, and reports word changes through
 // `onChanged` so the shell can update its state and every live editor.
 import { api } from "./api.js";
@@ -82,7 +82,7 @@ export function renderDictionaryDialog({ projectId, words, onChanged }) {
   const overlay = el("div", { class: "modal-overlay dict-modal" }, [
     el("div", { class: "dict-dialog" }, [
       el("div", { class: "dict-header" }, [
-        el("h3", {}, "Dictionary"),
+        el("h3", {}, "Spelling"),
         el("button", { class: "dict-close", onclick: () => overlay.remove() }, "\u00d7"),
       ]),
       el("div", { class: "dict-body" }, [
