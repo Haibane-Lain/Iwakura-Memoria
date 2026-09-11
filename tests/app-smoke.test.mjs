@@ -278,11 +278,12 @@ await check("every static/js module evaluates under jsdom", async () => {
   for (const file of files) await importJs(file); // throws on a cycle/eval error
 
   const project = await importJs("project.js");
+  const exportDialog = await importJs("export-dialog.js");
   const router = await importJs("router.js");
   const library = await importJs("library.js");
   const themes = await importJs("themes.js");
   assert.equal(typeof project.register, "function");
-  assert.equal(typeof project.renderExportDialog, "function");
+  assert.equal(typeof exportDialog.renderExportDialog, "function");
   assert.equal(typeof router.start, "function");
   assert.equal(typeof library.init, "function");
   assert.equal(typeof themes.themeSelect, "function");

@@ -1,7 +1,7 @@
 import { api } from "./api.js";
 import * as router from "./router.js";
 import * as theme from "./themes.js";
-import { renderExportDialog } from "./project.js";
+import { renderExportDialog } from "./export-dialog.js";
 import { el, toast, promptDialog, confirmDialog, formatNumber } from "./ui.js";
 
 async function createProject() {
