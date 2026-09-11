@@ -13,6 +13,7 @@ from typing import Any
 
 from app.ai import attachments as attachments_service
 from app.services import documents as documents_service
+from app.services import snapshots as snapshots_service
 
 CONFIRM_TOOLS = {
     "edit_entry",
@@ -509,7 +510,16 @@ def _exec_edit_entry(project_id: str, args: dict[str, Any]) -> tuple[str, dict[s
     else:
         new_content = content
         result_text = f"Edited [{doc['id']}] \"{doc['title']}\"."
-    doc = documents_service.save_document(project_id, entry_id, new_content)
+    # Capture what Lain is about to replace so the rewrite can be reverted from
+    # the document's history; the pre-change snapshot replaces the usual auto
+    # one.
+    doc = documents_service.save_document(
+        project_id,
+        entry_id,
+        new_content,
+        snapshot=False,
+        before_reason=snapshots_service.REASON_AI,
+    )
     action = {"tool": "edit_entry", "summary": f"Edited \"{doc['title']}\" ({doc.get('words', 0)} words)", "id": entry_id, "ok": True}
     return result_text, action
 

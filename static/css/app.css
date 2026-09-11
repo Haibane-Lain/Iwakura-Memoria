@@ -2518,6 +2518,90 @@ a {
   padding: 0 1px;
 }
 
+/* ---------- Document history (snapshots) ---------- */
+
+.snap-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+
+.snap-list {
+  margin-top: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.snap-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  font-size: 13px;
+}
+
+.snap-item + .snap-item {
+  border-top: 1px solid var(--border);
+}
+
+.snap-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.snap-when {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.snap-meta {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.snap-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.snap-empty {
+  color: var(--text-dim);
+  padding: 12px 2px;
+  font-size: 13px;
+}
+
+.snap-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 6px 2px;
+}
+
+.snap-preview {
+  margin: 0;
+  padding: 10px;
+  max-height: 50vh;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
 /* ---------- Toasts ---------- */
 
 .toast-host {

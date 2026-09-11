@@ -117,6 +117,14 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   document (or detouring through **Settings**/**Stats**). The ten
   most-recently-used documents are kept. History lives in memory only: it is
   cleared when the project reloads and does not survive an app restart.
+- **Document history (snapshots)** — Every document keeps point-in-time
+  versions: one is captured automatically as you write, you can save one on
+  demand from **History** in the editor toolbar, and the dialog lists them with
+  *preview*, *restore*, and *delete*. Restoring keeps the document's current
+  title and styling and snapshots your current text first, so a restore can
+  itself be undone. The 30 newest automatic versions per document are kept;
+  manual ones are pinned. History is local to this machine and is deliberately
+  not carried in backups.
 
 ## How data is stored
 
@@ -140,6 +148,7 @@ data/
   .zoom-rebased                    # marker: stored zoom values use the current 100% scale
   ai-sessions/<project>/           # Lain chat session history
   .trash/<project>/                # deleted entries, restorable from Settings -> Trash
+  .snapshots/<project>/            # per-document version history (preview + restore)
   <project>/
     project.json                   # title, daily goal, timestamps
     dictionary.json                # per-project grammar ignore list

@@ -65,6 +65,10 @@ REORDER_TMP_DIRNAME = ".reorder-tmp"
 # up in a tree, an export, a word count, or a wikilink scan. Restore it from
 # Settings -> Trash.
 TRASH_DIRNAME = ".trash"
+# Per-document version history. Like the trash, it lives at the data root (a
+# sibling of the projects) so it can never show up in a tree, a word count, a
+# wikilink scan, or an export, and it is deliberately excluded from backups.
+SNAPSHOTS_DIRNAME = ".snapshots"
 WIKI_DIRNAME = "worldbuilding"
 TEMPLATES_DIRNAME = "templates"
 # Uploaded pictures for inline images, one folder per project. Deliberately a

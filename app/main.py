@@ -21,6 +21,7 @@ from app.routes import projects as projects_routes
 from app.routes import repetition as repetition_routes
 from app.routes import search as search_routes
 from app.routes import settings as settings_routes
+from app.routes import snapshots as snapshot_routes
 from app.routes import templates as templates_routes
 from app.routes import trash as trash_routes
 from app.routes import wiki as wiki_routes
@@ -196,6 +197,7 @@ def create_app() -> FastAPI:
     app.include_router(repetition_routes.router)
     app.include_router(search_routes.router)
     app.include_router(trash_routes.router)
+    app.include_router(snapshot_routes.router)
     app.include_router(backup_routes.router)
 
     config.STATIC_DIR.mkdir(parents=True, exist_ok=True)

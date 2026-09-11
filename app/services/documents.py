@@ -26,6 +26,7 @@ from typing import Any
 import yaml
 
 from app import config
+from app.services import snapshots as snapshots_service
 from app.services import trash as trash_service
 
 _SAFE_ID_RE = re.compile(r"^[^\\\x00-\x1f]+$")
@@ -818,6 +819,14 @@ def rewrite_wikilink_ids(project_id: str, id_map: dict[str, str]) -> int:
     return rewritten
 
 
+def _apply_id_renames(project_id: str, id_map: dict[str, str]) -> None:
+    """A move, reorder, or folder rename changed document ids: rewrite the
+    wikilinks that pointed at them and move each affected document's
+    snapshots alongside it."""
+    rewrite_wikilink_ids(project_id, id_map)
+    snapshots_service.rekey_map(project_id, id_map)
+
+
 def rewrite_wikilink_titles(project_id: str, old_title: str, new_title: str) -> int:
     """Rewrite title-form ``[[...]]`` links after a document rename.
 
@@ -1059,7 +1068,7 @@ def _move_folder_impl(
         entries.insert(index, folder_id)
         renamed = _renumber(target_dir, project_folder, entries)
         id_map = _expand_folder_maps(before, renamed)
-        rewrite_wikilink_ids(project_id, id_map)
+        _apply_id_renames(project_id, id_map)
         return renamed.get(folder_id, folder_id), renamed
     if target_dir == path or target_dir.is_relative_to(path):
         raise DocumentError("Cannot move a folder into itself or one of its subfolders")
@@ -1085,7 +1094,7 @@ def _move_folder_impl(
             new_doc_id = f"{new_id}/{doc_id[len(old_prefix):]}"
             if new_doc_id != doc_id:
                 id_map[doc_id] = new_doc_id
-    rewrite_wikilink_ids(project_id, id_map)
+    _apply_id_renames(project_id, id_map)
     return new_id, renamed
 
 
@@ -1114,7 +1123,7 @@ def rename_folder(project_id: str, folder_id: str, new_name: str) -> str:
             new_doc_id = f"{new_folder_id}/{doc_id[len(old_prefix):]}"
             if new_doc_id != doc_id:
                 id_map[doc_id] = new_doc_id
-    rewrite_wikilink_ids(project_id, id_map)
+    _apply_id_renames(project_id, id_map)
     _invalidate_word_stats(project_id)
     return new_folder_id
 
@@ -1149,8 +1158,46 @@ def _prune_empty(start: Path, stop: Path) -> None:
         parent = parent.parent
 
 
+def _capture_snapshot(
+    project_id: str,
+    doc_id: str,
+    raw: str,
+    mode: str = "auto",
+    reason: str = snapshots_service.REASON_AUTO,
+) -> None:
+    """Best-effort snapshot of a document's current file. Never fails a save."""
+    meta, body = parse_frontmatter(raw)
+    try:
+        snapshots_service.capture(
+            project_id,
+            doc_id,
+            raw,
+            reason=reason,
+            title=str(meta.get("title") or ""),
+            kind=_doc_kind(raw),
+            words=count_words(body, mode),
+        )
+    except (OSError, ValueError):
+        pass
+
+
+def read_document_raw(project_id: str, doc_id: str) -> str:
+    """The document's file exactly as stored (frontmatter + body)."""
+    folder = _project_folder(project_id)
+    path = _doc_path(folder, doc_id)
+    if not path.exists():
+        raise FileNotFoundError(f"Document '{doc_id}' not found")
+    return path.read_text(encoding="utf-8")
+
+
 def save_document(
-    project_id: str, doc_id: str, content: str, mode: str = "auto"
+    project_id: str,
+    doc_id: str,
+    content: str,
+    mode: str = "auto",
+    *,
+    snapshot: bool = True,
+    before_reason: str | None = None,
 ) -> dict[str, Any]:
     folder = _project_folder(project_id)
     path = _doc_path(folder, doc_id)
@@ -1162,11 +1209,22 @@ def save_document(
         fm_match = _FRONTMATTER_RE.match(raw)
         body_start = fm_match.end() if fm_match else 0
         old_words = count_words(raw[body_start:], mode)
-        config._write_atomic(path, raw[:body_start] + content)
+        new_raw = raw[:body_start] + content
+        config._write_atomic(path, new_raw)
 
         new_words = count_words(content, mode)
         _record_save(project_id, doc_id, new_words - old_words)
         _word_stats_update(project_id, mode, doc_id, old_words, new_words)
+        # A caller that is about to overwrite a document on purpose (a restore,
+        # a Lain rewrite) can capture the pre-change file first, under the same
+        # lock, so the change is reversible.
+        if before_reason and raw != new_raw:
+            _capture_snapshot(project_id, doc_id, raw, mode, reason=before_reason)
+        # Snapshotting is best-effort and never fails the save. The destructive
+        # paths pass snapshot=False so they do not also add a redundant "auto"
+        # entry seconds after their own safety capture.
+        if snapshot:
+            _capture_snapshot(project_id, doc_id, new_raw, mode)
         return get_document(project_id, doc_id, mode)
 
 
@@ -1365,7 +1423,7 @@ def reorder_documents(
     directory = _folder_path(project_folder, folder or "")
     before = _project_doc_map(project_folder)
     renamed = _renumber(directory, project_folder, ordered_ids)
-    rewrite_wikilink_ids(project_id, _expand_folder_maps(before, renamed))
+    _apply_id_renames(project_id, _expand_folder_maps(before, renamed))
     return {"tree": get_tree(project_id, mode), "renamed": renamed}
 
 
@@ -1410,7 +1468,7 @@ def _move_document_impl(
         entries.insert(index, doc_id)
         renamed = _renumber(target_dir, project_folder, entries)
         new_doc_id = renamed.get(doc_id, doc_id)
-        rewrite_wikilink_ids(project_id, _expand_folder_maps(before, renamed))
+        _apply_id_renames(project_id, _expand_folder_maps(before, renamed))
         return get_document(project_id, new_doc_id, mode), renamed
 
     before = _project_doc_map(project_folder)
@@ -1428,7 +1486,7 @@ def _move_document_impl(
     id_map = _expand_folder_maps(before, renamed)
     if new_doc_id != doc_id:
         id_map[doc_id] = new_doc_id
-    rewrite_wikilink_ids(project_id, id_map)
+    _apply_id_renames(project_id, id_map)
     return get_document(project_id, new_doc_id, mode), renamed
 
 

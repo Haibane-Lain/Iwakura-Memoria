@@ -177,6 +177,28 @@ export const api = {
     empty: (pid) => api.del(`/api/projects/${encodePath(pid)}/trash`),
   },
 
+  snapshots: {
+    list: (pid, docId) =>
+      api.get(`/api/projects/${encodePath(pid)}/snapshots?docId=${encodeURIComponent(docId)}`),
+    create: (pid, docId) =>
+      api.post(`/api/projects/${encodePath(pid)}/snapshots`, { docId }),
+    get: (pid, snapshotId, docId) =>
+      api.get(
+        `/api/projects/${encodePath(pid)}/snapshots/${encodePath(snapshotId)}?docId=${encodeURIComponent(docId)}`
+      ),
+    restore: (pid, snapshotId, docId) =>
+      api.post(
+        `/api/projects/${encodePath(pid)}/snapshots/${encodePath(snapshotId)}/restore`,
+        { docId }
+      ),
+    remove: (pid, snapshotId, docId) =>
+      api.del(
+        `/api/projects/${encodePath(pid)}/snapshots/${encodePath(snapshotId)}?docId=${encodeURIComponent(docId)}`
+      ),
+    clear: (pid, docId) =>
+      api.del(`/api/projects/${encodePath(pid)}/snapshots?docId=${encodeURIComponent(docId)}`),
+  },
+
   templates: {
     list: (pid) => api.get(`/api/projects/${encodePath(pid)}/templates`),
     create: (pid, name, sections) =>

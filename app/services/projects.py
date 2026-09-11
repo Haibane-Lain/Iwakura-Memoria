@@ -12,6 +12,7 @@ from typing import Any
 
 from app import config
 from app.services import documents as documents_service
+from app.services import snapshots as snapshots_service
 from app.services import trash as trash_service
 
 DICTIONARY_FILENAME = "dictionary.json"
@@ -232,6 +233,7 @@ def delete_project(project_id: str) -> None:
         raise FileNotFoundError(f"Project '{project_id}' not found")
     shutil.rmtree(folder)
     trash_service.delete_project_trash(pid)
+    snapshots_service.delete_project_snapshots(pid)
 
 
 def get_document_tree(project_id: str, scope: str = "write") -> dict[str, Any]:
