@@ -11,6 +11,18 @@ import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
 import { filterTree } from "./tree-search.js";
 import { createEditorPool } from "./editor-pool.js";
 import { createDocTabs } from "./doc-tabs.js";
+import {
+  collectTree,
+  allDocs as collectAllDocs,
+  findDocIn,
+  resolveDocByTitle as resolveDocByTitleIn,
+  prettyPath,
+  folderNodeIn,
+  countDocs,
+  folderContainsDoc,
+  firstDocIn,
+  expandAll,
+} from "./doc-tree.js";
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import { DEFAULT_WIKI_ZOOM, DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
 import { keepScrollTop } from "./scroll-keep.js";
@@ -239,88 +251,27 @@ function setTreeQuery(query) {
   else state.writeQuery = query;
 }
 
-function collectTree(node) {
-  const out = [];
-  const walk = (n, folderId) => {
-    for (const doc of n.documents || []) {
-      out.push({ id: doc.id, title: doc.title, kind: doc.kind, folder: folderId });
-    }
-    for (const f of n.folders || []) walk(f, f.id);
-  };
-  walk(node || { folders: [], documents: [] }, "");
-  return out;
-}
-
+// The pure tree helpers live in doc-tree.js; these thin wrappers bind them to
+// the current scope's trees and document-title lookups.
 function allDocs() {
-  return [...collectTree(state.tree), ...collectTree(state.wikiTree)];
+  return collectAllDocs(state.tree, state.wikiTree);
 }
 
 function resolveDocByTitle(title) {
-  const target = (title || "").trim();
-  if (!target) return null;
-  const norm = target.toLowerCase();
-  const docs = allDocs();
-  return (
-    docs.find((d) => d.title.toLowerCase() === norm) ||
-    docs.find((d) => d.id.toLowerCase() === norm) ||
-    null
-  );
+  return resolveDocByTitleIn(allDocs(), title);
 }
 
 function docTitle(docId) {
-  const d = collectTree(activeTree()).find((x) => x.id === docId);
+  const d = findDocIn(activeTree(), docId);
   return d ? d.title : null;
 }
 
-function prettyPath(doc) {
-  const parts = (doc.id || "").split("/");
-  parts.pop();
-  const folderPart = parts.map((seg) => seg.replace(/^\d+-/, "")).join("/");
-  return folderPart ? `${folderPart}/${doc.title || ""}` : doc.title || doc.id;
-}
-
 function folderNode(folderId) {
-  const root = activeTree() || { folders: [], documents: [] };
-  if (!folderId || folderId === rootFolderId()) return root;
-  const walk = (n) => {
-    for (const f of n.folders || []) {
-      if (f.id === folderId) return f;
-      const sub = walk(f);
-      if (sub) return sub;
-    }
-    return null;
-  };
-  return walk(root) || { folders: [], documents: [] };
-}
-
-function countDocs(node) {
-  let count = (node.documents || []).length;
-  for (const f of node.folders || []) count += countDocs(f);
-  return count;
-}
-
-function folderContainsDoc(node, docId) {
-  if ((node.documents || []).some((d) => d.id === docId)) return true;
-  return (node.folders || []).some((f) => folderContainsDoc(f, docId));
+  return folderNodeIn(activeTree(), folderId, rootFolderId());
 }
 
 function firstDoc() {
-  const walk = (n) => {
-    if (n.documents && n.documents.length) return n.documents[0];
-    for (const f of n.folders || []) {
-      const d = walk(f);
-      if (d) return d;
-    }
-    return null;
-  };
-  return walk(activeTree());
-}
-
-function expandAll(node, set) {
-  for (const f of node.folders || []) {
-    set.add(f.id);
-    expandAll(f, set);
-  }
+  return firstDocIn(activeTree());
 }
 
 async function refreshTree() {
