@@ -18,11 +18,13 @@ Legend for hooks: where the work would plug into the current code.
     in `static/js/project.js`; caret centering is a ProseMirror plugin in
     `client/editor-entry.js`. Persist the toggle in `settings.json`.
 
-- [ ] **Document tabs, recent documents, split view** `P2` `L`
-  - A tab strip over the already-existing warm-editor pool
-    (`static/js/editor-pool.js`), a recent list persisted per project, and
-    optionally two side-by-side editors.
-  - Hooks: `renderEditorTab` / `openDocument` / `switchTab` in `project.js`.
+- [x] **Document tabs, recent documents, split view** `P2` `L` — shipped:
+  a tab strip over the warm-editor pool, a per-project collapsible **Recent**
+  list, and a two-pane split with a shared focus-following toolbar. (Was:
+  A tab strip over the already-existing warm-editor pool
+  (`static/js/editor-pool.js`), a recent list persisted per project, and
+  optionally two side-by-side editors.
+  Hooks: `renderEditorTab` / `openDocument` / `switchTab` in `project.js`.)
 
 - [ ] **In-editor writing targets & session pacing** `P1` `M`
   - Per-document/session word target with a live progress bar, and a sprint
@@ -170,6 +172,10 @@ Legend for hooks: where the work would plug into the current code.
   (`@tiptap/core` GHSA-cp6q-959q-f8rh is patched only in 3.30.4). Markdown-only
   storage means the known advisory is not practically reachable.
 - **Splitting `static/js/project.js`** — tripwire: > ~4,000 lines or recurring
-  friction.
+  friction. It is now ~4,800 lines and well past the tripwire. The next
+  extraction should peel off the editor view (panes, tab strip, save pipeline)
+  the way `doc-tabs.js` and `editor-pool.js` already hold their pure state;
+  `renderEditorView` / `renderPane` / the `panes` records are the natural seam,
+  but they reach deep into `state`, so it is not a mechanical move.
 - **Splitting `app/services/documents.py`** — tripwire: > ~1,800 lines or a
   size-traced bug.

@@ -151,6 +151,56 @@ check("destroyAll clears and destroys everything", () => {
   assert.equal(pool.activeId, null);
 });
 
+check("pinned documents are never evicted", () => {
+  const pool = createEditorPool({ max: 2 });
+  const a = fakeCtrl("a");
+  const b = fakeCtrl("b");
+  pool.add("a", a);
+  pool.add("b", b);
+  pool.pin("a"); // a is oldest but pinned (e.g. the other split pane)
+  const c = fakeCtrl("c");
+  pool.add("c", c); // b is the oldest unpinned
+  assert.equal(pool.has("a"), true);
+  assert.equal(pool.has("b"), false);
+  assert.equal(b.destroyed, true);
+  assert.equal(pool.has("c"), true);
+  assert.deepEqual(pool.pinned(), ["a"]);
+});
+
+check("unpin/unpinAll release protection", () => {
+  const pool = createEditorPool({ max: 1 });
+  const a = fakeCtrl("a");
+  pool.add("a", a);
+  pool.pin("a");
+  const b = fakeCtrl("b");
+  pool.add("b", b); // a pinned, so it survives the cap
+  assert.equal(pool.size, 2);
+  pool.unpinAll();
+  // The next add now evicts the oldest unpinned entry (a).
+  const c = fakeCtrl("c");
+  pool.add("c", c);
+  assert.equal(pool.has("a"), false);
+  assert.equal(a.destroyed, true);
+});
+
+check("rekey follows a pin", () => {
+  const pool = createEditorPool({ max: 1 });
+  const a = fakeCtrl("a");
+  pool.add("a", a);
+  pool.pin("a");
+  pool.rekey("a", "a/moved");
+  assert.deepEqual(pool.pinned(), ["a/moved"]);
+});
+
+check("destroyAll clears pins", () => {
+  const pool = createEditorPool({ max: 2 });
+  const a = fakeCtrl("a");
+  pool.add("a", a);
+  pool.pin("a");
+  pool.destroyAll();
+  assert.deepEqual(pool.pinned(), []);
+});
+
 check("default limit is 10", () => {
   assert.equal(DEFAULT_EDITOR_POOL_LIMIT, 10);
 });

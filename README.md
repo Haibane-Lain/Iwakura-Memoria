@@ -116,6 +116,24 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   recoverable. Trash is per project and is dropped when the project is.
 - **Whole-library backups** — One click snapshots every project, settings,
   stats, and chat history into a timestamped zip; the 10 newest are kept.
+- **Document tabs** — Clicking a document in the sidebar opens it as a tab
+  instead of replacing what is on screen; the strip above the editor shows every
+  open document, and a click, **Ctrl+Tab**/**Ctrl+Shift+Tab** or
+  **Ctrl+1–9** jumps between them. Close one with its **×**, a middle-click or
+  **Ctrl+W** (unsaved edits are saved first). Open tabs and the recently visited
+  list are remembered per project, so a reload restores your place.
+- **Recent documents** — The sidebar's collapsible **Recent** list keeps the
+  last 15 documents you visited — chapters, notes and wiki entries together, most
+  recent first — one click away even after you close their tab. It is a
+  convenience only: its title history is kept in this browser and is dropped
+  from backups.
+- **Split view** — The **Split** toolbar button (or **Ctrl+\\**) puts a second
+  editable pane next to the current document, so you can keep notes or a wiki
+  entry in view while you write. One shared toolbar and grammar check follow
+  whichever pane you click into, each pane saves and reports its own word count
+  independently, and both keep their undo history while open. Right-click a tab
+  or a sidebar document to send it to the companion pane; the split pairing is
+  remembered per project.
 - **Autosave** — Configurable debounce; last-ditch save on tab close.
 - **Undo that follows you** — Each document you visit keeps its editor warm, so
   **Ctrl+Z** still steps back through edits you made before switching to another

@@ -13,6 +13,10 @@ export const DEFAULT_EDITOR_POOL_LIMIT = 10;
 
 export function createEditorPool({ max = DEFAULT_EDITOR_POOL_LIMIT } = {}) {
   const entries = new Map();
+  // Documents that must never be evicted even when they are not the active
+  // one — e.g. both panes when split view is open. Unlike `activeId`, any
+  // number of ids can be pinned.
+  const pins = new Set();
   let activeId = null;
 
   function touch(id) {
@@ -28,6 +32,7 @@ export function createEditorPool({ max = DEFAULT_EDITOR_POOL_LIMIT } = {}) {
     const ctrl = entries.get(id);
     if (ctrl === undefined) return null;
     entries.delete(id);
+    pins.delete(id);
     if (activeId === id) activeId = null;
     return ctrl;
   }
@@ -44,22 +49,29 @@ export function createEditorPool({ max = DEFAULT_EDITOR_POOL_LIMIT } = {}) {
     return ctrl;
   }
 
+  function destroyCtrl(ctrl) {
+    try {
+      ctrl.deactivate && ctrl.deactivate();
+    } catch {
+      /* ignore */
+    }
+    try {
+      ctrl.destroy && ctrl.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
+
   function evict() {
-    while (entries.size > max) {
-      const oldest = entries.keys().next().value;
-      if (oldest === activeId) break;
-      const ctrl = entries.get(oldest);
-      entries.delete(oldest);
-      try {
-        ctrl.deactivate && ctrl.deactivate();
-      } catch {
-        /* ignore */
-      }
-      try {
-        ctrl.destroy && ctrl.destroy();
-      } catch {
-        /* ignore */
-      }
+    // Walk oldest-first and drop unpinned entries until the cap is met. The
+    // active document and anything pinned (the visible panes) are skipped;
+    // when every entry is protected the pool can sit above `max`.
+    for (const id of [...entries.keys()]) {
+      if (entries.size <= max) break;
+      if (id === activeId || pins.has(id)) continue;
+      const ctrl = entries.get(id);
+      entries.delete(id);
+      destroyCtrl(ctrl);
     }
   }
 
@@ -78,6 +90,18 @@ export function createEditorPool({ max = DEFAULT_EDITOR_POOL_LIMIT } = {}) {
     },
     get(id) {
       return entries.get(id);
+    },
+    pin(id) {
+      if (entries.has(id)) pins.add(id);
+    },
+    unpin(id) {
+      pins.delete(id);
+    },
+    unpinAll() {
+      pins.clear();
+    },
+    pinned() {
+      return [...pins];
     },
     add(id, ctrl) {
       entries.delete(id);
@@ -127,6 +151,7 @@ export function createEditorPool({ max = DEFAULT_EDITOR_POOL_LIMIT } = {}) {
         }
       }
       entries.set(newId, ctrl);
+      if (pins.delete(oldId)) pins.add(newId);
       if (activeId === oldId) activeId = newId;
     },
     forget,
@@ -134,18 +159,10 @@ export function createEditorPool({ max = DEFAULT_EDITOR_POOL_LIMIT } = {}) {
     destroyAll() {
       const all = [...entries.values()];
       entries.clear();
+      pins.clear();
       activeId = null;
       for (const ctrl of all) {
-        try {
-          ctrl.deactivate && ctrl.deactivate();
-        } catch {
-          /* ignore */
-        }
-        try {
-          ctrl.destroy && ctrl.destroy();
-        } catch {
-          /* ignore */
-        }
+        destroyCtrl(ctrl);
       }
     },
   };
