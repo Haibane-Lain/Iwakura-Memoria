@@ -67,12 +67,32 @@ Legend for hooks: where the work would plug into the current code.
 
 ## Tier 2 — fiction-craft tools
 
-- [ ] **Comments / annotations / revision mode** `P2` `L`
-  - Nothing exists — no model, storage, or UI. Needs a comment model anchored
-    to a text range (marks in the Markdown or a sidecar per document), CRUD
-    endpoints, an in-editor highlight + sidebar, and a critique/revision pass.
-  - Hooks: new `app/services/comments.py` + route; editor extension in
-    `client/editor-entry.js`; side panel like `backlinksPanel()`.
+- [x] **Comments / annotations / revision mode** `P2` `L` — shipped: text is
+  anchored with a bare inline `<span data-cid="…">` mark (`client/comments.js`),
+  while the note body lives in a per-document sidecar at
+  `.comments/<project>/<doc-key>.json` (`app/services/comments.py`,
+  `app/routes/comments.py`). A **Comments** panel with a composer,
+  resolve/edit/delete and unlinked-anchor cleanup (`static/js/comments-panel.js`),
+  plus a **Revise** pass that hides grammar underlines and steps through the open
+  notes. Bodies are kept in backups; exports strip the anchors. Deferred pieces
+  are tracked separately below.
+
+- [ ] **Suggested edits / track changes** `P3` `M`
+  - Extend a comment with a proposed replacement for its anchored range and an
+    Accept (replace range, resolve, unwrap) / Reject flow in the comments panel.
+  - Hooks: a `suggestion` field in `app/services/comments.py`; the accept
+    command in `client/comments.js` / `static/js/comments-panel.js`.
+
+- [ ] **Lain critique pass** `P3` `M`
+  - Let Lain review a scene and propose comments (quotes + notes) that the
+    editor anchors; keep it opt-in and reversible.
+  - Hooks: a structured critique prompt over `app/ai/agent.py`; anchoring in
+    `static/js/comments-panel.js`.
+
+- [ ] **Cross-document comment index** `P3` `M`
+  - The panel is per-document; add a project-wide review queue gathering open
+    notes from every document.
+  - Hooks: a list-all in `app/services/comments.py`; a workspace view.
 
 - [ ] **Scene / document metadata** `P2` `M`
   - Frontmatter `tags` is read by `get_document` but there is **no way to set,

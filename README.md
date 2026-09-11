@@ -113,6 +113,12 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   super/subscript and text colors. Tables and task lists are stored as ordinary
   Markdown; the inline marks are stored as inline HTML and carried into every
   export.
+- **Comments & revision pass** — Select text and press the **💬** ribbon button
+  (or **Ctrl+Alt+M**) to leave a note anchored to that passage. The **Comments**
+  panel lists a document's notes and walks them with resolve, edit and delete;
+  **Revise** hides grammar underlines and steps through the open ones one at a
+  time. Comment bodies live beside the project, not in the Markdown, and exports
+  leave the anchors out.
 - **Link-safe rearranging** — Moving or reordering a document rewrites any
   `[[path]]` links that point to it; renaming a document rewrites links that
   point to it by title, so nothing silently breaks.
@@ -366,6 +372,17 @@ to `?` instead of failing the export.
   them from the `/` slash menu (or the **▦** table and **☑** task-list ribbon
   buttons). A table with a merged cell has no GFM form and is written back as
   HTML; DOCX and PDF keep the text of the inline marks but not their colour.
+- **Comments** are anchored to text with a bare inline marker,
+  `<span data-cid="…">`, while the note itself (text, author, resolved state)
+  is stored in a per-document sidecar beside the projects. That keeps the
+  Markdown source free of comment bodies, makes the anchor survive edits and
+  reloads, and means a word count, search or repetition check never sees the
+  note. Select text and use **💬 Comment** (or **Ctrl+Alt+M**); the **Comments**
+  panel opens with a composer. **Revise** is a review pass: it hides grammar
+  underlines and steps through the open notes, advancing when you resolve one.
+  Exports (DOCX, PDF, EPUB, and the zipped Markdown) unwrap the markers and keep
+  only the text. An anchor whose note is missing (say, after an external edit)
+  shows up in the panel as an unlinked anchor you can remove.
 - Chapters, notes, wiki entries, and folders can all be moved by dragging
   them in the sidebar: drop on a folder to nest it inside, on a document to
   reorder within the same folder, or on empty space to move to the project

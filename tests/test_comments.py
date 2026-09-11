@@ -6,6 +6,7 @@ project; the route test pins the request/response wiring.
 """
 from __future__ import annotations
 
+import io
 import zipfile
 
 from fastapi.testclient import TestClient
@@ -147,6 +148,60 @@ def test_backup_includes_comments(data_dir, make_project):
     with zipfile.ZipFile(result["path"]) as zf:
         names = zf.namelist()
     assert any(".comments" in name and name.endswith(".json") for name in names)
+
+
+# --- exports ----------------------------------------------------------------
+
+
+def test_strip_comment_markers_keeps_the_text():
+    from app.services.export import strip_comment_markers
+
+    assert strip_comment_markers('A <span data-cid="c_x">hello</span> B') == "A hello B"
+    # A nested inline span (a text-colour mark) must not leave a dangling tag.
+    nested = 'A <span data-cid="c_x"><span style="color:#c00">red</span></span> B'
+    assert strip_comment_markers(nested) == 'A <span style="color:#c00">red</span> B'
+    assert strip_comment_markers("no markers here") == "no markers here"
+
+
+def _comment_body():
+    return 'Alpha <span data-cid="c_0123456789ab">bravo</span> charlie.'
+
+
+def test_html_export_drops_comment_markers():
+    from app.services.export import md_to_html
+
+    html = md_to_html(_comment_body())
+    assert "data-cid" not in html
+    assert "bravo" in html
+
+
+def test_zip_export_strips_comment_markers(make_project):
+    make_project("proj")
+    documents_service.create_document("proj", "Scene", content=_comment_body())
+
+    data = projects_service.export_zip("proj")
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        markdown = "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.endswith(".md")
+        )
+    assert "data-cid" not in markdown
+    assert "bravo" in markdown
+
+
+def test_epub_export_drops_comment_markers(make_project):
+    make_project("proj")
+    documents_service.create_document("proj", "Scene", content=_comment_body())
+
+    with zipfile.ZipFile(io.BytesIO(projects_service.export_epub("proj"))) as archive:
+        html = "\n".join(
+            archive.read(name).decode("utf-8", "replace")
+            for name in archive.namelist()
+            if name.endswith(".xhtml")
+        )
+    assert "data-cid" not in html
+    assert "bravo" in html
 
 
 # --- routes -----------------------------------------------------------------

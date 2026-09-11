@@ -217,7 +217,49 @@ class _TaskListExtension(Extension):
         md.treeprocessors.register(_TaskListTreeprocessor(md), "tasklist", 5)
 
 
+# Comment anchors are stored inline as ``<span data-cid="…">…</span>``; exports
+# carry the prose, never the app's review metadata.
+_COMMENT_SPAN_OPEN_RE = re.compile(r"<span\s+data-cid=\"[^\"]*\"\s*>", re.IGNORECASE)
+_SPAN_TAG_RE = re.compile(r"<span\b[^>]*>|</span\s*>", re.IGNORECASE)
+
+
+def strip_comment_markers(text: str) -> str:
+    """Remove comment anchors, keeping the text they wrap.
+
+    Span depth is counted so a comment around coloured text (the text-colour
+    mark is itself a ``<span>``) unwraps cleanly instead of leaving a dangling
+    close tag.
+    """
+    if "data-cid" not in text:
+        return text
+    out: list[str] = []
+    cursor = 0
+    while True:
+        opening = _COMMENT_SPAN_OPEN_RE.search(text, cursor)
+        if opening is None:
+            out.append(text[cursor:])
+            return "".join(out)
+        out.append(text[cursor:opening.start()])
+        depth = 1
+        end = len(text)
+        for tag in _SPAN_TAG_RE.finditer(text, opening.end()):
+            if tag.group(0).startswith("</"):
+                depth -= 1
+                if depth == 0:
+                    out.append(text[opening.end():tag.start()])
+                    end = tag.end()
+                    break
+            else:
+                depth += 1
+        else:
+            # Unbalanced marker: drop just the opening tag and keep the rest.
+            out.append(text[opening.end():])
+            end = len(text)
+        cursor = end
+
+
 def md_to_html(body: str) -> str:
+    body = strip_comment_markers(body)
     body = _WIKILINK_RE.sub(r"\1", body)
     return md_lib.markdown(
         body,

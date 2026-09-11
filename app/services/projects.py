@@ -286,7 +286,7 @@ def export_zip(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     import io
     import zipfile
 
-    from app.services.export import _iter_md_files
+    from app.services.export import _iter_md_files, strip_comment_markers
 
     pid = _safe_id(project_id)
     folder = project_dir(pid)
@@ -332,7 +332,11 @@ def export_zip(project_id: str, folder_ids: list[str] | None = None) -> bytes:
                     n += 1
                 arcname = f"{base}-{n}{ext}"
             used.add(arcname)
-            zf.write(path, arcname=arcname)
+            # Exports carry the prose, not the app's comment metadata.
+            if path.suffix.lower() == ".md":
+                zf.writestr(arcname, strip_comment_markers(path.read_text(encoding="utf-8")))
+            else:
+                zf.write(path, arcname=arcname)
     buffer.seek(0)
     return buffer.getvalue()
 
