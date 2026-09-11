@@ -31,3 +31,23 @@ def test_grammar_toggle_persists_across_reads(client):
     assert written.json()["grammarEnabled"] is False
 
     assert client.get("/api/settings", headers=HOST).json()["grammarEnabled"] is False
+
+
+def test_focus_and_typewriter_toggles_persist(client):
+    """The new writing-comfort flags must survive a round-trip like grammar."""
+    initial = client.get("/api/settings", headers=HOST).json()
+    assert initial["focusMode"] is False
+    assert initial["typewriterMode"] is False
+
+    written = client.put(
+        "/api/settings",
+        json={"focusMode": True, "typewriterMode": True},
+        headers=HOST,
+    )
+    assert written.status_code == 200
+    assert written.json()["focusMode"] is True
+    assert written.json()["typewriterMode"] is True
+
+    stored = client.get("/api/settings", headers=HOST).json()
+    assert stored["focusMode"] is True
+    assert stored["typewriterMode"] is True

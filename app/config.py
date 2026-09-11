@@ -53,6 +53,10 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "editorZoom": 100,
     "wikiZoom": 75,
     "grammarEnabled": True,
+    # Writing-comfort toggles: focus mode hides the surrounding chrome, and
+    # typewriter mode keeps the caret near the vertical middle of the editor.
+    "focusMode": False,
+    "typewriterMode": False,
     "ai": {},
 }
 

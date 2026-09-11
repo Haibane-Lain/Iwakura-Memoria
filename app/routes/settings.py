@@ -25,6 +25,8 @@ class SettingsPatch(BaseModel):
     editorZoom: int | None = None
     wikiZoom: int | None = None
     grammarEnabled: bool | None = None
+    focusMode: bool | None = None
+    typewriterMode: bool | None = None
     ai: dict | None = None
 
 
