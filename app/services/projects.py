@@ -338,7 +338,7 @@ def export_docx(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     from docx import Document
     from docx.shared import Pt
 
-    from app.services.export import collect_documents, md_to_html, html_to_docx
+    from app.services.export import collect_documents, html_to_docx, md_to_html
 
     pid = _safe_id(project_id)
     folder = project_dir(pid)
@@ -422,7 +422,6 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
             pdf.set_font(serif_family, "B", 14)
             pdf.set_draw_color(200, 200, 200)
             pdf.set_line_width(0.4)
-            y = pdf.get_y()
             pdf.cell(0, 8, label, new_x="LMARGIN", new_y="NEXT")
             pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + pdf.w - 2 * pdf.l_margin, pdf.get_y())
             pdf.ln(4)
@@ -558,7 +557,7 @@ aside.character-table img { max-width: 100%; height: auto; }""",
                 file_name=f"sec_{_slugify_short(label)}_{len(spine)}.xhtml",
                 lang="en",
             )
-            sec.content = f"<h2>{label}</h2>".encode("utf-8")
+            sec.content = f"<h2>{label}</h2>".encode()
             sec.add_item(css)
             book.add_item(sec)
             spine.append(sec)

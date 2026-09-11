@@ -57,7 +57,6 @@ class StepCallback:
 
     def on_token(self, text: str) -> None:
         """A content token streamed from the model (``text`` is a delta)."""
-        pass
 
 
 def _complete_once(

@@ -22,7 +22,6 @@ def _all_docs(project_id: str) -> list[dict[str, Any]]:
             entry["category"] = parent
             docs.append(entry)
         for folder in node.get("folders", []):
-            folder_id = folder["id"]
             docs.extend(walk(folder, folder["name"]))
         return docs
 

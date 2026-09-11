@@ -1,0 +1,36 @@
+# Tool configuration for the Python side of Iwakura Memoria.
+#
+# There is deliberately no [project]/[build-system] table: the app is not a
+# distributable package, this file only pins lint behaviour. Run from the
+# workspace root with:
+#
+#     .venv\Scripts\python.exe -m ruff check .
+#
+[tool.ruff]
+# 3.10 is the effective floor: the code already uses `zip(..., strict=)`.
+# (Don't let UP017 modernise `timezone.utc` to the 3.11-only `datetime.UTC`.)
+target-version = "py310"
+line-length = 120
+extend-exclude = [
+    "node_modules",
+    ".venv",
+    "LanguageTool 6.9",
+    "_jre",
+    "dist",
+    "static/lib",
+    "scripts/build/_bundle",
+    "scripts/build/_pyinstaller-work",
+]
+
+[tool.ruff.lint]
+# A pragmatic, bug-focused set: pyflakes (F), pycodestyle errors/warnings (E/W),
+# import sorting (I), pyupgrade (UP), flake8-bugbear (B), flake8-simplify (SIM)
+# and flake8-pie (PIE).
+select = ["E4", "E7", "E9", "F", "W", "I", "UP", "B", "SIM", "PIE"]
+ignore = [
+    "E501",   # line length is not enforced
+    "B008",   # FastAPI's Depends()/File() in argument defaults is idiomatic
+    "B904",   # raise-without-from: some HTTP errors are intentionally un-chained
+    "SIM105", # try/except/pass is clearer than contextlib.suppress in this code
+    "SIM117", # nested `with` blocks read more clearly than a combined header
+]

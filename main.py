@@ -12,7 +12,6 @@ import sys
 import threading
 import time
 import urllib.request
-from ctypes import wintypes
 from pathlib import Path
 
 import uvicorn
@@ -214,7 +213,7 @@ class _WindowApi:
         """Generate export and prompt user for save location. Returns {ok, cancelled?, path?}."""
         from webview import FileDialog
 
-        from app.services.projects import export_zip, export_docx, export_pdf, export_epub
+        from app.services.projects import export_docx, export_epub, export_pdf, export_zip
 
         ext_map: dict[str, str] = {"zip": ".zip", "docx": ".docx", "pdf": ".pdf", "epub": ".epub"}
         type_map: dict[str, str] = {

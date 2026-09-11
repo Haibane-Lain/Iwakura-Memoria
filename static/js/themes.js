@@ -41,7 +41,7 @@ export async function load() {
     const settings = await api.settings.get();
     apply(settings.theme);
     return settings;
-  } catch (err) {
+  } catch {
     return { theme: DEFAULT_THEME };
   }
 }

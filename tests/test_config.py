@@ -6,12 +6,12 @@ These are the project's first tests. Run from the workspace root:
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from app import config
-
 
 # --- _default_data_dir ----------------------------------------------------
 
@@ -105,7 +105,7 @@ def test_ensure_dirs_migrates_and_points_data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setattr(config, "STATIC_DIR", tmp_path / "static")
     config.ensure_dirs()
-    assert config.DATA_DIR == target
+    assert target == config.DATA_DIR
     assert (target / "settings.json").exists()
     assert config.DATA_DIR.is_dir()
 
@@ -153,6 +153,33 @@ def test_settings_cache_returns_copies(tmp_path, monkeypatch):
     assert config.load_settings()["editorFont"] == "serif"  # cache untouched
 
 
+# --- atomic writes -----------------------------------------------------------
+
+
+def test_write_atomic_leaves_no_temp_file_when_replace_fails(tmp_path, monkeypatch):
+    """A failed atomic write must not strand its dotted ``.tmp`` sibling. The
+    startup sweep is a backstop for crashes, not the primary cleanup."""
+    monkeypatch.setattr(config, "_WRITE_RETRY_COUNT", 1)
+
+    def boom(*args, **kwargs):
+        raise OSError("target locked")
+
+    monkeypatch.setattr(os, "replace", boom)
+    target = tmp_path / "settings.json"
+    with pytest.raises(OSError):
+        config._write_atomic(target, "{}")
+
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert not target.exists()
+
+
+def test_write_atomic_succeeds_normally_and_leaves_no_temp(tmp_path):
+    target = tmp_path / "settings.json"
+    config._write_atomic(target, "{}")
+    assert target.read_text(encoding="utf-8") == "{}"
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
 def test_save_settings_stays_in_a_patched_data_dir(tmp_path, monkeypatch):
     """Regression: ``save_settings`` used to call ``ensure_dirs()``, which
     re-derives DATA_DIR from the environment. Any caller that had pointed
@@ -165,6 +192,6 @@ def test_save_settings_stays_in_a_patched_data_dir(tmp_path, monkeypatch):
 
     config.save_settings({"theme": "dark"})
 
-    assert config.DATA_DIR == patched
+    assert patched == config.DATA_DIR
     assert (patched / "settings.json").exists()
     assert not (tmp_path / "elsewhere").exists()

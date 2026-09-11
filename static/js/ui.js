@@ -48,7 +48,7 @@ export function showModal(inner) {
 export function promptDialog({ title, label, value = "", placeholder = "", confirmText = "OK" }) {
   return new Promise((resolve) => {
     const input = el("input", { type: "text", value, placeholder });
-    const { modal, close } = showModal([
+    const { close } = showModal([
       el("h3", {}, title),
       el("div", { class: "field" }, [el("label", {}, label), input]),
       el(
@@ -82,7 +82,7 @@ export function promptDialog({ title, label, value = "", placeholder = "", confi
 
 export function confirmDialog({ title, message, confirmText = "Delete", danger = true }) {
   return new Promise((resolve) => {
-    const { modal, close } = showModal([
+    const { close } = showModal([
       el("h3", {}, title),
       el("p", { style: { marginBottom: "8px" } }, message),
       el(

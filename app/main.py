@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 from __future__ import annotations
 
+import json
 import sys
 import time
 
@@ -8,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import config
 from app.routes import ai as ai_routes
@@ -25,6 +27,96 @@ from app.services import documents as documents_service
 MAX_REQUEST_BYTES = 27 * 1024 * 1024
 _MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024  # must match app.ai.attachments.MAX_FILE_BYTES
 _SLOW_REQUEST_THRESHOLD_S = 1.0
+_BODY_TOO_LARGE_DETAIL = (
+    f"Request body exceeds maximum size ({_MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB)"
+)
+
+
+def _content_length(scope: Scope) -> int | None:
+    """The declared ``Content-Length`` as an int, or None when absent/invalid."""
+    for name, value in scope.get("headers", []):
+        if name == b"content-length":
+            try:
+                return int(value)
+            except ValueError:
+                return None
+    return None
+
+
+async def _send_too_large(send: Send, detail: str) -> None:
+    body = json.dumps({"detail": detail}).encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+                (b"cache-control", b"no-cache"),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+class BodySizeLimitMiddleware:
+    """Reject request bodies over ``max_bytes``, chunked uploads included.
+
+    The ``Content-Length`` header is checked first (cheap, and catches honest
+    clients). A chunked request has no length to check, so the ASGI ``receive``
+    callable is also wrapped and the running byte total is enforced as the body
+    streams — before a route can buffer the whole thing into memory. This is a
+    pure ASGI middleware on purpose: ``BaseHTTPMiddleware`` hands the downstream
+    app a different receive callable, so a wrapped ``request._receive`` there
+    would never be consulted.
+
+    When the cap is crossed mid-read the middleware writes the 413 itself and
+    hands the app a disconnect, swallowing whatever response it then tries to
+    send. Raising an exception instead does not work: the app is inside
+    FastAPI's body parser (which relabels any non-``HTTPException`` error as a
+    generic 400) and inside anyio task groups that wrap it in an
+    ``ExceptionGroup``, so the original status is lost.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int, detail: str) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+        self.detail = detail
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = _content_length(scope)
+        if declared is not None and declared > self.max_bytes:
+            await _send_too_large(send, self.detail)
+            return
+
+        received = 0
+        rejected = False
+
+        async def limited_receive() -> Message:
+            nonlocal received, rejected
+            if rejected:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b"") or b"")
+                if received > self.max_bytes:
+                    rejected = True
+                    await _send_too_large(send, self.detail)
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def guarded_send(message: Message) -> None:
+            # After our 413 has gone out, drop the error response the app
+            # produces in reaction to the disconnect.
+            if rejected:
+                return
+            await send(message)
+
+        await self.app(scope, limited_receive, guarded_send)
 
 
 def create_app() -> FastAPI:
@@ -68,23 +160,14 @@ def create_app() -> FastAPI:
             )
         return await call_next(request)
 
-    @app.middleware("http")
-    async def _limit_body_size(request: Request, call_next):
-        # The global ceiling sits just above the 25 MB attachment limit so a
-        # full-size upload is expressible; the route-level check (413) enforces
-        # the exact attachment cap. JSON requests are far smaller than this.
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                too_big = int(content_length) > MAX_REQUEST_BYTES
-            except ValueError:
-                too_big = False
-            if too_big:
-                return JSONResponse(
-                    {"detail": f"Request body exceeds maximum size ({_MAX_ATTACHMENT_BYTES // (1024*1024)} MB)"},
-                    status_code=413,
-                )
-        return await call_next(request)
+    # The global ceiling sits just above the 25 MB attachment limit so a
+    # full-size upload is expressible; the route-level check (413) enforces
+    # the exact attachment cap. JSON requests are far smaller than this.
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=MAX_REQUEST_BYTES,
+        detail=_BODY_TOO_LARGE_DETAIL,
+    )
 
     @app.middleware("http")
     async def _request_timer(request: Request, call_next):

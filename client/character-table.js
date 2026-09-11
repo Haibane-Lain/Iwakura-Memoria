@@ -776,7 +776,7 @@ export function makeCharacterTableNodes(imageOpts = {}) {
           event.preventDefault();
           const pos = getPos();
           if (typeof pos !== "number") return;
-          let slotPos = null;
+          let slotPos;
           try {
             slotPos = editor.view.posAtDOM(slot, 0);
           } catch {

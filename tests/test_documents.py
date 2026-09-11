@@ -8,7 +8,6 @@ import time
 from app.services import documents as documents_service
 from app.services import projects as projects_service
 
-
 # --- B3: word-stats cache invalidation --------------------------------------
 
 

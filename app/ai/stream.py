@@ -10,7 +10,8 @@ from __future__ import annotations
 import asyncio
 import re
 import threading
-from typing import Any, Awaitable, Callable
+from collections.abc import Callable
+from typing import Any
 
 from app.ai import agent, tools
 

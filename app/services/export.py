@@ -2,20 +2,19 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import unquote
 
-from docx import Document
-from docx.shared import Emu, Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.style import WD_STYLE_TYPE
 import markdown as md_lib
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Emu, Inches, Pt, RGBColor
 
 from app import config
 from app.services import documents as documents_service
-
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -142,7 +141,7 @@ def rewrite_images(
     that does not resolve, or that can't be read as an image, is removed
     entirely — so no converter downstream can trip over it.
     """
-    def repl(match: "re.Match[str]") -> str:
+    def repl(match: re.Match[str]) -> str:
         attrs = _img_attrs(match.group(0))
         path = resolve_image_src(project_folder, attrs.get("src") or "")
         if path is None or image_px(path) is None:
@@ -287,7 +286,7 @@ def _sort_path(path: Path, project_folder: Path) -> tuple:
 
 def collect_documents(project_id: str, folder_ids: list[str] | None) -> list[tuple[str, str, str]]:
     """Return list of (folder_display_name, doc_title, body) sorted by order."""
-    from app.services.projects import project_dir, _safe_id
+    from app.services.projects import _safe_id, project_dir
     pid = _safe_id(project_id)
     folder = project_dir(pid)
     if not folder.exists():
@@ -482,15 +481,10 @@ class _DocxBuilder(HTMLParser):
 
         if tag == "table":
             self._open_table()
-        elif tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        elif tag in ("h1", "h2", "h3", "h4", "h5", "h6") or tag == "p":
             self._para = None
             self._push(tag, attrs)
-        elif tag == "p":
-            self._para = None
-            self._push(tag, attrs)
-        elif tag == "strong" or tag == "b":
-            self._push(tag, attrs)
-        elif tag == "em" or tag == "i":
+        elif tag == "strong" or tag == "b" or tag == "em" or tag == "i":
             self._push(tag, attrs)
         elif tag == "code":
             if tt == "pre":
@@ -524,9 +518,8 @@ class _DocxBuilder(HTMLParser):
             for r in p.runs:
                 r.font.color.rgb = RGBColor(0xBB, 0xBB, 0xBB)
             self._para = None
-        elif tag == "br":
-            if self._para is not None:
-                self._run = self._para.add_run("\n")
+        elif tag == "br" and self._para is not None:
+            self._run = self._para.add_run("\n")
 
     def handle_endtag(self, tag):
         if self._table_ignore():
@@ -543,10 +536,7 @@ class _DocxBuilder(HTMLParser):
                 self._pop()
             return
 
-        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
-            self._pop()
-            self._para = None
-        elif tag == "p":
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6") or tag == "p":
             self._pop()
             self._para = None
         elif tag in ("strong", "b", "em", "i", "code", "a"):
@@ -611,7 +601,6 @@ class _DocxBuilder(HTMLParser):
             elif tt == "li":
                 if self._list_depth > 0 and self._ol_counters and len(self._ol_counters) >= self._list_depth:
                     self._ol_counters[self._list_depth - 1] += 1
-                    num = self._ol_counters[self._list_depth - 1]
                     self._para = self.doc.add_paragraph(style="List Number")
                 else:
                     self._para = self.doc.add_paragraph(style="List Bullet")

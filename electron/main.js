@@ -125,7 +125,7 @@ function killServer() {
   // which a plain terminate would orphan (Windows has no process groups here).
   try {
     execSync(`taskkill /PID ${serverProc.pid} /T /F`, { stdio: "ignore" });
-  } catch (e) {
+  } catch {
     /* already gone */
   }
   serverProc = null;

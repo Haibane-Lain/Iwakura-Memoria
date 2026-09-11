@@ -109,7 +109,7 @@ def _extract_text(path: Path, ext: str) -> str:
 def add(project_id: str, session_id: str, filename: str, raw: bytes) -> dict[str, Any]:
     ext = _safe_ext(filename)
     if len(raw) > MAX_FILE_BYTES:
-        raise AttachmentError(f"File exceeds the 25 MB limit")
+        raise AttachmentError("File exceeds the 25 MB limit")
     items = _load_metadata(project_id, session_id)
     if len(items) >= MAX_ATTACHMENTS:
         raise AttachmentError(

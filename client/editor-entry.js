@@ -245,7 +245,7 @@ async function _grammarFetch(text) {
   } catch (err) {
     if (err.name === "AbortError") {
       console.warn("grammar check timed out");
-      throw new Error("grammar check timed out");
+      throw new Error("grammar check timed out", { cause: err });
     }
     throw err;
   } finally {
@@ -334,7 +334,6 @@ function makeGrammarPlugin() {
           clearTimeout(_grammarTimer);
           const currentView = _grammarView;
           const docText = _grammarDocText(newState.doc);
-          const checkedHash = _grammarHash(docText.text);
           _grammarTimer = setTimeout(async () => {
             if (_grammarBusy) return;
             _grammarBusy = true;

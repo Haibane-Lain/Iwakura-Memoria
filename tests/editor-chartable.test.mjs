@@ -26,7 +26,6 @@ const dom = new JSDOM("<!DOCTYPE html><body><div id='m'></div></body>", { runScr
 dom.window.eval(fs.readFileSync(bundlePath, "utf8"));
 
 const PID = "my-project";
-const Q = String.fromCharCode(34);
 
 let failures = 0;
 async function check(label, fn) {

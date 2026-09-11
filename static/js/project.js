@@ -1338,9 +1338,9 @@ async function loadWikiData() {
   return state.wikiTree;
 }
 
-function pickTemplate() {
-  return new Promise(async (resolve) => {
-    await loadTemplates();
+async function pickTemplate() {
+  await loadTemplates();
+  return new Promise((resolve) => {
     const list = el("div", { class: "modal-list" });
     const { close } = showModalFromUI([
       el("h3", {}, "Choose a template"),
@@ -1498,7 +1498,7 @@ async function templatesManager() {
     ]),
     el("div", { class: "modal-scroll" }, [list]),
     el("div", { class: "modal-actions" }, [
-      el("button", { class: "icon-btn", onclick: close }, "Done"),
+      el("button", { class: "icon-btn", onclick: () => close() }, "Done"),
     ]),
   ]);
   render();
@@ -1511,12 +1511,12 @@ function editTemplate(tpl, onSaved) {
     rows: 6,
     placeholder: "One section heading per line, e.g.\nAppearance\nPersonality",
   }, tpl ? (tpl.sections || []).join("\n") : "");
-  const { modal, close } = showModalFromUI([
+  const { close } = showModalFromUI([
     el("h3", {}, tpl ? `Edit "${tpl.name}"` : "New template"),
     el("div", { class: "field" }, [el("label", {}, "Name"), nameInput]),
     el("div", { class: "field" }, [el("label", {}, "Sections (one per line)"), sectionsInput]),
     el("div", { class: "modal-actions" }, [
-      el("button", { class: "icon-btn", onclick: close }, "Cancel"),
+      el("button", { class: "icon-btn", onclick: () => close() }, "Cancel"),
       el("button", {
         class: "icon-btn primary",
         onclick: async () => {
@@ -1707,8 +1707,6 @@ const TOOLBAR = [
 
 let toolbarButtons = [];
 
-let _grammarToggleBtn = null;
-
 function grammarToggle() {
   const btn = el("button", {
     class: "tool-btn",
@@ -1725,7 +1723,6 @@ function grammarToggle() {
     },
   }, "✓");
   btn.classList.add(state.settings.grammarEnabled ? "grammar-on" : "grammar-off");
-  _grammarToggleBtn = btn;
   return btn;
 }
 
@@ -2035,7 +2032,6 @@ async function renderEditorTab(doc, { wiki }) {
     state.editorCtrl.destroy();
     state.editorCtrl = null;
   }
-  contentsEl = null;
   navListEl = null;
   const main = document.getElementById("main-content");
   const header = docHeader(doc);
@@ -2096,7 +2092,7 @@ async function renderEditorTab(doc, { wiki }) {
       onOpenImage: showImageOverlay,
       onPickPortrait: (pos) => pickImageFiles(pos),
     });
-  } catch (err) {
+  } catch {
     toast("Editor failed to load", "error");
     return;
   }
@@ -2147,7 +2143,6 @@ function renderWriteTab(doc) {
 
 /* ---------------- navigation box (wiki) ---------------- */
 
-let contentsEl = null;
 let navListEl = null;
 
 function initNavBox() {
@@ -2172,7 +2167,6 @@ function initNavBox() {
     ]),
     list
   );
-  contentsEl = navEl;
   navListEl = list;
 }
 
@@ -2365,7 +2359,7 @@ function updateTreeWords(docId, words) {
 }
 
 async function insertWikilinkDialog() {
-  let notes = [];
+  let notes;
   if (state.wiki) notes = state.wiki.notes;
   else {
     const wiki = await refreshWiki();
@@ -2386,7 +2380,7 @@ async function insertWikilinkDialog() {
     el("div", { class: "field" }, [el("label", {}, "Type a title or search"), search]),
     list,
     el("div", { class: "modal-actions" }, [
-      el("button", { class: "icon-btn", onclick: close }, "Cancel"),
+      el("button", { class: "icon-btn", onclick: () => close() }, "Cancel"),
       el("button", {
         class: "icon-btn primary",
         onclick: () => {
@@ -2820,7 +2814,7 @@ export async function renderExportDialog(projectId) {
 
   const statusEl = el("span", { class: "export-status" });
 
-  const { backdrop, modal, close } = showModal([
+  const { modal, close } = showModal([
     el("h3", {}, "Export Project"),
     formatSection,
     el("div", { class: "export-section-title" }, "Folders"),
@@ -2965,8 +2959,6 @@ async function renderSettingsTab() {
     placeholder: "20",
   });
   const aiTestStatus = el("span", { id: "ai-test-status", class: "chip" });
-
-  const providerLabels = { deepseek: "DeepSeek", lmstudio: "LM Studio", openai_compatible: "OpenAI Compatible", opencode_go: "OpenCode Go" };
 
   function readAiConfig() {
     const prov = aiProviderSelect.value;

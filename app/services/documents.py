@@ -18,11 +18,12 @@ import re
 import shutil
 import threading
 import time
-import yaml
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from app import config
 
@@ -371,9 +372,7 @@ def _is_orderable_entry(path: Path, project_folder: Path) -> bool:
             config.ASSETS_DIRNAME,
         ):
             return False
-        if path.parent == project_folder and name.lower() == config.WIKI_DIRNAME:
-            return False
-        return True
+        return not (path.parent == project_folder and name.lower() == config.WIKI_DIRNAME)
     return path.is_file() and path.suffix.lower() == ".md" and not name.startswith(".")
 
 
@@ -742,7 +741,7 @@ def rewrite_wikilink_ids(project_id: str, id_map: dict[str, str]) -> int:
         with _save_lock_for(path):
             raw = path.read_text(encoding="utf-8")
 
-            def _sub(match: "re.Match[str]") -> str:
+            def _sub(match: re.Match[str]) -> str:
                 new_target = lookup.get(match.group(2).strip().lower())
                 if new_target is None:
                     return match.group(0)
@@ -775,7 +774,7 @@ def rewrite_wikilink_titles(project_id: str, old_title: str, new_title: str) -> 
         with _save_lock_for(path):
             raw = path.read_text(encoding="utf-8")
 
-            def _sub(match: "re.Match[str]") -> str:
+            def _sub(match: re.Match[str]) -> str:
                 if _normalize_link_target(match.group(2)) != old_norm:
                     return match.group(0)
                 return f"{match.group(1)}{new_title}{match.group(3) or ''}{match.group(4)}"
@@ -1263,7 +1262,7 @@ def _renumber(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     renamed: dict[str, str] = {}
-    for entry_id, (_, new) in zip(ordered_ids, staged):
+    for entry_id, (_, new) in zip(ordered_ids, staged, strict=True):
         new_id = _entry_id(new, project_folder)
         if new_id != entry_id:
             renamed[entry_id] = new_id

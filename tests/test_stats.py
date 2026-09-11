@@ -108,7 +108,11 @@ def test_record_save_compacts_when_over_threshold(data_dir, monkeypatch):
     for i in range(30):
         documents._record_save("proj", f"doc{i}", 1)
     history = data_dir / "proj" / "stats" / "history.jsonl"
-    parsed = [json.loads(l) for l in history.read_text(encoding="utf-8").splitlines() if l.strip()]
+    parsed = [
+        json.loads(line)
+        for line in history.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     # Threshold was crossed mid-run: the log folded once into a per-day sum,
     # then the remaining appends continued. Total daily delta is preserved.
     assert len(parsed) <= 3

@@ -114,7 +114,7 @@ def mask_settings(settings: dict[str, Any]) -> dict[str, Any]:
     out = copy.deepcopy(settings)
     ai = out.get("ai")
     if isinstance(ai, dict):
-        for name, cfg in ai.items():
+        for cfg in ai.values():
             if isinstance(cfg, dict) and cfg.get("apiKey"):
                 cfg["apiKey"] = MASK
     return out

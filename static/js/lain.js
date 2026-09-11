@@ -38,10 +38,6 @@ let loaded = false;
 
 /* ---------------- helpers ---------------- */
 
-function esc(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 function mdToHTML(text) {
   return sanitizeChatHTML(window.marked.parse(String(text || ""), { breaks: true }));
 }

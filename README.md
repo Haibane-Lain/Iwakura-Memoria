@@ -29,6 +29,13 @@ To run the tests:
 npm run test:js                          # frontend unit tests (node; rebuilds the bundle first)
 ```
 
+To lint (both must pass in CI alongside the tests):
+
+```
+.venv\Scripts\python.exe -m ruff check .   # Python (config in pyproject.toml)
+npm run lint                               # JavaScript (eslint.config.mjs)
+```
+
 Grammar checking requires **Java 17+** and a LanguageTool server. See the
 [Grammar](#grammar-checking) section below.
 

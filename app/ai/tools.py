@@ -498,10 +498,11 @@ def _exec_edit_entry(project_id: str, args: dict[str, Any]) -> tuple[str, dict[s
     existing = doc.get("content", "")
     if append:
         new_content, note = _apply_append(existing, content, heading)
-        if heading:
-            label = f"Appended to \"{doc['title']}\" under \"{heading}\""
-        else:
-            label = f"Appended to \"{doc['title']}\""
+        label = (
+            f"Appended to \"{doc['title']}\" under \"{heading}\""
+            if heading
+            else f"Appended to \"{doc['title']}\""
+        )
         result_text = f"{label}."
         if note:
             result_text = f"{label} {note}."

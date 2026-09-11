@@ -88,9 +88,7 @@ def is_safe_project_id(project_id: str) -> bool:
     """
     if not _PROJECT_ID_RE.fullmatch(project_id or ""):
         return False
-    if project_id.startswith("."):
-        return False
-    return True
+    return not project_id.startswith(".")
 
 
 def _default_data_dir() -> Path:
@@ -211,10 +209,7 @@ def ensure_dirs() -> None:
     global DATA_DIR
     intended = _default_data_dir()
     try:
-        if _migrate_legacy_data(intended):
-            DATA_DIR = intended
-        else:
-            DATA_DIR = LEGACY_DATA_DIR
+        DATA_DIR = intended if _migrate_legacy_data(intended) else LEGACY_DATA_DIR
         DATA_DIR.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         print(
@@ -305,12 +300,21 @@ _WRITE_RETRY_DELAY_S = 0.05
 
 def _write_atomic(path: Path, content: str) -> None:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    tmp.write_text(content, encoding="utf-8")
-    for attempt in range(_WRITE_RETRY_COUNT):
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        for attempt in range(_WRITE_RETRY_COUNT):
+            try:
+                os.replace(tmp, path)
+                return
+            except OSError:
+                if attempt == _WRITE_RETRY_COUNT - 1:
+                    raise
+                time.sleep(_WRITE_RETRY_DELAY_S)
+    finally:
+        # A successful replace consumed *tmp*; a failed write/replace leaves it
+        # behind. Remove it now so a persistently locked target doesn't rely on
+        # the once-a-day startup sweep to reclaim the disk space.
         try:
-            os.replace(tmp, path)
-            return
+            tmp.unlink(missing_ok=True)
         except OSError:
-            if attempt == _WRITE_RETRY_COUNT - 1:
-                raise
-            time.sleep(_WRITE_RETRY_DELAY_S)
+            pass

@@ -35,7 +35,10 @@ async function request(method, url, body) {
     res = await fetch(url, opts);
   } catch (err) {
     if (err.name === "AbortError") {
-      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s: ${method} ${url}`);
+      throw new Error(
+        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s: ${method} ${url}`,
+        { cause: err }
+      );
     }
     throw err;
   } finally {
