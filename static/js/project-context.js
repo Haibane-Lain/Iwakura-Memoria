@@ -70,6 +70,7 @@ function makePane(name) {
     commentsPanel: null,
     commentsBtn: null,
     activeCommentId: null,
+    revisionMode: false,
     wordsEl: null,
     saveEl: null,
     dirty: false,

@@ -250,6 +250,30 @@ await check("clear resolved removes the backend rows and the markers", async () 
   assert.deepEqual(ctrl.calls.removeComments, ["c_aaaa"]);
 });
 
+await check("revision mode steps through open comments and advances on resolve", async () => {
+  store = [
+    { id: "c_000001", docId: "01-scene", body: "one", quote: "a", resolved: false },
+    { id: "c_000002", docId: "01-scene", body: "two", quote: "b", resolved: false },
+    { id: "c_000003", docId: "01-scene", body: "three", quote: "c", resolved: false },
+  ];
+  await panel._reload();
+  panel.startReview();
+  assert.equal(pane.activeCommentId, "c_000001");
+  assert.match(panel.textContent, /Open comment 1 of 3/);
+
+  button(panel, "›").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  assert.equal(pane.activeCommentId, "c_000002");
+
+  // Resolving the active comment advances the queue to the next open one.
+  const activeItem = panel.querySelector(".comment-item.active");
+  button(activeItem, "Resolve").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => store.find((c) => c.id === "c_000002").resolved === true);
+  await waitFor(() => pane.activeCommentId === "c_000003");
+
+  panel.stopReview();
+  assert.ok(!panel.querySelector(".review-bar"));
+});
+
 if (failures) {
   console.log(`comments-panel: ${failures} check(s) failed`);
   process.exit(1);

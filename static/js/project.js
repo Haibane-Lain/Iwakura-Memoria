@@ -83,6 +83,7 @@ const {
   afterSnapshotRestore,
   refreshAfterReplace,
   startComment,
+  toggleRevisionMode,
 } = workspace;
 
 // Folders the current sidebar search render must show expanded. Display-only:
@@ -1697,6 +1698,7 @@ const TOOLBAR = [
   null,
   { cmd: "linkNote", label: "[[  ]]", title: "Link to a note" },
   { cmd: "comment", label: "💬", title: "Comment on the selected text (Ctrl+Alt+M)" },
+  { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" },
   { cmd: "image", label: "🖼", title: "Insert an image (or drag & drop / paste one)" },
   // The wiki's info box. The toolbar is shared with the Write tab, so the
   // button is marked wiki-only rather than living in a second toolbar.
@@ -1855,6 +1857,10 @@ function toolbarCommand(cmd, button) {
     startComment();
     return;
   }
+  if (cmd === "revise") {
+    toggleRevisionMode();
+    return;
+  }
   if (cmd === "color") {
     openColorMenu(button);
     return;
@@ -1923,6 +1929,7 @@ function refreshToolbar() {
     else if (cmd === "subscript") active = editor.isActive("subscript");
     else if (cmd === "superscript") active = editor.isActive("superscript");
     else if (cmd === "color") active = editor.isActive("textColor");
+    else if (cmd === "revise") active = !!activePane().revisionMode;
     else if (cmd === "blockquote") active = editor.isActive("blockquote");
     else if (cmd === "bulletList") active = editor.isActive("bulletList");
     else if (cmd === "orderedList") active = editor.isActive("orderedList");

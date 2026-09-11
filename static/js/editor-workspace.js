@@ -119,7 +119,7 @@ export function setActivePane(name) {
     if (!p.ctrl) continue;
     if (p === pane) {
       p.ctrl.activate();
-      p.ctrl.setGrammarEnabled(state.settings.grammarEnabled);
+      p.ctrl.setGrammarEnabled(pane.revisionMode ? false : state.settings.grammarEnabled);
     } else {
       p.ctrl.deactivate();
     }
@@ -564,6 +564,7 @@ export async function renderEditorTab(doc, { wiki, pane } = {}) {
 // element references on the pane record so focus and saving can reach them.
 function renderPane(pane, doc) {
   pane.activeCommentId = null;
+  pane.revisionMode = false;
   const header = docHeader(doc, pane);
   const mount = el("div", { class: "editor-mount" });
   const host = el("div", { class: "editor-host" + (pane.wiki ? " wiki-host" : "") }, [mount]);
@@ -680,6 +681,27 @@ export function startComment() {
     to,
     quote: editor.state.doc.textBetween(from, to, " "),
   });
+}
+
+// A revision pass over the focused document: hide grammar noise, open the
+// comments panel, and step through the open comments one at a time.
+export async function toggleRevisionMode() {
+  const pane = activePane();
+  if (!pane || !pane.ctrl || !pane.commentsPanel) {
+    toast("Open a document to revise", "info");
+    return;
+  }
+  pane.revisionMode = !pane.revisionMode;
+  if (pane.revisionMode) {
+    pane.ctrl.setGrammarEnabled(false);
+    pane.commentsPanel.classList.add("open");
+    await pane.commentsPanel._reload();
+    pane.commentsPanel.startReview();
+  } else {
+    pane.ctrl.setGrammarEnabled(state.settings.grammarEnabled);
+    pane.commentsPanel.stopReview();
+  }
+  shell.refreshToolbar();
 }
 
 function mountPaneEditor(pane, doc) {

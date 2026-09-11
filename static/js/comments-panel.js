@@ -49,6 +49,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   let editingId = null;
   let draft = "";
   let busy = false;
+  let reviewing = false;
 
   const ctrl = () => pane.ctrl;
   const docId = () => pane.docId;
@@ -148,6 +149,8 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   }
 
   async function toggleResolved(comment) {
+    const advancing = reviewing && !comment.resolved;
+    const nextId = advancing ? nextOpenId(comment.id) : null;
     try {
       await api.comments.update(projectId, comment.id, {
         docId: docId(),
@@ -158,6 +161,50 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
       return;
     }
     await reload();
+    if (advancing) {
+      if (nextId) revealById(nextId);
+      else render();
+    }
+  }
+
+  function openComments() {
+    return sorted(items.filter((c) => !c.resolved));
+  }
+
+  function nextOpenId(afterId) {
+    const open = openComments();
+    if (open.length <= 1) return null;
+    const index = open.findIndex((c) => c.id === afterId);
+    return open[(index + 1) % open.length].id;
+  }
+
+  function revealById(id) {
+    const comment = items.find((c) => c.id === id);
+    if (comment) reveal(comment);
+    return !!comment;
+  }
+
+  function startReview() {
+    reviewing = true;
+    const open = openComments();
+    if (open.length) reveal(open[0]);
+    else render();
+  }
+
+  function stopReview() {
+    reviewing = false;
+    render();
+  }
+
+  function stepReview(delta) {
+    const open = openComments();
+    if (!open.length) {
+      render();
+      return;
+    }
+    const index = open.findIndex((c) => c.id === pane.activeCommentId);
+    const nextIndex = index < 0 ? 0 : (index + delta + open.length) % open.length;
+    reveal(open[nextIndex]);
   }
 
   async function saveEdit(comment, value) {
@@ -308,6 +355,20 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     ]);
 
     const children = [head];
+    if (reviewing) {
+      const open = openComments();
+      const position = open.findIndex((c) => c.id === pane.activeCommentId);
+      children.push(el("div", { class: "review-bar" }, [
+        el(
+          "span",
+          { class: "review-count" },
+          open.length ? `Open comment ${position + 1} of ${open.length}` : "No open comments"
+        ),
+        el("span", { class: "panel-head-spacer" }),
+        el("button", { class: "mini-btn", title: "Previous open comment", onclick: () => stepReview(-1) }, "‹"),
+        el("button", { class: "mini-btn", title: "Next open comment", onclick: () => stepReview(1) }, "›"),
+      ]));
+    }
     if (composing) children.push(composerEl());
 
     if (!docId()) {
@@ -344,6 +405,8 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
 
   panel._render = render;
   panel._reload = reload;
+  panel.startReview = startReview;
+  panel.stopReview = stopReview;
   panel.beginComment = (selection) => {
     composing = selection;
     editingId = null;

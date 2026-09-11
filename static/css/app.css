@@ -1775,6 +1775,23 @@ a {
   margin-top: 8px;
 }
 
+.review-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: 12.5px;
+}
+
+.review-count {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
 .icon-btn.has-comments {
   color: var(--accent);
   border-color: var(--accent);
