@@ -345,10 +345,13 @@ to `?` instead of failing the export.
 ## Editing notes
 
 - `[[Note Title]]` links to other documents by title (type the brackets
-  yourself or use the **[[  ]]** toolbar button). The brackets are hidden in
-  the editor — only the colored link text shows; `[[Note Title|alias]]`
-  displays just the alias. Click a wikilink to jump to that document, or to
-  offer creating it as a worldbuilding entry if it doesn't exist yet.
+  yourself or use the **[[  ]]** toolbar button). Start typing `[[` and a list
+  of matching titles appears — ↑/↓ and Enter (or a click) complete the link;
+  if nothing matches, the top row inserts what you typed as a new (unresolved)
+  link. The brackets are hidden in the editor — only the colored link text
+  shows; `[[Note Title|alias]]` displays just the alias. Click a wikilink to
+  jump to that document, or to offer creating it as a worldbuilding entry if it
+  doesn't exist yet.
 - The **Wiki** tab is its own scaffolding tree for lore. Create an entry
   with a **template** (Character, Location, Organization, Nation, Lore
   Concept, or Blank) and its sections (`## Appearance`, `## History`, …) are
@@ -647,8 +650,9 @@ live entirely in frontmatter.
   hand-written span carrying *both* font-size and font-family keeps only
   font-size when reopened (the editor's own output uses nested spans, which
   round-trip cleanly).
-- Wikilinks are inserted as literal `[[...]]` text; the Wiki tab and
-  backlinks panel cover navigation.
+- Wikilinks are stored as literal `[[...]]` text; typing `[[` suggests
+  matching Write and Wiki titles, and the Wiki tab and backlinks panel cover
+  navigation.
 - Pictures are referenced from the **project root** (`assets/<name>`), so a
   document nested inside a folder resolves them from the project root in an
   external Markdown editor — the app itself always resolves them correctly, and

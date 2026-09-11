@@ -58,10 +58,12 @@ Legend for hooks: where the work would plug into the current code.
   - Grammar is hard-coded to `en-US` (`client/editor-entry.js:240`); expose a
     language per document/project and a toggle for the browser spellchecker.
 
-- [ ] **Wikilink autocomplete** `P2` `M`
-  - Suggest existing titles while typing `[[`, instead of only the modal
-    picker. Hooks: a ProseMirror suggestion plugin in `client/editor-entry.js`;
-    titles are in `state.tree`/`state.wikiTree`.
+- [x] **Wikilink autocomplete** `P2` `M` — shipped: typing `[[` in the editor
+  opens a filterable title popup that completes to `[[Title]]`, and offers a
+  literal `[[query]]` when nothing matches. Popup in
+  `client/wikilink-menu.js`, pure trigger/filter rules in
+  `client/wikilink-suggest.js`; titles come from `allDocs()` (Write + Wiki)
+  through a `getWikilinkItems` supplier.
 
 ---
 
