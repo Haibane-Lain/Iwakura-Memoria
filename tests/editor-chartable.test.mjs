@@ -185,9 +185,10 @@ await check("a box in the middle of prose keeps the surrounding paragraphs", () 
   s.close();
 });
 
-await check("a foreign HTML table is left alone", () => {
+await check("a foreign HTML table is not mistaken for a character table", () => {
   const s = open("<table><tr><td>plain</td><td>table</td></tr></table>");
-  assert.equal(box(s.host), null);
+  assert.equal(box(s.host), null, "it is not a character table");
+  assert.equal(s.host.querySelectorAll("table").length, 1, "it is an ordinary table");
   assert.match(s.ctrl.getMarkdown(), /plain/);
   s.close();
 });
