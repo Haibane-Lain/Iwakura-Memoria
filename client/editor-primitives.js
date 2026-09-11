@@ -1,10 +1,13 @@
-import { Extension } from "@tiptap/core";
+import { Extension, Mark } from "@tiptap/core";
 import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import Highlight from "@tiptap/extension-highlight";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
 
 // The wiki's info box is stored as raw HTML: an `<aside class="character-table">`
 // wrapping `<table class="ct-rows">` with `ct-*` rows and cells. Once a generic
@@ -84,4 +87,58 @@ const TaskListTight = Extension.create({
 
 export function makeTaskListExtensions() {
   return [TaskList, TaskItem.configure({ nested: true }), TaskListTight];
+}
+
+// Text color. Modeled on the editor's own FontSize/FontFamily marks rather than
+// pulling in TextStyle: those marks already claim `span[style]`, and TextStyle's
+// generic span rule would add an empty mark to every sized span (and an
+// empty `<span>` to its Markdown).
+const TextColor = Mark.create({
+  name: "textColor",
+  inclusive: false,
+  addAttributes() {
+    return { color: { default: null } };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "span[style]",
+        getAttrs: (element) => {
+          const match = /(?:^|;)\s*color:\s*([^;]+)/i.exec(
+            element.getAttribute("style") || ""
+          );
+          return match ? { color: match[1].trim() } : false;
+        },
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return HTMLAttributes.color
+      ? ["span", { style: `color:${HTMLAttributes.color}` }, 0]
+      : ["span", {}, 0];
+  },
+  // Write the color straight from the attribute. The generic HTML fallback
+  // would render through the DOM, which normalises `#c00` to `rgb(204, 0, 0)`;
+  // keeping the author's own form means a save does not churn the file.
+  addStorage() {
+    return {
+      markdown: {
+        serialize: {
+          open(_state, mark) {
+            return `<span style="color:${mark.attrs.color}">`;
+          },
+          close() {
+            return "</span>";
+          },
+        },
+      },
+    };
+  },
+});
+
+// Highlight (`<mark>`) and super/subscript. None of the three has a Markdown
+// syntax, so tiptap-markdown's HTML fallback writes them as inline HTML, which
+// both markdown-it and python-markdown pass straight through.
+export function makeInlineMarkExtensions() {
+  return [Highlight, Subscript, Superscript, TextColor];
 }

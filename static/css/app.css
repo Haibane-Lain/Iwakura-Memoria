@@ -1163,6 +1163,21 @@ a {
   text-decoration: line-through;
 }
 
+/* ---------------- inline marks (highlight, super/subscript, color) --------- */
+
+.ProseMirror mark {
+  background: var(--accent-soft);
+  color: inherit;
+  padding: 0 0.1em;
+  border-radius: 2px;
+}
+
+.ProseMirror sub,
+.ProseMirror sup {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
 /* ---------------- inline images ---------------- */
 
 .ProseMirror img.doc-image {

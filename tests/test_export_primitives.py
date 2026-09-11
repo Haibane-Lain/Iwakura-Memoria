@@ -28,6 +28,11 @@ BODY = (
     "- [x] outline"
 )
 
+MARKS = (
+    'plain <mark>hi</mark> a<sub>2</sub> b<sup>x</sup> '
+    '<span style="color:#c00">red</span> end'
+)
+
 
 def _project_with(make_project, body: str) -> None:
     make_project("p1")
@@ -100,3 +105,24 @@ def test_epub_keeps_the_primitive_markup(make_project):
     assert "<th>Name</th>" in html
     assert "\u2610 draft" in html
     assert "\u2611 outline" in html
+
+
+def test_epub_keeps_inline_mark_markup(make_project):
+    _project_with(make_project, MARKS)
+
+    html = _epub_html(projects_service.export_epub("p1"))
+    assert "<mark>hi</mark>" in html
+    assert "<sub>2</sub>" in html
+    assert "<sup>x</sup>" in html
+    assert "color:#c00" in html
+
+
+def test_docx_keeps_inline_mark_text(make_project):
+    _project_with(make_project, MARKS)
+
+    doc = Document(io.BytesIO(projects_service.export_docx("p1")))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    # The styling is not carried into Word, but no text may be lost.
+    for word in ("hi", "2", "x", "red"):
+        assert word in text
+    assert "[ ]" not in text

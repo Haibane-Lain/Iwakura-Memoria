@@ -84,6 +84,16 @@ function markTag(mark) {
       return mark.attrs && mark.attrs.family
         ? [`<span style="font-family:${escapeHtmlAttr(mark.attrs.family)}">`, "</span>"]
         : null;
+    case "textColor":
+      return mark.attrs && mark.attrs.color
+        ? [`<span style="color:${escapeHtmlAttr(mark.attrs.color)}">`, "</span>"]
+        : null;
+    case "highlight":
+      return ["<mark>", "</mark>"];
+    case "subscript":
+      return ["<sub>", "</sub>"];
+    case "superscript":
+      return ["<sup>", "</sup>"];
     default:
       return null;
   }

@@ -169,6 +169,57 @@ await check("inserting a task list starts an item", () => {
   s.close();
 });
 
+/* ---------------- inline marks ---------------- */
+
+await check("inline marks survive load → save", () => {
+  const source =
+    'plain <mark>hi</mark> a<sub>2</sub> b<sup>x</sup> <span style="color:#c00">red</span> end';
+  const s = open(source);
+  assert.equal(s.ctrl.getMarkdown(), source);
+  s.close();
+});
+
+await check("highlight and super/subscript apply from run()", () => {
+  const s = open("alpha beta gamma");
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 6 }).run();
+  s.ctrl.run("highlight");
+  s.ctrl.editor.chain().setTextSelection({ from: 7, to: 11 }).run();
+  s.ctrl.run("superscript");
+  s.ctrl.editor.chain().setTextSelection({ from: 12, to: 17 }).run();
+  s.ctrl.run("subscript");
+  assert.equal(s.ctrl.getMarkdown(), "<mark>alpha</mark> <sup>beta</sup> <sub>gamma</sub>");
+  s.close();
+});
+
+await check("text color sets, round-trips and clears", () => {
+  const s = open("red blue");
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 4 }).run();
+  s.ctrl.setTextColor("#c0392b");
+  assert.equal(s.ctrl.getMarkdown(), '<span style="color:#c0392b">red</span> blue');
+
+  const again = open(s.ctrl.getMarkdown());
+  assert.equal(again.ctrl.getMarkdown(), s.ctrl.getMarkdown());
+  again.close();
+
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 4 }).run();
+  s.ctrl.setTextColor(null);
+  assert.equal(s.ctrl.getMarkdown(), "red blue");
+  s.close();
+});
+
+await check("inline marks inside a character-table cell survive", () => {
+  const box = [
+    '<aside class="character-table">',
+    '<table class="ct-rows">',
+    '<tr class="ct-row"><td class="ct-label">A</td><td class="ct-value"><mark>hi</mark> <span style="color:#c00">red</span> <sub>2</sub></td></tr>',
+    "</table>",
+    "</aside>",
+  ].join("\n");
+  const s = open(box);
+  assert.equal(s.ctrl.getMarkdown(), box);
+  s.close();
+});
+
 if (failures) {
   console.log(`editor-primitives: ${failures} check(s) failed`);
   process.exit(1);
