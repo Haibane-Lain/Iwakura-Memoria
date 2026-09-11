@@ -194,6 +194,26 @@ const REPETITION = {
   ],
   truncated: { overused: false, echoes: false, phrases: false, sentences: false },
 };
+const SEARCH = {
+  query: "wolf",
+  scope: "all",
+  caseSensitive: false,
+  wholeWord: false,
+  documentsSearched: 1,
+  documentsMatched: 1,
+  totalMatches: 1,
+  truncated: false,
+  results: [
+    {
+      docId: "Act 1/01-a",
+      title: "Scene One",
+      folder: "Act 1",
+      kind: "chapter",
+      count: 1,
+      matches: [{ before: "The ", match: "wolf", after: " ran.", occurrence: 0 }],
+    },
+  ],
+};
 const EMPTY_WIKI = { notes: [], links: [], backlinks: {}, broken: {}, linkCounts: {} };
 const SETTINGS = {
   theme: "gothic",
@@ -227,6 +247,7 @@ const PROJECT_ROUTES = [
   [/\/api\/projects\/demo\/wiki$/, () => EMPTY_WIKI],
   [/\/api\/projects\/demo\/stats$/, () => STATS],
   [/\/api\/projects\/demo\/repetition\/check$/, () => REPETITION],
+  [/\/api\/projects\/demo\/search$/, () => SEARCH],
   [/\/api\/projects\/demo\/templates$/, () => []],
   [/\/api\/projects\/demo\/trash$/, () => []],
   [/\/api\/projects\/demo$/, () => PROJECT],
@@ -331,6 +352,21 @@ await check("the project shell boots against a mocked API", async () => {
   filter.value = "all";
   filter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   assert.ok(!sectionWith("Overused words").hidden, "All shows the word sections again");
+
+  // Full-text search: open the Find dialog, run a query, and confirm the hit
+  // renders with its match highlighted.
+  const findBtn = doc.querySelector('.tool-btn[title^="Search all documents"]');
+  assert.ok(findBtn, "find ribbon button exists");
+  // Ctrl+F opens the dialog (the toolbar button does too).
+  doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+  const searchDialog = await waitFor(() => doc.querySelector(".search-modal"));
+  const searchInput = searchDialog.querySelector(".search-input");
+  assert.ok(searchInput, "search input exists");
+  searchInput.value = "wolf";
+  searchInput.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  await waitFor(() => searchDialog.querySelector(".search-hit"));
+  assert.match(searchDialog.querySelector(".search-summary").textContent, /1 match in 1 document/);
+  assert.ok(searchDialog.querySelector(".search-hit mark"), "the match is highlighted");
 
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   assert.equal(capture.errors.length, 0, `a tab threw: ${capture.errors.map(String).join("; ")}`);

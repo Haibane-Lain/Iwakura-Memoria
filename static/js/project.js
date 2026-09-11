@@ -1762,6 +1762,15 @@ function repetitionBtn() {
   return btn;
 }
 
+function searchBtn() {
+  const btn = el("button", {
+    class: "tool-btn",
+    title: "Search all documents in this project (Ctrl+F)",
+    onclick: () => renderSearchDialog(),
+  }, "Find");
+  return btn;
+}
+
 function toolbar(wiki) {
   const bar = el("div", { class: "editor-toolbar" });
   toolbarButtons = [];
@@ -1786,6 +1795,7 @@ function toolbar(wiki) {
     grammarToggle(),
     dictionaryBtn(),
     repetitionBtn(),
+    searchBtn(),
     el("div", { class: "toolbar-sep" }),
     fontSelect("context"),
     sizeSelect("context"),
@@ -2900,20 +2910,41 @@ const LS_REP_FILTER = "im.repetition.filter";
 
 // Best-effort "jump to the match": the editor's text is what the check saw,
 // but finding it by string is cheap and works for the common case. Markdown
-// drift simply opens the document without a selection.
-function revealText(text) {
+// drift simply opens the document without a selection. ``occurrence`` selects
+// the Nth hit within the document (search passes the one the user clicked).
+function revealText(text, occurrence = 0) {
   const editor = state.editorCtrl && state.editorCtrl.editor;
   const needle = (text || "").trim();
   if (!editor || !needle) return false;
   const lower = needle.toLowerCase();
+  let remaining = Math.max(0, occurrence | 0);
   let found = -1;
   editor.state.doc.descendants((node, pos) => {
     if (found >= 0 || !node.isTextblock) return found < 0;
     const content = node.textContent;
+    const offsets = [];
     let index = content.indexOf(needle);
-    if (index < 0) index = content.toLowerCase().indexOf(lower);
-    if (index >= 0) found = pos + 1 + index;
-    return found < 0;
+    if (index >= 0) {
+      // Exact-case hits first, then a case-insensitive pass catches the rest
+      // (mirrors the old single-match behavior, now across every block).
+      while (index >= 0) {
+        offsets.push(index);
+        index = content.indexOf(needle, index + 1);
+      }
+    } else {
+      const haystack = content.toLowerCase();
+      index = haystack.indexOf(lower);
+      while (index >= 0) {
+        offsets.push(index);
+        index = haystack.indexOf(lower, index + 1);
+      }
+    }
+    if (remaining < offsets.length) {
+      found = pos + 1 + offsets[remaining];
+      return false;
+    }
+    remaining -= offsets.length;
+    return true;
   });
   if (found < 0) return false;
   editor.chain().focus().setTextSelection({ from: found, to: found + needle.length }).scrollIntoView().run();
@@ -3221,6 +3252,146 @@ async function renderRepetitionDialog() {
   ]);
   backdrop.classList.add("repetition-modal");
   modal.style.maxWidth = "640px";
+}
+
+/* ---------------- full-text search ---------------- */
+
+async function renderSearchDialog() {
+  const existing = document.querySelector(".modal-backdrop.search-modal");
+  if (existing) { existing.remove(); return; }
+
+  const input = el("input", {
+    type: "search",
+    class: "search-input",
+    placeholder: "Search all documents…",
+  });
+  const caseBox = el("input", { type: "checkbox", id: "search-case" });
+  const wordBox = el("input", { type: "checkbox", id: "search-word" });
+  const scopeSelect = el(
+    "select",
+    { class: "search-scope", id: "search-scope" },
+    [
+      ["all", "Whole project"],
+      ["write", "Write"],
+      ["wiki", "Wiki"],
+      ["document", "Current document"],
+    ].map(([value, label]) => el("option", { value }, label))
+  );
+  const statusEl = el("span", { class: "export-status" });
+  const results = el("div", { class: "search-results" });
+
+  let requestId = 0;
+  let timer = null;
+
+  function renderResults(result) {
+    if (!result.totalMatches) {
+      results.replaceChildren(
+        el("div", { class: "search-empty" }, `No matches for “${result.query}”.`)
+      );
+      return;
+    }
+    const summary = el(
+      "div",
+      { class: "search-summary" },
+      `${formatNumber(result.totalMatches)} match${result.totalMatches === 1 ? "" : "es"} in ${result.documentsMatched} document${result.documentsMatched === 1 ? "" : "s"}${result.truncated ? " · results capped" : ""}`
+    );
+    const groups = result.results.map((group) => {
+      const hits = group.matches.map((hit) =>
+        el("button", {
+          class: "search-hit",
+          title: "Open and select this match",
+          onclick: () => jump(group.docId, hit),
+        }, [hit.before, el("mark", {}, hit.match), hit.after])
+      );
+      return el("div", { class: "search-group" }, [
+        el("div", { class: "search-doc" }, [
+          el("span", { class: "search-doc-title" }, group.title),
+          group.folder ? el("span", { class: "search-doc-folder" }, group.folder) : null,
+          el("span", { class: "search-doc-count" }, `${group.count}×`),
+        ]),
+        ...hits,
+      ]);
+    });
+    results.replaceChildren(summary, ...groups);
+  }
+
+  async function run() {
+    const query = input.value.trim();
+    const id = ++requestId;
+    if (!query) {
+      results.replaceChildren(el("div", { class: "search-empty" }, "Type to search."));
+      statusEl.textContent = "";
+      return;
+    }
+    const scope = scopeSelect.value;
+    if (scope === "document" && !state.currentDocId) {
+      results.replaceChildren(el("div", { class: "search-empty" }, "No document is open."));
+      return;
+    }
+    statusEl.textContent = "Searching…";
+    try {
+      const payload = {
+        query,
+        scope,
+        selection:
+          scope === "document"
+            ? { folders: [], documents: [state.currentDocId] }
+            : null,
+        options: { caseSensitive: caseBox.checked, wholeWord: wordBox.checked },
+      };
+      const result = await api.projects.search(state.project.id, payload);
+      if (id !== requestId) return;
+      renderResults(result);
+      statusEl.textContent = "";
+    } catch (err) {
+      if (id !== requestId) return;
+      statusEl.textContent = "";
+      toast(err.message, "error");
+    }
+  }
+
+  const jump = async (docId, hit) => {
+    close();
+    await openDocument(docId);
+    if (!revealText(hit.match, hit.occurrence)) toast("Opened the document");
+  };
+
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(run, 250);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      clearTimeout(timer);
+      run();
+    }
+  });
+  caseBox.addEventListener("change", run);
+  wordBox.addEventListener("change", run);
+  scopeSelect.addEventListener("change", run);
+
+  const { backdrop, modal, close } = showModal([
+    el("h3", {}, "Search"),
+    el("div", { class: "search-bar" }, [
+      input,
+      el("button", { class: "icon-btn primary", onclick: run }, "Search"),
+    ]),
+    el("div", { class: "search-options" }, [
+      el("label", { class: "export-check-label" }, [caseBox, " Case sensitive"]),
+      el("label", { class: "export-check-label" }, [wordBox, " Whole word"]),
+      el("label", { class: "search-scope-label" }, ["In", scopeSelect]),
+    ]),
+    results,
+    el("div", { class: "modal-actions" }, [
+      statusEl,
+      el("button", { class: "icon-btn", onclick: () => close() }, "Close"),
+    ]),
+  ]);
+  backdrop.classList.add("search-modal");
+  modal.style.maxWidth = "640px";
+  input.focus();
+  run();
 }
 
 /* ---------------- wiki tab ---------------- */
@@ -3895,4 +4066,12 @@ async function init(params) {
 export function register() {
   setupFileDropGuard();
   router.on("project", init);
+  // Ctrl/Cmd+F (and Ctrl/Cmd+Shift+F) opens the project-wide search, on any tab.
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "F" || e.key === "f")) {
+      if (!state.project) return;
+      e.preventDefault();
+      renderSearchDialog();
+    }
+  });
 }

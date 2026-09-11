@@ -19,6 +19,7 @@ from app.routes import documents as documents_routes
 from app.routes import grammar as grammar_routes
 from app.routes import projects as projects_routes
 from app.routes import repetition as repetition_routes
+from app.routes import search as search_routes
 from app.routes import settings as settings_routes
 from app.routes import templates as templates_routes
 from app.routes import trash as trash_routes
@@ -193,6 +194,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_routes.router)
     app.include_router(grammar_routes.router)
     app.include_router(repetition_routes.router)
+    app.include_router(search_routes.router)
     app.include_router(trash_routes.router)
     app.include_router(backup_routes.router)
 
