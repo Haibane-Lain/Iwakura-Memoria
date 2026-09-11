@@ -1582,17 +1582,34 @@ async function renameFolder(folderId) {
   }
 }
 
+function undoTrash(trashId) {
+  return {
+    label: "Undo",
+    onClick: async () => {
+      try {
+        const r = await api.trash.restore(state.project.id, trashId);
+        await afterTreeChange();
+        await refreshWiki();
+        updateTopbar();
+        toast(r.renamed ? `Restored as "${r.name}" (renamed to avoid a clash)` : `Restored "${r.name}"`);
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    },
+  };
+}
+
 async function deleteFolder(folderId) {
   const folder = folderNode(folderId);
   const count = countDocs(folder);
   const ok = await confirmDialog({
     title: `Delete "${folder.name}"?`,
-    message: `This deletes the folder and its ${count} ${count === 1 ? "document" : "documents"}. This cannot be undone.`,
-    confirmText: "Delete folder",
+    message: `This moves the folder and its ${count} ${count === 1 ? "document" : "documents"} to the Trash. You can restore it later from Settings → Trash.`,
+    confirmText: "Move to Trash",
   });
   if (!ok) return;
   try {
-    await api.folders.remove(state.project.id, folderId);
+    const res = await api.folders.remove(state.project.id, folderId);
     if (state.currentDocId && folderContainsDoc(folder, state.currentDocId)) {
       state.currentDocId = null;
     }
@@ -1600,6 +1617,7 @@ async function deleteFolder(folderId) {
     await refreshWiki();
     if (!state.currentDocId) renderWriteTab(null);
     updateTopbar();
+    toast("Folder moved to Trash", "info", { action: undoTrash(res.trashId) });
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1641,13 +1659,13 @@ async function deleteCurrentDoc() {
   if (!info) return;
   const ok = await confirmDialog({
     title: `Delete "${info.title}"?`,
-    message: "This deletes the Markdown file. This cannot be undone.",
-    confirmText: "Delete",
+    message: "This moves the document to the Trash. You can restore it later from Settings → Trash.",
+    confirmText: "Move to Trash",
   });
   if (!ok) return;
   const wiki = isWikiScope();
   try {
-    await api.docs.remove(state.project.id, info.id);
+    const res = await api.docs.remove(state.project.id, info.id);
     state.currentDocId = null;
     if (wiki) state.wikiDocId = null;
     else state.writeDocId = null;
@@ -1656,7 +1674,7 @@ async function deleteCurrentDoc() {
     renderSidebar();
     renderEditorTab(null, { wiki });
     updateTopbar();
-    toast("Document deleted");
+    toast("Document moved to Trash", "info", { action: undoTrash(res.trashId) });
   } catch (err) {
     toast(err.message, "error");
   }
@@ -3472,6 +3490,64 @@ async function renderSettingsTab() {
     }
   };
 
+  const trashList = el("ul", { class: "backup-list trash-list" });
+  const trashStatus = el("span", { class: "chip" });
+  const refreshTrash = async () => {
+    try {
+      const items = await api.trash.list(state.project.id);
+      trashList.replaceChildren(...items.map((t) =>
+        el("li", { class: "backup-item" }, [
+          el("span", { class: "backup-name" }, t.name),
+          el("span", { class: "backup-meta" },
+            `${t.kind === "folder" ? "Folder" : "Document"}${t.deletedAt ? ` · ${t.deletedAt.replace("T", " ").slice(0, 19)}` : ""}`),
+          el("span", { class: "trash-actions" }, [
+            el("button", {
+              class: "link-btn",
+              onclick: async () => {
+                try {
+                  const r = await api.trash.restore(state.project.id, t.id);
+                  await afterTreeChange();
+                  await refreshWiki();
+                  updateTopbar();
+                  refreshTrash();
+                  toast(r.renamed ? `Restored as "${r.name}" (renamed to avoid a clash)` : `Restored "${r.name}"`);
+                } catch (err) {
+                  toast(err.message, "error");
+                }
+              },
+            }, "restore"),
+            el("button", {
+              class: "link-btn",
+              onclick: async () => {
+                const ok = await confirmDialog({
+                  title: `Permanently delete "${t.name}"?`,
+                  message: "This removes it from the Trash for good. This cannot be undone.",
+                  confirmText: "Delete",
+                });
+                if (!ok) return;
+                try {
+                  await api.trash.remove(state.project.id, t.id);
+                  refreshTrash();
+                  toast("Deleted");
+                } catch (err) {
+                  toast(err.message, "error");
+                }
+              },
+            }, "delete"),
+          ]),
+        ])
+      ));
+      trashStatus.hidden = items.length === 0;
+      trashStatus.textContent = items.length
+        ? `${items.length} item${items.length === 1 ? "" : "s"}`
+        : "Trash is empty";
+    } catch (err) {
+      trashList.replaceChildren(
+        el("li", { class: "backup-item backup-meta" }, `Couldn't load Trash: ${err.message}`)
+      );
+    }
+  };
+
   main.replaceChildren(
     el("div", { class: "settings-view" }, [
       el("div", { class: "settings-section" }, [
@@ -3602,6 +3678,32 @@ async function renderSettingsTab() {
         backupsList,
       ]),
       el("div", { class: "settings-section" }, [
+        el("h2", {}, "Trash"),
+        el("p", { class: "desc" }, "Deleted chapters, notes, wiki entries, and folders wait here instead of being erased. Restoring puts an entry back where it was."),
+        trashList,
+        el("div", { class: "modal-actions" }, [
+          el("button", {
+            class: "icon-btn",
+            onclick: async () => {
+              const ok = await confirmDialog({
+                title: "Empty Trash?",
+                message: "Permanently delete everything in the Trash. This cannot be undone.",
+                confirmText: "Empty Trash",
+              });
+              if (!ok) return;
+              try {
+                await api.trash.empty(state.project.id);
+                refreshTrash();
+                toast("Trash emptied");
+              } catch (err) {
+                toast(err.message, "error");
+              }
+            },
+          }, "Empty Trash"),
+          trashStatus,
+        ]),
+      ]),
+      el("div", { class: "settings-section" }, [
         el("h2", {}, "Danger zone"),
         el("p", { class: "desc" }, "Permanently remove this project and all of its files."),
         el("div", { class: "modal-actions" }, [
@@ -3627,6 +3729,7 @@ async function renderSettingsTab() {
     ])
   );
   refreshBackups();
+  refreshTrash();
 }
 
 /* ---------------- tab switching ---------------- */

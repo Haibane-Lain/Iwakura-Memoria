@@ -1951,6 +1951,13 @@ a {
   white-space: nowrap;
 }
 
+.trash-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .field-row {
   display: flex;
   align-items: center;
@@ -2398,6 +2405,22 @@ a {
 
 .toast.error {
   border-left-color: var(--danger);
+}
+
+.toast-action {
+  margin-left: 10px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.toast-action:hover {
+  color: var(--text);
 }
 
 @keyframes toast-in {

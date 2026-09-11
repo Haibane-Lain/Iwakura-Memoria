@@ -121,10 +121,10 @@ def move_folder(project_id: str, payload: FolderMove):
 @router.delete("/{project_id}/folders/{folder:path}")
 def delete_folder(project_id: str, folder: str):
     try:
-        documents_service.delete_folder(project_id, folder)
+        entry = documents_service.delete_folder(project_id, folder)
     except (FileNotFoundError, ValueError) as exc:
         raise _http_error(exc) from exc
-    return {"ok": True}
+    return {"ok": True, "trashId": entry["id"]}
 
 
 @router.put("/{project_id}/documents/move")
@@ -200,7 +200,7 @@ def patch_document(project_id: str, doc_id: str, payload: DocumentPatch):
 @router.delete("/{project_id}/documents/{doc_id:path}")
 def delete_document(project_id: str, doc_id: str):
     try:
-        documents_service.delete_document(project_id, doc_id)
+        entry = documents_service.delete_document(project_id, doc_id)
     except (FileNotFoundError, ValueError) as exc:
         raise _http_error(exc) from exc
-    return {"ok": True}
+    return {"ok": True, "trashId": entry["id"]}

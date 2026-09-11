@@ -98,6 +98,11 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
 - **Link-safe rearranging** — Moving or reordering a document rewrites any
   `[[path]]` links that point to it; renaming a document rewrites links that
   point to it by title, so nothing silently breaks.
+- **Trash / undo delete** — Deleting a chapter, note, wiki entry, or folder
+  moves it to that project's **Trash** instead of erasing it. A delete shows an
+  **Undo** action in the toast, and **Settings → Trash** lists everything with
+  *restore*, *delete*, and *empty* — so a mis-click (or a bad Lain move) is
+  recoverable. Trash is per project and is dropped when the project is.
 - **Whole-library backups** — One click snapshots every project, settings,
   stats, and chat history into a timestamped zip; the 10 newest are kept.
 - **Autosave** — Configurable debounce; last-ditch save on tab close.
@@ -123,6 +128,7 @@ data/
   settings.json                    # global settings (theme, word count mode, zoom per tab, grammar toggle, AI config)
   .zoom-rebased                    # marker: stored zoom values use the current 100% scale
   ai-sessions/<project>/           # Lain chat session history
+  .trash/<project>/                # deleted entries, restorable from Settings -> Trash
   <project>/
     project.json                   # title, daily goal, timestamps
     dictionary.json                # per-project grammar ignore list

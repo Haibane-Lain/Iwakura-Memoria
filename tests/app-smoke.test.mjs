@@ -228,6 +228,7 @@ const PROJECT_ROUTES = [
   [/\/api\/projects\/demo\/stats$/, () => STATS],
   [/\/api\/projects\/demo\/repetition\/check$/, () => REPETITION],
   [/\/api\/projects\/demo\/templates$/, () => []],
+  [/\/api\/projects\/demo\/trash$/, () => []],
   [/\/api\/projects\/demo$/, () => PROJECT],
   [/\/api\/backups$/, () => []],
 ];

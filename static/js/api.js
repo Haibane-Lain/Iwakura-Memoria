@@ -166,6 +166,15 @@ export const api = {
       api.put(`/api/projects/${encodePath(pid)}/folders/move`, { folderId, targetFolder: targetFolder || null, index }),
   },
 
+  trash: {
+    list: (pid) => api.get(`/api/projects/${encodePath(pid)}/trash`),
+    restore: (pid, trashId) =>
+      api.post(`/api/projects/${encodePath(pid)}/trash/${encodePath(trashId)}/restore`),
+    remove: (pid, trashId) =>
+      api.del(`/api/projects/${encodePath(pid)}/trash/${encodePath(trashId)}`),
+    empty: (pid) => api.del(`/api/projects/${encodePath(pid)}/trash`),
+  },
+
   templates: {
     list: (pid) => api.get(`/api/projects/${encodePath(pid)}/templates`),
     create: (pid, name, sections) =>

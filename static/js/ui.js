@@ -18,19 +18,29 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
-export function toast(message, type = "info") {
+export function toast(message, type = "info", opts = {}) {
   let host = document.querySelector(".toast-host");
   if (!host) {
     host = el("div", { class: "toast-host" });
     document.body.append(host);
   }
   const node = el("div", { class: `toast ${type === "error" ? "error" : ""}` }, message);
-  host.append(node);
-  setTimeout(() => {
+  const dismiss = () => {
     node.style.opacity = "0";
     node.style.transition = "opacity 0.3s";
     setTimeout(() => node.remove(), 320);
-  }, 2800);
+  };
+  const timer = setTimeout(dismiss, opts.action ? 8000 : 2800);
+  if (opts.action && typeof opts.action.onClick === "function") {
+    const action = el("button", { class: "toast-action" }, opts.action.label || "Undo");
+    action.addEventListener("click", () => {
+      clearTimeout(timer);
+      node.remove();
+      opts.action.onClick();
+    });
+    node.append(action);
+  }
+  host.append(node);
 }
 
 export function showModal(inner) {

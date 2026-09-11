@@ -60,6 +60,11 @@ PROJECT_META_FILENAME = "project.json"
 STATS_DIRNAME = "stats"
 HISTORY_FILENAME = "history.jsonl"
 REORDER_TMP_DIRNAME = ".reorder-tmp"
+# Recycle bin for deleted documents/folders. It lives at the data root (a
+# sibling of the projects) rather than inside a project, so it can never show
+# up in a tree, an export, a word count, or a wikilink scan. Restore it from
+# Settings -> Trash.
+TRASH_DIRNAME = ".trash"
 WIKI_DIRNAME = "worldbuilding"
 TEMPLATES_DIRNAME = "templates"
 # Uploaded pictures for inline images, one folder per project. Deliberately a

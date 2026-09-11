@@ -26,6 +26,7 @@ from typing import Any
 import yaml
 
 from app import config
+from app.services import trash as trash_service
 
 _SAFE_ID_RE = re.compile(r"^[^\\\x00-\x1f]+$")
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
@@ -66,7 +67,11 @@ def recover_reorder_tmp() -> int:
     """
     restored = 0
     try:
-        projects = [p for p in config.DATA_DIR.iterdir() if p.is_dir()]
+        projects = [
+            p
+            for p in config.DATA_DIR.iterdir()
+            if p.is_dir() and not p.name.startswith(".")
+        ]
     except OSError:
         return 0
     for project in projects:
@@ -1114,15 +1119,22 @@ def rename_folder(project_id: str, folder_id: str, new_name: str) -> str:
     return new_folder_id
 
 
-def delete_folder(project_id: str, folder_id: str) -> None:
+def delete_folder(project_id: str, folder_id: str) -> dict[str, Any]:
     project_folder = _project_folder(project_id)
     path = _folder_path(project_folder, folder_id)
     if path == project_folder:
         raise DocumentError("Cannot delete the project root")
     if path.parent == project_folder and path.name.lower() == config.WIKI_DIRNAME:
         raise DocumentError("Cannot delete the wiki root")
-    shutil.rmtree(path)
+    entry = trash_service.move_to_trash(
+        project_id,
+        path,
+        name=_display_name(path.name),
+        kind="folder",
+        original_id=folder_id,
+    )
     _invalidate_word_stats(project_id)
+    return entry
 
 
 def _prune_empty(start: Path, stop: Path) -> None:
@@ -1258,13 +1270,26 @@ def rename_document(
     return get_document(project_id, doc_id, mode)
 
 
-def delete_document(project_id: str, doc_id: str) -> None:
+def delete_document(project_id: str, doc_id: str) -> dict[str, Any]:
     folder = _project_folder(project_id)
     path = _doc_path(folder, doc_id)
     if not path.exists():
         raise FileNotFoundError(f"Document '{doc_id}' not found")
-    path.unlink()
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        meta, _ = parse_frontmatter(raw)
+    except OSError:
+        meta = {}
+    title = str(meta.get("title") or _default_meta(doc_id)["title"])
+    entry = trash_service.move_to_trash(
+        project_id,
+        path,
+        name=title,
+        kind="document",
+        original_id=doc_id,
+    )
     _invalidate_word_stats(project_id)
+    return entry
 
 
 def _entry_ids(directory: Path, project_folder: Path) -> dict[str, Path]:

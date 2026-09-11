@@ -6,8 +6,8 @@ extracts back to the ``data/`` layout. Backups live next to the data dir
 (``<data-dir-parent>/backups``) so they are never backed up themselves.
 
 Transient junk is skipped: staged ``.reorder-tmp`` renumbers, atomic-write
-``*.tmp`` leftovers, and hidden files. Old backups beyond ``_BACKUP_KEEP`` are
-pruned automatically after each new one.
+``*.tmp`` leftovers, the ``.trash`` recycle bin, and hidden files. Old backups
+beyond ``_BACKUP_KEEP`` are pruned automatically after each new one.
 """
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ def _iter_backup_paths() -> list[Path]:
 def _skip_entry(path: Path) -> bool:
     return (
         config.REORDER_TMP_DIRNAME in path.parts
+        or config.TRASH_DIRNAME in path.parts
         or path.name.endswith(".tmp")
         or path.name.startswith(".")
     )
