@@ -2121,6 +2121,20 @@ a {
   color: var(--text-faint);
 }
 
+.link-input {
+  width: 100%;
+}
+
+.link-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.link-remove {
+  margin-right: auto;
+}
+
 .lookup-search {
   display: flex;
   gap: 6px;

@@ -1203,6 +1203,34 @@ window.LainEditor = {
       insertWikilink(title) {
         this.insertText(`[[${title}]]`);
       },
+      // The toolbar's link dialog. A URL link is an ordinary mark, so it can be
+      // applied to a selection or typed in at an empty caret; `extendMarkRange`
+      // makes editing an existing link update the whole link, not a fragment.
+      setLink(href) {
+        editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+      },
+      unlink() {
+        editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      },
+      // With nothing selected the dialog inserts the URL as its own link text.
+      insertLink(href, text) {
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "text",
+            text: text || href,
+            marks: [{ type: "link", attrs: { href } }],
+          })
+          .run();
+      },
+      getLinkHref() {
+        return editor.isActive("link") ? editor.getAttributes("link").href || "" : "";
+      },
+      getSelectionText() {
+        const { from, to } = editor.state.selection;
+        return editor.state.doc.textBetween(from, to, " ").trim();
+      },
       // Used by the toolbar's picture button and by a drop that lands on the
       // editor's padding (outside the ProseMirror surface itself): the picture
       // goes in at the caret.
@@ -1257,6 +1285,7 @@ window.LainEditor = {
         else if (command === "bulletList") chain.toggleBulletList();
         else if (command === "orderedList") chain.toggleOrderedList();
         else if (command === "codeBlock") chain.toggleCodeBlock();
+        else if (command === "code") chain.toggleCode();
         else if (command === "horizontalRule") chain.setHorizontalRule();
         else if (command === "table") {
           chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true });

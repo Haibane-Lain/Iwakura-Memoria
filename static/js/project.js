@@ -3,6 +3,7 @@ import { renderExportDialog } from "./export-dialog.js";
 import { renderRepetitionDialog } from "./repetition-dialog.js";
 import { renderDictionaryDialog } from "./dictionary-dialog.js";
 import { renderLookupDialog } from "./lookup-dialog.js";
+import { renderLinkDialog } from "./link-dialog.js";
 import { renderSnapshotsDialog } from "./snapshots-dialog.js";
 import { renderSearchDialog } from "./search-dialog.js";
 import * as router from "./router.js";
@@ -1699,10 +1700,12 @@ const RIBBON = [
         { cmd: "italic", label: "I", title: "Italic", strong: true },
         { cmd: "underline", label: "U", title: "Underline", strong: true },
         { cmd: "strike", label: "S", title: "Strikethrough", strong: true },
+        { cmd: "code", label: "`", title: "Inline code" },
       ],
       [
         { cmd: "highlight", label: "▮", title: "Highlight" },
         { cmd: "color", label: "A", title: "Text color" },
+        { cmd: "link", label: "🔗", title: "Insert a link (URL)" },
         { cmd: "subscript", label: "A₂", title: "Subscript" },
         { cmd: "superscript", label: "A²", title: "Superscript" },
       ],
@@ -1715,6 +1718,7 @@ const RIBBON = [
         { cmd: "blockquote", label: "❝", title: "Blockquote" },
         { cmd: "bulletList", label: "• List", title: "Bullet list" },
         { cmd: "orderedList", label: "1. List", title: "Ordered list" },
+        { cmd: "horizontalRule", label: "—", title: "Horizontal rule (divider)" },
       ],
       [
         { cmd: "taskList", label: "☑", title: "Task list (checkboxes)" },
@@ -1849,6 +1853,28 @@ function openLookup(word) {
   });
 }
 
+// The URL link dialog. Its job is small enough to hold here: read what is
+// selected (and whether the caret is already on a link), then hand the shell
+// actions to the leaf dialog. A bare URL with nothing selected becomes its own
+// link text.
+function openLinkDialog() {
+  const ctrl = state.editorCtrl;
+  if (!ctrl) return;
+  const href = ctrl.getLinkHref ? ctrl.getLinkHref() : "";
+  const selectionText = ctrl.getSelectionText ? ctrl.getSelectionText() : "";
+  renderLinkDialog({
+    href,
+    selectionText,
+    onApply: (url) => {
+      if (!url) ctrl.unlink();
+      // A selection, or a caret already on a link, updates in place.
+      else if (selectionText || href) ctrl.setLink(url);
+      else ctrl.insertLink(url, url);
+    },
+    onRemove: () => ctrl.unlink(),
+  });
+}
+
 function repetitionBtn() {
   const btn = el("button", {
     class: "tool-btn",
@@ -1978,6 +2004,10 @@ function toolbarCommand(cmd, button) {
     insertWikilinkDialog();
     return;
   }
+  if (cmd === "link") {
+    openLinkDialog();
+    return;
+  }
   if (cmd === "image") {
     pickImageFiles();
     return;
@@ -2068,12 +2098,14 @@ function refreshToolbar() {
     else if (cmd === "subscript") active = editor.isActive("subscript");
     else if (cmd === "superscript") active = editor.isActive("superscript");
     else if (cmd === "color") active = editor.isActive("textColor");
+    else if (cmd === "link") active = editor.isActive("link");
     else if (cmd === "revise") active = !!activePane().revisionMode;
     else if (cmd === "blockquote") active = editor.isActive("blockquote");
     else if (cmd === "bulletList") active = editor.isActive("bulletList");
     else if (cmd === "orderedList") active = editor.isActive("orderedList");
     else if (cmd === "taskList") active = editor.isActive("taskList");
     else if (cmd === "codeBlock") active = editor.isActive("codeBlock");
+    else if (cmd === "code") active = editor.isActive("code");
     else if (cmd === "h1") active = editor.isActive("heading", { level: 1 });
     else if (cmd === "h2") active = editor.isActive("heading", { level: 2 });
     else if (cmd === "h3") active = editor.isActive("heading", { level: 3 });
