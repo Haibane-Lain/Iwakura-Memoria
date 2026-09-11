@@ -16,6 +16,7 @@
     "test:image": "node tests/image-utils.test.mjs",
     "test:editor": "node tests/editor-image.test.mjs",
     "test:chartable": "node tests/editor-chartable.test.mjs",
+    "test:primitives": "node tests/editor-primitives.test.mjs",
     "test:history": "node tests/editor-history.test.mjs",
     "test:pool": "node tests/editor-pool.test.mjs",
     "test:tabs": "node tests/doc-tabs.test.mjs",
@@ -26,7 +27,7 @@
     "test:zoom": "node tests/zoom.test.mjs",
     "test:scrollkeep": "node tests/scroll-keep.test.mjs",
     "test:smoke": "node tests/app-smoke.test.mjs",
-    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:editorprefs && npm run test:workspace && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
+    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:chartable && npm run test:primitives && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:editorprefs && npm run test:workspace && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -40,6 +41,10 @@
     "@tiptap/extension-character-count": "^2.11.0",
     "@tiptap/extension-link": "^2.11.0",
     "@tiptap/extension-placeholder": "^2.11.0",
+    "@tiptap/extension-table": "^2.27.3",
+    "@tiptap/extension-table-cell": "^2.27.3",
+    "@tiptap/extension-table-header": "^2.27.3",
+    "@tiptap/extension-table-row": "^2.27.3",
     "@tiptap/extension-underline": "^2.11.0",
     "@tiptap/pm": "^2.11.0",
     "@tiptap/starter-kit": "^2.11.0",

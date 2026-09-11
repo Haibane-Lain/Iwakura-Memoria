@@ -1096,6 +1096,40 @@ a {
   text-decoration: underline;
 }
 
+/* ---------------- generic tables ---------------- */
+
+/* Scoped to exclude the character table's `.ct-rows`, which has its own frame. */
+.ProseMirror table:not(.ct-rows) {
+  border-collapse: collapse;
+  margin: 0 0 1em;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.ProseMirror table:not(.ct-rows) th,
+.ProseMirror table:not(.ct-rows) td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  vertical-align: top;
+  position: relative;
+  overflow-wrap: anywhere;
+}
+
+.ProseMirror table:not(.ct-rows) th {
+  background: var(--surface-3);
+  font-weight: 600;
+  text-align: left;
+}
+
+.ProseMirror table:not(.ct-rows) .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0.12;
+  pointer-events: none;
+}
+
 /* ---------------- inline images ---------------- */
 
 .ProseMirror img.doc-image {

@@ -1686,6 +1686,7 @@ const TOOLBAR = [
   { cmd: "bulletList", label: "• List", title: "Bullet list" },
   { cmd: "orderedList", label: "1. List", title: "Ordered list" },
   { cmd: "codeBlock", label: "</>", title: "Code block" },
+  { cmd: "table", label: "▦", title: "Insert a table (3×3 with a header row)" },
   null,
   { cmd: "linkNote", label: "[[  ]]", title: "Link to a note" },
   { cmd: "image", label: "🖼", title: "Insert an image (or drag & drop / paste one)" },
