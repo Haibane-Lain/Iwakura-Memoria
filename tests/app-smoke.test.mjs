@@ -341,6 +341,16 @@ await check("the project shell boots against a mocked API", async () => {
   for (const title of ["Highlight", "Text color", "Subscript", "Superscript"]) {
     assert.ok(doc.querySelector(`.tool-btn[title="${title}"]`), `${title} ribbon button exists`);
   }
+  // Inline code, URL links and dividers each have a button rather than being
+  // slash-menu-only. The editor bundle is absent here, so a link click must
+  // simply do nothing rather than throw.
+  for (const title of ["Inline code", "Insert a link (URL)", "Horizontal rule (divider)"]) {
+    assert.ok(doc.querySelector(`.tool-btn[title="${title}"]`), `${title} ribbon button exists`);
+  }
+  doc
+    .querySelector('.tool-btn[title="Insert a link (URL)"]')
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.ok(!doc.querySelector(".link-modal"), "the link dialog needs a live editor");
   const colorBtn = doc.querySelector('.tool-btn[title="Text color"]');
   colorBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   const palette = doc.querySelector(".color-popover");

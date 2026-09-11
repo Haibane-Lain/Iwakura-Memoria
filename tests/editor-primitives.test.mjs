@@ -247,6 +247,68 @@ await check("inline marks inside a character-table cell survive", () => {
   s.close();
 });
 
+await check("inline code applies from run() and round-trips", () => {
+  const s = open("alpha beta");
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 6 }).run();
+  s.ctrl.run("code");
+  assert.equal(s.ctrl.getMarkdown(), "`alpha` beta");
+
+  const again = open(s.ctrl.getMarkdown());
+  assert.equal(again.ctrl.getMarkdown(), "`alpha` beta");
+  again.close();
+  s.close();
+});
+
+await check("the horizontal-rule command inserts a divider", () => {
+  const s = open("above below");
+  s.ctrl.editor.chain().setTextSelection(s.ctrl.editor.state.doc.content.size - 1).run();
+  s.ctrl.run("horizontalRule");
+  assert.match(s.ctrl.getMarkdown(), /---/);
+  s.close();
+});
+
+await check("links set, report and clear from the ctrl API", () => {
+  const s = open("click here");
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 6 }).run();
+  s.ctrl.setLink("https://example.com");
+  assert.equal(s.ctrl.getMarkdown(), "[click](https://example.com) here");
+  assert.equal(s.ctrl.getLinkHref(), "https://example.com");
+
+  // A caret inside the link reports it too, so the dialog can edit it.
+  s.ctrl.editor.chain().setTextSelection(2).run();
+  assert.equal(s.ctrl.getLinkHref(), "https://example.com");
+
+  s.ctrl.unlink();
+  assert.equal(s.ctrl.getMarkdown(), "click here");
+  assert.equal(s.ctrl.getLinkHref(), "");
+  s.close();
+});
+
+await check("editing a link with the caret inside updates the whole link", () => {
+  const s = open("[click](https://old.test) here");
+  s.ctrl.editor.chain().setTextSelection(2).run();
+  assert.equal(s.ctrl.getLinkHref(), "https://old.test");
+  s.ctrl.setLink("https://new.test");
+  assert.equal(s.ctrl.getMarkdown(), "[click](https://new.test) here");
+  s.close();
+});
+
+await check("a link with nothing selected inserts the URL as its text", () => {
+  const s = open("");
+  s.ctrl.insertLink("https://example.com", "https://example.com");
+  // A lone URL as its own link text is written as a Markdown autolink.
+  assert.equal(s.ctrl.getMarkdown(), "<https://example.com>");
+  s.close();
+});
+
+await check("getSelectionText reports the selected range", () => {
+  const s = open("alpha beta");
+  assert.equal(s.ctrl.getSelectionText(), "");
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 6 }).run();
+  assert.equal(s.ctrl.getSelectionText(), "alpha");
+  s.close();
+});
+
 /* ---------------- slash menu ---------------- */
 
 await check("typing / opens the slash menu and filters it", () => {
