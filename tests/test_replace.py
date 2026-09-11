@@ -102,6 +102,26 @@ def test_replace_skips_code_markup_and_links(data_dir, make_project):
     assert result["totalReplacements"] == 3
 
 
+def test_replace_inside_a_gfm_table_keeps_the_table_shape(data_dir, make_project):
+    make_project("proj")
+    body = "| Name | Role |\n| --- | --- |\n| Alice | wolf |\n| Bob | wolf |"
+    path = _doc(data_dir / "proj", "01.md", body)
+
+    result = run_replace("wolf", "editor")
+
+    assert result["totalReplacements"] == 2
+    assert _body(path) == "| Name | Role |\n| --- | --- |\n| Alice | editor |\n| Bob | editor |"
+
+
+def test_replace_leaves_task_list_markers_alone(data_dir, make_project):
+    make_project("proj")
+    path = _doc(data_dir / "proj", "01.md", "- [ ] wolf task\n- [x] wolf done")
+
+    run_replace("wolf", "fox")
+
+    assert _body(path) == "- [ ] fox task\n- [x] fox done"
+
+
 # --- safety -----------------------------------------------------------------
 
 

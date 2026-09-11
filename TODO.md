@@ -33,12 +33,20 @@ Legend for hooks: where the work would plug into the current code.
     / `renderStatsTab` and the header word count in `project.js`; frontmatter
     for a per-document target.
 
-- [ ] **Editor primitives** `P2` `M`
-  - Generic tables, task lists/checkboxes, footnotes/endnotes, text color and
-    highlight, super/subscript, and a slash menu.
-  - Hooks: extensions in `client/editor-entry.js`; a generic table must
-    round-trip through `tiptap-markdown` and the exporters in
-    `app/services/export.py`.
+- [x] **Editor primitives** `P2` `M` — shipped: generic GFM tables, task lists,
+  highlight, text color, super/subscript, and a hand-rolled slash menu
+  (`client/editor-primitives.js`, `client/slash-menu.js`, wired from
+  `client/editor-entry.js`). Tables and task lists round-trip through
+  `tiptap-markdown`; the inline marks have no Markdown spelling and are written
+  as inline HTML, which all three exporters carry (`app/services/export.py` —
+  DOCX/PDF keep the text, EPUB the markup). Footnotes were split out below.
+
+- [ ] **Footnotes / endnotes** `P2` `L`
+  - A body footnote needs a custom inline node, a definitions block the
+    serializer moves to the end of the document, and a matching render path in
+    the exporters — the half of "Editor primitives" deliberately deferred.
+  - Hooks: a new `client/footnotes.js` wired into `client/editor-entry.js`;
+    the exporters in `app/services/export.py`.
 
 - [ ] **Link / inline-code / horizontal-rule toolbar buttons** `P1` `S`
   - The `link`, inline `code`, and `horizontalRule` capabilities exist in the

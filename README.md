@@ -106,6 +106,13 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   sections from the chips that appear on hover, and drag its corner to set the
   width. It is stored as plain HTML in the Markdown and carried into every
   export.
+- **Tables, task lists & inline marks** — Generic GFM tables and checkbox task
+  lists (buttons **▦** and **☑** in the ribbon), plus highlight, text color and
+  super/subscript. Type `/` for a slash menu of insert commands — headings,
+  lists, tables, task lists, quotes, code blocks, dividers, highlights,
+  super/subscript and text colors. Tables and task lists are stored as ordinary
+  Markdown; the inline marks are stored as inline HTML and carried into every
+  export.
 - **Link-safe rearranging** — Moving or reordering a document rewrites any
   `[[path]]` links that point to it; renaming a document rewrites links that
   point to it by title, so nothing silently breaks.
@@ -351,6 +358,14 @@ to `?` instead of failing the export.
   on its slot, and it resizes and opens full size like any other picture.
   Grabbing the corner handle sets the box width (double-click it for the
   default); the width is saved with the document.
+- **Tables, task lists and inline marks** are ordinary Markdown where Markdown
+  can say it: a GFM pipe table (`| a | b |`) and a task list (`- [ ]`) round-trip
+  untouched. Highlight, text color and super/subscript have no Markdown spelling,
+  so they are stored as inline HTML (`<mark>`, `<span style="color:…">`,
+  `<sub>`/`<sup>`) and pass through both the editor and every exporter. Insert
+  them from the `/` slash menu (or the **▦** table and **☑** task-list ribbon
+  buttons). A table with a merged cell has no GFM form and is written back as
+  HTML; DOCX and PDF keep the text of the inline marks but not their colour.
 - Chapters, notes, wiki entries, and folders can all be moved by dragging
   them in the sidebar: drop on a folder to nest it inside, on a document to
   reorder within the same folder, or on empty space to move to the project
