@@ -111,12 +111,14 @@ install; see [Lookup](#lookup).
   width. It is stored as plain HTML in the Markdown and carried into every
   export.
 - **Tables, task lists & inline marks** — Generic GFM tables and checkbox task
-  lists (buttons **▦** and **☑** in the ribbon), plus highlight, text color and
-  super/subscript. Type `/` for a slash menu of insert commands — headings,
+  lists (buttons **▦** and **☑** in the ribbon), plus highlight, text color,
+  inline code, super/subscript, URL links (the **🔗** button opens a small
+  dialog that prefills an existing link and offers **Remove link**) and dividers
+  (the **—** button). Type `/` for a slash menu of insert commands — headings,
   lists, tables, task lists, quotes, code blocks, dividers, highlights,
-  super/subscript and text colors. Tables and task lists are stored as ordinary
-  Markdown; the inline marks are stored as inline HTML and carried into every
-  export.
+  super/subscript and text colors. Tables, task lists, links and inline code are
+  stored as ordinary Markdown; the bespoke inline marks are stored as inline
+  HTML and carried into every export.
 - **Comments & revision pass** — Select text and press the **💬** ribbon button
   (or **Ctrl+Alt+M**) to leave a note anchored to that passage. The **Comments**
   panel lists a document's notes and walks them with resolve, edit and delete;
@@ -352,6 +354,11 @@ to `?` instead of failing the export.
   shows; `[[Note Title|alias]]` displays just the alias. Click a wikilink to
   jump to that document, or to offer creating it as a worldbuilding entry if it
   doesn't exist yet.
+- **Inline code** (the `` ` `` button), **URL links** (**🔗**) and **dividers**
+  (**—**) each have their own ribbon button. The link dialog prefills the URL
+  when the caret is already on a link and offers **Remove link**; with nothing
+  selected it inserts the URL as its own link text, and a bare `example.com`
+  becomes `https://example.com`.
 - The **Wiki** tab is its own scaffolding tree for lore. Create an entry
   with a **template** (Character, Location, Organization, Nation, Lore
   Concept, or Blank) and its sections (`## Appearance`, `## History`, …) are

@@ -48,11 +48,12 @@ Legend for hooks: where the work would plug into the current code.
   - Hooks: a new `client/footnotes.js` wired into `client/editor-entry.js`;
     the exporters in `app/services/export.py`.
 
-- [ ] **Link / inline-code / horizontal-rule toolbar buttons** `P1` `S`
-  - The `link`, inline `code`, and `horizontalRule` capabilities exist in the
-    editor but no ribbon button reaches them; add a link dialog
-    (`setLink`/`unlink`). Hooks: `RIBBON` in `static/js/project.js`,
-    `run(command)` in `client/editor-entry.js`.
+- [x] **Link / inline-code / horizontal-rule toolbar buttons** `P1` `S` — shipped:
+  the **Format** group gained an inline-code button and a **🔗** link button, and
+  the **Blocks** group a **—** divider button. The link dialog lives in
+  `static/js/link-dialog.js` (pure `normalizeLinkHref`, prefills an existing
+  link, offers **Remove link**); the editor bundle exposes
+  `setLink`/`unlink`/`insertLink` plus `run("code")`.
 
 - [ ] **Per-document language + native spellcheck control** `P2` `S`
   - Grammar is hard-coded to `en-US` (`client/editor-entry.js:240`); expose a
