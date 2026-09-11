@@ -288,18 +288,22 @@ function _grammarSchedule(view) {
   const checkedHash = hash;
   _grammarTimer = setTimeout(async () => {
     if (_grammarBusy) return;
-    const currentView = _grammarView;
+    // Bind the request to the view it was scheduled for. With more than one
+    // editor kept alive (undo history), the *active* view can change while a
+    // check is in flight; its offsets must never be painted onto another
+    // document.
+    const currentView = view;
     const t0 = performance.now();
     _grammarBusy = true;
     try {
       const data = await _grammarFetch(docText.text);
-      if (!currentView || currentView.isDestroyed) return;
+      if (currentView !== _grammarView || currentView.isDestroyed) return;
       _grammarUpdate(currentView, docText, data.matches || []);
     } catch (err) {
       console.warn(`[diag] grammar check failed ${(performance.now() - t0).toFixed(0)}ms`, err.message);
     } finally {
       _grammarBusy = false;
-      if (currentView && !currentView.isDestroyed) {
+      if (currentView === _grammarView && !currentView.isDestroyed) {
         const latest = _grammarDocText(currentView.state.doc);
         if (_grammarHash(latest.text) !== checkedHash) _grammarSchedule(currentView);
       }
@@ -1023,15 +1027,34 @@ window.LainEditor = {
         });
         editor.view.dispatch(tr);
       },
+      // Grammar decorations share one "active view" slot. A freshly created
+      // editor takes it; a cached one reclaims it when it is re-mounted, and
+      // its existing decorations (plus the setGrammarEnabled call that follows)
+      // keep it in step. The parked editors keep their ProseMirror state,
+      // undo history included.
+      activate() {
+        _grammarView = editor.view;
+      },
+      deactivate() {
+        if (_grammarView === editor.view) {
+          clearTimeout(_grammarTimer);
+          _grammarHideTooltip();
+          _grammarView = null;
+        }
+      },
       destroy() {
-        clearTimeout(_grammarTimer);
-        _grammarHideTooltip();
-        _grammarView = null;
-        _grammarSkipping = false;
-        _grammarBusy = false;
-        _grammarReplaceRange = null;
-        _lastDocOffsets = null;
-        _lastDocText = null;
+        // Only clear the shared grammar state when this editor owns it, so
+        // destroying a parked editor can't blank the active one's state.
+        if (_grammarView === editor.view) {
+          clearTimeout(_grammarTimer);
+          _grammarHideTooltip();
+          _grammarView = null;
+          _grammarSkipping = false;
+          _grammarBusy = false;
+          _grammarReplaceRange = null;
+          _lastDocOffsets = null;
+          _lastDocText = null;
+        }
         editor.view.dom.removeEventListener("click", editor._grammarClick);
         if (editor._wikilinkClick) {
           editor.view.dom.removeEventListener("click", editor._wikilinkClick);
@@ -1081,12 +1104,12 @@ window.LainEditor = {
       },
       setGrammarEnabled(enabled) {
         editor.view.dispatch(editor.state.tr.setMeta("grammarEnabled", !!enabled));
-        if (enabled) _grammarSchedule(_grammarView);
+        if (enabled) _grammarSchedule(editor.view);
       },
       setDictionaryWords(words) {
         _grammarDictionaryWords = Array.isArray(words) ? words : [];
-        if (_grammarView && !_grammarView.isDestroyed) {
-          _grammarView.dispatch(_grammarView.state.tr.setMeta("forceGrammar", true));
+        if (_grammarView === editor.view && !editor.view.isDestroyed) {
+          editor.view.dispatch(editor.view.state.tr.setMeta("forceGrammar", true));
         }
       },
       setOnAddToDictionary(callback) {

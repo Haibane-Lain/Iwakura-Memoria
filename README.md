@@ -112,6 +112,11 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
 - **Whole-library backups** — One click snapshots every project, settings,
   stats, and chat history into a timestamped zip; the 10 newest are kept.
 - **Autosave** — Configurable debounce; last-ditch save on tab close.
+- **Undo that follows you** — Each document you visit keeps its editor warm, so
+  **Ctrl+Z** still steps back through edits you made before switching to another
+  document (or detouring through **Settings**/**Stats**). The ten
+  most-recently-used documents are kept. History lives in memory only: it is
+  cleared when the project reloads and does not survive an app restart.
 
 ## How data is stored
 

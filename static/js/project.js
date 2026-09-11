@@ -4,6 +4,7 @@ import * as theme from "./themes.js";
 import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
 import { filterTree } from "./tree-search.js";
+import { createEditorPool } from "./editor-pool.js";
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import { DEFAULT_WIKI_ZOOM, DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
 import { keepScrollTop } from "./scroll-keep.js";
@@ -53,6 +54,10 @@ let _treeSearchOpen = new Set();
 
 let lainCtrl = null;
 let _creating = false;
+
+// Editors stay alive after their document is closed so undo/redo survives a
+// switch. See editor-pool.js; the active document is pinned against eviction.
+const editorPool = createEditorPool({ max: 10 });
 let _switching = false;
 let _opening = false;
 let _beforeUnload = null;
@@ -1204,11 +1209,12 @@ async function afterTreeChange() {
     const match = [...collectTree(state.tree), ...collectTree(state.wikiTree)].find(
       (d) => d.title === prevTitle
     );
-    if (match && match.id !== prevId) {
-      state.currentDocId = match.id;
-    } else if (match) {
-      state.currentDocId = match.id;
-    }
+    if (match) state.currentDocId = match.id;
+  }
+  // A move or folder rename rewrites the path portion of a document id; keep
+  // the open document's warm editor keyed to its new id.
+  if (prevId && state.currentDocId && state.currentDocId !== prevId) {
+    editorPool.rekey(prevId, state.currentDocId);
   }
   renderSidebar();
 }
@@ -1218,6 +1224,9 @@ async function performReorder(folderId, ids) {
     const res = await api.docs.reorder(state.project.id, ids, folderId);
     if (res && res.renamed) remapExpanded(res.renamed);
     await afterTreeChange();
+    // A moved/renamed document gets a new id; drop the other warm editors
+    // whose ids may have shifted with it.
+    invalidateEditorCache(true);
     toast("Reordered");
   } catch (err) {
     toast(err.message, "error");
@@ -1229,6 +1238,7 @@ async function performMove(docId, targetFolder, index) {
     const res = await api.docs.move(state.project.id, docId, targetFolder, index);
     if (res && res.renamed) remapExpanded(res.renamed);
     await afterTreeChange();
+    invalidateEditorCache(true);
     toast("Moved");
   } catch (err) {
     toast(err.message, "error");
@@ -1240,6 +1250,7 @@ async function performFolderMove(folderId, targetFolder, index) {
     const res = await api.folders.move(state.project.id, folderId, targetFolder, index);
     if (res && res.renamed) remapExpanded(res.renamed);
     await afterTreeChange();
+    invalidateEditorCache(true);
     toast("Folder moved");
   } catch (err) {
     toast(err.message, "error");
@@ -1261,8 +1272,12 @@ async function onLainActions(actions) {
   const touched = actions.some((a) => a.id && (a.id === current || (current || "").startsWith(a.id + "/")));
   renderSidebar();
   if (lainCtrl) lainCtrl.refreshScope();
+  // AI writes can rewrite any document's body. Save local edits first, then
+  // drop the warm editors: the open document is rebuilt from disk when the
+  // assistant touched it, and other warm editors are dropped either way.
+  if (current && touched) await flushSave();
+  invalidateEditorCache(!touched);
   if (!current || !touched) return;
-  await flushSave();
   try {
     const doc = await api.docs.get(state.project.id, current);
     await renderEditorTab(doc, { wiki: isWikiScope() });
@@ -1446,6 +1461,13 @@ async function createMissingNote(title, fromDocId) {
       );
       await api.docs.save(state.project.id, fromDocId, updated);
       updateTreeWords(fromDocId, countWords(updated, mode()));
+      // The source document's editor now holds pre-rewrite text; drop it so
+      // returning to it rebuilds from disk instead of resurrecting the old body.
+      if (editorPool.activeId === fromDocId) {
+        discardActiveEditor();
+      } else {
+        editorPool.destroy(fromDocId);
+      }
     }
     await afterTreeChange();
     await refreshWiki();
@@ -1577,6 +1599,8 @@ async function renameFolder(folderId) {
   try {
     await api.folders.rename(state.project.id, folderId, name.trim());
     await afterTreeChange();
+    // Renaming a folder rewrites the ids of every document inside it.
+    invalidateEditorCache(true);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1611,9 +1635,13 @@ async function deleteFolder(folderId) {
   try {
     const res = await api.folders.remove(state.project.id, folderId);
     if (state.currentDocId && folderContainsDoc(folder, state.currentDocId)) {
+      discardActiveEditor();
       state.currentDocId = null;
     }
     await afterTreeChange();
+    // Drop the warm editors for documents inside the deleted folder (and any
+    // id that moved with it); the open document, if unrelated, is kept.
+    invalidateEditorCache(true);
     await refreshWiki();
     if (!state.currentDocId) renderWriteTab(null);
     updateTopbar();
@@ -1666,6 +1694,7 @@ async function deleteCurrentDoc() {
   const wiki = isWikiScope();
   try {
     const res = await api.docs.remove(state.project.id, info.id);
+    discardActiveEditor();
     state.currentDocId = null;
     if (wiki) state.wikiDocId = null;
     else state.writeDocId = null;
@@ -1685,6 +1714,9 @@ async function renameCurrentDoc(newTitle) {
   try {
     await api.docs.rename(state.project.id, state.currentDocId, newTitle);
     await refreshTree();
+    // Renaming can rewrite wikilinks inside other documents, so drop the warm
+    // editors for everything except the open one (whose body is unchanged).
+    invalidateEditorCache(true);
     renderSidebar();
   } catch (err) {
     toast(err.message, "error");
@@ -2063,13 +2095,72 @@ function pickImageFiles(portrait) {
   _imageInput.click();
 }
 
-async function renderEditorTab(doc, { wiki }) {
+/* ---------------- editor cache (undo survives document switches) -------- */
+
+// Detach the mounted editor without destroying it, so its ProseMirror state
+// (undo/redo history) is cached under its document id. `keepId` is the document
+// about to be shown; when it matches, the editor is reused as-is.
+function parkEditor(keepId = null) {
   if (state.editorCtrl) {
     clearTimeout(state.saveTimer);
     state.saveTimer = null;
-    state.editorCtrl.destroy();
+    const dom =
+      state.editorCtrl.editor &&
+      state.editorCtrl.editor.view &&
+      state.editorCtrl.editor.view.dom;
+    if (dom && dom.parentNode) dom.parentNode.removeChild(dom);
     state.editorCtrl = null;
   }
+  if (keepId !== null && editorPool.activeId === keepId) return;
+  editorPool.park();
+}
+
+// Destroy the current document's editor outright (its document is gone or its
+// content is about to be replaced), without caching it first.
+function discardActiveEditor() {
+  const id = editorPool.activeId;
+  clearTimeout(state.saveTimer);
+  state.saveTimer = null;
+  state.editorCtrl = null;
+  if (id == null) return;
+  const ctrl = editorPool.forget(id);
+  if (ctrl) {
+    try {
+      ctrl.destroy();
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+// Structural changes (delete, move, rename, restore, AI edits) can rewrite
+// document bodies or reuse ids behind the cache's back. Drop the affected
+// editors so anything reopened is rebuilt from disk. `keepActive` spares the
+// document on screen when its own content is still valid.
+function invalidateEditorCache(keepActive = false) {
+  const keepId = keepActive ? editorPool.activeId : null;
+  for (const id of editorPool.keys()) {
+    if (id === keepId) continue;
+    const ctrl = editorPool.forget(id);
+    if (ctrl) {
+      try {
+        ctrl.destroy();
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+  if (!keepId) state.editorCtrl = null;
+}
+
+// A fresh project route starts with no warm editors.
+function resetEditorPool() {
+  state.editorCtrl = null;
+  editorPool.destroyAll();
+}
+
+async function renderEditorTab(doc, { wiki }) {
+  parkEditor(doc ? doc.id : null);
   navListEl = null;
   const main = document.getElementById("main-content");
   const header = docHeader(doc);
@@ -2113,28 +2204,6 @@ async function renderEditorTab(doc, { wiki }) {
 
   const mount = document.getElementById("editor-mount");
   const wasPending = state.dirty && state.currentDocId === doc.id;
-  try {
-    state.editorCtrl = window.LainEditor.create({
-      element: mount,
-      content: doc.content || "",
-      placeholder: wiki ? "Begin lore entry…" : "Begin writing…",
-      onChange: onEditorUpdate,
-      onWikilinkClick,
-      showNav: wiki,
-      projectId: state.project.id,
-      uploadImage: uploadImageFile,
-      onImageError: (message) => toast(message, "error"),
-      onUploadState: (busy) => {
-        if (busy) setSaveStatus("pending", "Uploading image…");
-      },
-      onOpenImage: showImageOverlay,
-      onPickPortrait: (pos) => pickImageFiles(pos),
-    });
-  } catch {
-    toast("Editor failed to load", "error");
-    return;
-  }
-
   state.currentDocId = doc.id;
   if (wiki) state.wikiDocId = doc.id;
   else state.writeDocId = doc.id;
@@ -2143,23 +2212,57 @@ async function renderEditorTab(doc, { wiki }) {
   state.selectionActive = false;
   state.dirty = false;
 
+  const cached = editorPool.get(doc.id);
+  if (cached) {
+    // Re-mount the editor we kept: its undo history is still in ProseMirror.
+    mount.appendChild(cached.editor.view.dom);
+    state.editorCtrl = editorPool.activate(doc.id);
+  } else {
+    let ctrl = null;
+    try {
+      ctrl = window.LainEditor.create({
+        element: mount,
+        content: doc.content || "",
+        placeholder: wiki ? "Begin lore entry…" : "Begin writing…",
+        onChange: (md) => onEditorUpdate(ctrl, md),
+        onWikilinkClick,
+        showNav: wiki,
+        projectId: state.project.id,
+        uploadImage: uploadImageFile,
+        onImageError: (message) => toast(message, "error"),
+        onUploadState: (busy) => {
+          if (busy) setSaveStatus("pending", "Uploading image…");
+        },
+        onOpenImage: showImageOverlay,
+        onPickPortrait: (pos) => pickImageFiles(pos),
+      });
+    } catch {
+      toast("Editor failed to load", "error");
+      return;
+    }
+    state.editorCtrl = ctrl;
+    editorPool.add(doc.id, ctrl);
+    ctrl.setOnAddToDictionary(async (word) => {
+      const words = state.dictionary.words || [];
+      if (words.some((w) => w.toLowerCase() === word.toLowerCase())) return;
+      words.push(word);
+      state.dictionary.words = words;
+      ctrl.setDictionaryWords(words);
+      try {
+        await api.projects.dictionary.update(state.project.id, words);
+      } catch {
+        /* ignore */
+      }
+      if (ctrl.editor) {
+        ctrl.editor.view.dispatch(ctrl.editor.state.tr.setMeta("forceGrammar", true));
+      }
+    });
+    ctrl.editor.on("transaction", () => { refreshToolbar(); refreshEditorContext(); });
+    ctrl.editor.on("selectionUpdate", () => { refreshToolbar(); refreshEditorContext(); });
+  }
+
   state.editorCtrl.setGrammarEnabled(state.settings.grammarEnabled);
   state.editorCtrl.setDictionaryWords(state.dictionary.words || []);
-  state.editorCtrl.setOnAddToDictionary(async (word) => {
-    const words = state.dictionary.words || [];
-    if (words.some((w) => w.toLowerCase() === word.toLowerCase())) return;
-    words.push(word);
-    state.dictionary.words = words;
-    state.editorCtrl.setDictionaryWords(words);
-    try {
-      await api.projects.dictionary.update(state.project.id, words);
-    } catch {
-      /* ignore */
-    }
-    if (state.editorCtrl.editor) { state.editorCtrl.editor.view.dispatch(state.editorCtrl.editor.state.tr.setMeta("forceGrammar", true)); }
-  });
-  state.editorCtrl.editor.on("transaction", () => { refreshToolbar(); refreshEditorContext(); });
-  state.editorCtrl.editor.on("selectionUpdate", () => { refreshToolbar(); refreshEditorContext(); });
   refreshToolbar();
   refreshEditorContext();
   applyDocStyle();
@@ -2278,7 +2381,10 @@ function scrollToHeading(item) {
   editor.chain().focus().setTextSelection(targetPos).scrollIntoView().run();
 }
 
-function onEditorUpdate(markdown) {
+function onEditorUpdate(ctrl, markdown) {
+  // A parked editor (kept around for undo history) must never mark the open
+  // document dirty; only the mounted editor's changes count.
+  if (!ctrl || ctrl !== state.editorCtrl) return;
   state.dirty = true;
   setSaveStatus("pending", "Unsaved changes");
   updateLiveWords();
@@ -3922,12 +4028,6 @@ async function switchTab(tab) {
     const wiki = tab === "wiki";
     state.currentTab = tab;
     setActiveTab(tab);
-    if (state.editorCtrl) {
-      clearTimeout(state.saveTimer);
-      state.saveTimer = null;
-      state.editorCtrl.destroy();
-      state.editorCtrl = null;
-    }
     state.currentDocId = wiki ? state.wikiDocId : state.writeDocId;
     if (wiki) await loadWikiData();
     if (!state.currentDocId) {
@@ -3948,12 +4048,9 @@ async function switchTab(tab) {
   await flushSave();
   state.currentTab = tab;
   setActiveTab(tab);
-  if (state.editorCtrl) {
-    clearTimeout(state.saveTimer);
-    state.saveTimer = null;
-    state.editorCtrl.destroy();
-    state.editorCtrl = null;
-  }
+  // Keep the document's editor cached so its undo history survives a detour
+  // through Settings or Stats.
+  parkEditor();
   if (tab === "stats") await renderStatsTab();
   else if (tab === "settings") await renderSettingsTab();
   if (main) main.classList.remove("no-scroll");
@@ -3977,6 +4074,8 @@ function renderSidebar({ keepScroll = false } = {}) {
 }
 
 async function init(params) {
+  // A fresh project route starts with no warm editors from a previous project.
+  resetEditorPool();
   // A fresh project starts with unfiltered sidebars.
   state.wikiQuery = "";
   state.writeQuery = "";
