@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Frontend bundle for Iwakura Memoria",
   "type": "module",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "scripts": {
     "build": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap",
     "watch": "esbuild client/editor-entry.js --bundle --format=iife --outfile=static/dist/editor.bundle.js --sourcemap --watch",

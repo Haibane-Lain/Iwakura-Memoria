@@ -21,6 +21,9 @@ python main.py --browser                 # or open in a browser tab
 python main.py --server-only --port 8000 # headless (no window) — used by the Electron shell
 ```
 
+The frontend toolchain (`npm install`, the build, and the JS tests) needs
+**Node 22.22.2+ or 24.15+** — `jsdom` 30 / `undici` 8 require it. CI uses Node 24.
+
 To run the tests:
 
 ```
