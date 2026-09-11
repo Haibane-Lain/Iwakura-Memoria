@@ -23,6 +23,14 @@ import {
   firstDocIn,
   expandAll,
 } from "./doc-tree.js";
+import {
+  zoomKey,
+  defaultZoomForScope as resolveDefaultZoom,
+  effectiveFont as resolveFont,
+  effectiveSize as resolveSize,
+  effectiveAlign as resolveAlign,
+  effectiveZoom as resolveZoom,
+} from "./editor-prefs.js";
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import { DEFAULT_WIKI_ZOOM, DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
 import { keepScrollTop } from "./scroll-keep.js";
@@ -299,30 +307,26 @@ function docStyle() {
   return state.docStyle || {};
 }
 
+// The resolution rules are pure and live in editor-prefs.js; these wrappers
+// feed them the current document's style and the user's settings.
 function effectiveFont() {
-  return docStyle().font || state.settings.editorFont;
+  return resolveFont(docStyle(), state.settings);
 }
 
 function effectiveSize() {
-  return docStyle().size || state.settings.editorSize;
+  return resolveSize(docStyle(), state.settings);
 }
 
 function effectiveAlign() {
-  return docStyle().align || state.settings.editorAlign;
+  return resolveAlign(docStyle(), state.settings);
 }
 
 function effectiveZoom() {
-  return docStyle().zoom || defaultZoomForScope();
-}
-
-// Zoom is the one editor preference with a default *per tab*: see zoom.js.
-function zoomKey(scope) {
-  return scope === "wiki" ? "wikiZoom" : "editorZoom";
+  return resolveZoom(docStyle(), state.settings, isWikiScope());
 }
 
 function defaultZoomForScope(wiki = isWikiScope()) {
-  return (wiki ? state.settings.wikiZoom : state.settings.editorZoom) ||
-    (wiki ? DEFAULT_WIKI_ZOOM : DEFAULT_ZOOM);
+  return resolveDefaultZoom(state.settings, wiki);
 }
 
 function sectionOverrides() {

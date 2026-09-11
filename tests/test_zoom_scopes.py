@@ -24,6 +24,7 @@ from app import config
 from app.main import create_app
 
 PROJECT_JS = config.PROJECT_ROOT / "static" / "js" / "project.js"
+EDITOR_PREFS_JS = config.PROJECT_ROOT / "static" / "js" / "editor-prefs.js"
 ZOOM_JS = config.PROJECT_ROOT / "static" / "js" / "zoom.js"
 THEMES_JS = config.PROJECT_ROOT / "static" / "js" / "themes.js"
 INDEX_HTML = config.PROJECT_ROOT / "static" / "index.html"
@@ -79,13 +80,14 @@ def test_the_first_launch_theme_is_gothic_everywhere_it_is_decided():
 
 def test_the_settings_tab_saves_a_zoom_per_tab():
     js = PROJECT_JS.read_text(encoding="utf-8")
+    prefs = EDITOR_PREFS_JS.read_text(encoding="utf-8")
     assert re.search(r'zoomSelect\("global", "write"\)', js), (
         "Settings must offer a Write tab zoom"
     )
     assert re.search(r'zoomSelect\("global", "wiki"\)', js), (
         "Settings must offer a Wiki tab zoom"
     )
-    assert re.search(r'return scope === "wiki" \? "wikiZoom" : "editorZoom";', js), (
+    assert re.search(r'return scope === "wiki" \? "wikiZoom" : "editorZoom";', prefs), (
         "the tab must decide which settings key is written"
     )
     assert re.search(r"api\.settings\.update\(\{ \[zoomKey\(scope\)\]: zoom \}\)", js), (
@@ -100,11 +102,12 @@ def test_the_settings_tab_saves_a_zoom_per_tab():
 
 def test_each_tab_falls_back_to_its_own_default():
     js = PROJECT_JS.read_text(encoding="utf-8")
-    assert re.search(r"return docStyle\(\)\.zoom \|\| defaultZoomForScope\(\);", js), (
-        "a document's own zoom wins, then the default of the tab it is in"
-    )
+    prefs = EDITOR_PREFS_JS.read_text(encoding="utf-8")
     assert re.search(
-        r'return \(wiki \? state\.settings\.wikiZoom : state\.settings\.editorZoom\) \|\|', js
+        r"return \(docStyle \|\| \{\}\)\.zoom \|\| defaultZoomForScope\(settings, wiki\);", prefs
+    ), "a document's own zoom wins, then the default of the tab it is in"
+    assert re.search(
+        r"return \(wiki \? s\.wikiZoom : s\.editorZoom\) \|\|", prefs
     ), "the fallback must read the settings key for that tab"
     assert re.search(
         r"sel\.value = String\(scope \? defaultZoomForScope\(scope === \"wiki\"\) : currentZoom\(\)\);",
