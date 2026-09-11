@@ -58,6 +58,15 @@ function open(content) {
 const tables = (host) => host.querySelectorAll("table");
 const cells = (host) => [...host.querySelectorAll("th, td")].map((el) => el.textContent.trim());
 
+// The slash menu is a document-level singleton; close whatever is open between
+// checks by clicking outside it.
+function dismissMenu() {
+  dom.window.document.body.dispatchEvent(
+    new dom.window.MouseEvent("mousedown", { bubbles: true })
+  );
+}
+const slashMenu = () => dom.window.document.querySelector(".slash-menu");
+
 /* ---------------- generic tables ---------------- */
 
 await check("a GFM table survives load → save and is a fixed point", () => {
@@ -217,6 +226,70 @@ await check("inline marks inside a character-table cell survive", () => {
   ].join("\n");
   const s = open(box);
   assert.equal(s.ctrl.getMarkdown(), box);
+  s.close();
+});
+
+/* ---------------- slash menu ---------------- */
+
+await check("typing / opens the slash menu and filters it", () => {
+  dismissMenu();
+  const s = open("");
+  s.ctrl.editor.chain().insertContent("/").run();
+  const menu = slashMenu();
+  assert.ok(menu, "the menu opens on /");
+  assert.equal(menu.querySelectorAll(".slash-item").length, 14);
+
+  s.ctrl.editor.chain().insertContent("tab").run();
+  const labels = [...slashMenu().querySelectorAll(".slash-item-label")].map((n) => n.textContent);
+  assert.deepEqual(labels, ["Table"]);
+  s.close();
+  dismissMenu();
+});
+
+await check("choosing a slash command inserts it and closes the menu", () => {
+  dismissMenu();
+  const s = open("");
+  s.ctrl.editor.chain().insertContent("/table").run();
+  const item = slashMenu().querySelector(".slash-item");
+  assert.ok(item);
+  item.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(slashMenu(), null, "the menu closes");
+  assert.equal(
+    s.ctrl.getMarkdown(),
+    "|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n"
+  );
+  s.close();
+});
+
+await check("the slash color palette colors the next text", () => {
+  dismissMenu();
+  const s = open("");
+  s.ctrl.editor.chain().insertContent("/color").run();
+  const colorItem = [...slashMenu().querySelectorAll(".slash-item")].find((n) =>
+    n.textContent.includes("Text color")
+  );
+  assert.ok(colorItem, "the color command is offered");
+  colorItem.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+
+  const swatches = dom.window.document.querySelectorAll(".slash-swatch");
+  assert.equal(swatches.length, 7);
+  dom.window.document
+    .querySelector('.slash-swatch[data-color="#c0392b"]')
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.equal(slashMenu(), null, "the palette closes after a choice");
+
+  s.ctrl.editor.chain().insertContent("hi").run();
+  assert.equal(s.ctrl.getMarkdown(), '<span style="color:#c0392b">hi</span>');
+  s.close();
+});
+
+await check("the slash menu closes when its trigger is deleted", () => {
+  dismissMenu();
+  const s = open("");
+  s.ctrl.editor.chain().insertContent("/").run();
+  assert.ok(slashMenu());
+  s.ctrl.editor.chain().deleteRange({ from: 1, to: 2 }).run();
+  assert.equal(slashMenu(), null);
   s.close();
 });
 

@@ -31,6 +31,7 @@ import {
   makeTaskListExtensions,
   makeInlineMarkExtensions,
 } from "./editor-primitives.js";
+import { makeSlashMenuExtension } from "./slash-menu.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
@@ -912,6 +913,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       ...makeTableExtensions(),
       ...makeTaskListExtensions(),
       ...makeInlineMarkExtensions(),
+      makeSlashMenuExtension(),
       ...makeCharacterTableNodes(imageOpts),
     ],
     content,
