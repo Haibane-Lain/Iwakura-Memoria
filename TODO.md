@@ -171,15 +171,18 @@ Legend for hooks: where the work would plug into the current code.
 - **Tiptap v2 → v3 upgrade** — deferred; see GitHub issue #1
   (`@tiptap/core` GHSA-cp6q-959q-f8rh is patched only in 3.30.4). Markdown-only
   storage means the known advisory is not practically reachable.
-- **Splitting `static/js/project.js`** — tripwire: > ~4,000 lines or recurring
-  friction. Phase A moved the export, dictionary, repetition, document-history,
-  and find & replace dialogs into their own leaf modules (each takes a small
-  `ctx` instead of importing back into the shell). Phase B moved the pure halves
-  of the shell into `doc-tree.js` (tree flatten/search helpers) and
-  `editor-prefs.js` (document/global preference resolution), both with unit
-  tests. `project.js` is now ~3,950 lines — just under the tripwire. What remains
-  is the editor view/controller (`renderEditorView` / `renderPane` / the `panes`
-  records and the per-pane save pipeline); it reaches deep into `state`, so it
-  needs a designed context interface rather than a mechanical move.
+- **Splitting `static/js/project.js`** — tripwire: > ~4,000 raw lines (`wc -l`,
+  blank lines included) or recurring friction. Phase A moved the export,
+  dictionary, repetition, document-history, and find & replace dialogs into their
+  own leaf modules (each takes a small `ctx`). Phase B moved the pure halves into
+  `doc-tree.js` and `editor-prefs.js`. Phase C1 moved the editing surface —
+  panes, document tabs, the per-pane save pipeline, and the editor view render —
+  into `editor-workspace.js`, with the shared state and the shell-service
+  boundary in `project-context.js` (the workspace calls the shell back through a
+  registered `shell` object, so there is no import cycle). `project.js` is now
+  ~3,000 lines, well under the tripwire. What remains in the shell is the
+  sidebar/tree, drag & drop, document actions, settings/stats, and the editor
+  chrome (toolbar, style controls, doc header/backlinks, inline images); Phase C2
+  folds that chrome into the workspace, and is deferred until a feature needs it.
 - **Splitting `app/services/documents.py`** — tripwire: > ~1,800 lines or a
   size-traced bug.
