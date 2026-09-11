@@ -133,13 +133,8 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   instead of replacing what is on screen; the strip above the editor shows every
   open document, and a click, **Ctrl+Tab**/**Ctrl+Shift+Tab** or
   **Ctrl+1–9** jumps between them. Close one with its **×**, a middle-click or
-  **Ctrl+W** (unsaved edits are saved first). Open tabs and the recently visited
-  list are remembered per project, so a reload restores your place.
-- **Recent documents** — The sidebar's collapsible **Recent** list keeps the
-  last 15 documents you visited — chapters, notes and wiki entries together, most
-  recent first — one click away even after you close their tab. It is a
-  convenience only: its title history is kept in this browser and is dropped
-  from backups.
+  **Ctrl+W** (unsaved edits are saved first). Open tabs are remembered per
+  project, so a reload restores your place.
 - **Split view** — The **Split** toolbar button (or **Ctrl+\\**) puts a second
   editable pane next to the current document, so you can keep notes or a wiki
   entry in view while you write. One shared toolbar and grammar check follow

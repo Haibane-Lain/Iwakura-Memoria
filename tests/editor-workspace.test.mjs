@@ -165,7 +165,7 @@ async function freshWorkspace() {
   const workspace = await import("../static/js/editor-workspace.js");
   ctx.registerShell(STUB_SHELL);
   ctx.editorPool.destroyAll();
-  ctx.docTabs.restore({ tabs: [], active: null, recent: [] });
+  ctx.docTabs.restore({ tabs: [], active: null });
   for (const pane of [ctx.panes.primary, ctx.panes.secondary]) {
     pane.docId = null;
     pane.ctrl = null;

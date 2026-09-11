@@ -30,7 +30,6 @@ import { commentsPanel } from "./comments-panel.js";
 /* ---------------- tab persistence ---------------- */
 
 const LS_TABS = "im.tabs";
-const LS_RECENT_OPEN = "im.recent.open";
 
 // Only one document can be mid-open at a time.
 let _opening = false;
@@ -46,7 +45,7 @@ export function persistTabs() {
   if (!key) return;
   const data = docTabs.serialize();
   const titles = {};
-  for (const id of [...data.tabs, ...data.recent, panes.secondary.docId].filter(Boolean)) {
+  for (const id of [...data.tabs, panes.secondary.docId].filter(Boolean)) {
     const title = docTitleAny(id);
     if (title) titles[id] = title;
   }
@@ -73,7 +72,7 @@ export function restoreTabs() {
       data = null;
     }
   }
-  data = data || { tabs: [], active: null, recent: [] };
+  data = data || { tabs: [], active: null };
   const docs = allDocs();
   const valid = new Set(docs.map((d) => d.id));
   const titles = data.titles && typeof data.titles === "object" ? data.titles : {};
@@ -84,7 +83,6 @@ export function restoreTabs() {
     return byTitle ? byTitle.id : null;
   };
   data.tabs = (Array.isArray(data.tabs) ? data.tabs : []).map(repair).filter(Boolean);
-  data.recent = (Array.isArray(data.recent) ? data.recent : []).map(repair).filter(Boolean);
   data.active = repair(data.active);
   docTabs.restore(data);
 
@@ -102,7 +100,7 @@ export function restoreTabs() {
 }
 
 export function clearTabs() {
-  docTabs.restore({ tabs: [], active: null, recent: [] });
+  docTabs.restore({ tabs: [], active: null });
 }
 
 /* ---------------- split panes ---------------- */
@@ -205,11 +203,6 @@ function tabKind(id) {
   const d = findDocAny(id);
   if (d && d.kind === "chapter") return "chapter";
   return id.startsWith("worldbuilding/") ? "wiki" : "note";
-}
-
-function tabGlyph(id) {
-  const kind = tabKind(id);
-  return kind === "chapter" ? "≣" : kind === "wiki" ? "✦" : "◦";
 }
 
 // A deleted document is gone from the tree but may still be in the strip; this
@@ -465,59 +458,6 @@ export async function openInSplit(docId) {
   } catch (err) {
     toast(err.message, "error");
   }
-}
-
-/* ---------------- recent documents ---------------- */
-
-function recentIds() {
-  return docTabs.recent.filter((id) => findDocAny(id));
-}
-
-function recentOpen() {
-  try {
-    return localStorage.getItem(LS_RECENT_OPEN) !== "0";
-  } catch {
-    return true;
-  }
-}
-
-export function recentSection() {
-  const ids = recentIds();
-  if (!ids.length) return null;
-  const open = recentOpen();
-  const list = el(
-    "div",
-    { class: "recent-list", style: { display: open ? "" : "none" } },
-    ids.map((id) => {
-      const d = findDocAny(id);
-      return el("div", {
-        class: `recent-item${id === state.currentDocId ? " active" : ""}`,
-        title: prettyPath(d),
-        onclick: () => openDocument(id),
-      }, [
-        el("span", { class: "recent-kind" }, tabGlyph(id)),
-        el("span", { class: "recent-title" }, d.title),
-      ]);
-    })
-  );
-  return el("div", { class: "recent-section" }, [
-    el("div", { class: "recent-head" }, [
-      el("span", { class: "recent-heading" }, "Recent"),
-      el("button", {
-        class: "recent-toggle",
-        title: open ? "Collapse recent" : "Expand recent",
-        onclick: () => {
-          try {
-            localStorage.setItem(LS_RECENT_OPEN, open ? "0" : "1");
-          } catch {
-            /* ignore */
-          }
-          shell.renderSidebar();
-        },
-      }, open ? "▾" : "▸"),
-    ]),
-    list,
-  ]);
 }
 
 /* ---------------- editor view ---------------- */

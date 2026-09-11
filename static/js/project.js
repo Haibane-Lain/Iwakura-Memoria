@@ -66,7 +66,6 @@ const {
   renderEditorTab,
   renderEditorView,
   renderDocTabs,
-  recentSection,
   applyDictionaryWords,
   invalidateEditorCache,
   dropTab,
@@ -696,8 +695,6 @@ function renderTree(sidebarEl, { keepScroll = false } = {}) {
   _treeSearchOpen = openIds;
 
   const frag = document.createDocumentFragment();
-  const recent = recentSection();
-  if (recent) frag.append(recent);
   if (wiki) {
     frag.append(
       el("div", { class: "tree-toolbar" }, [

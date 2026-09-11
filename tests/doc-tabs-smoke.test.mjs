@@ -1,4 +1,4 @@
-// jsdom smoke test for the document tab strip and the sidebar's Recent list.
+// jsdom smoke test for the document tab strip.
 //
 // Kept in its own file (and therefore its own Node process) because project.js
 // is an ES module with process-wide state: re-importing it in app-smoke's
@@ -172,7 +172,7 @@ const ROUTES = [
 
 // --- the tab strip ----------------------------------------------------------
 
-await check("the tab strip opens, focuses, lists recents and closes documents", async () => {
+await check("the tab strip opens, focuses, splits and closes documents", async () => {
   const dom = makeDom();
   const { unmatched } = installFetch(ROUTES);
   const errors = [];
@@ -202,10 +202,6 @@ await check("the tab strip opens, focuses, lists recents and closes documents", 
   await waitFor(() => doc.querySelectorAll(".doc-tabs .doc-tab").length === 2);
   assert.deepEqual(titles(), ["Alpha", "Beta"]);
   assert.equal(activeTitle(), "Beta", "the newly opened tab is active");
-
-  // The sidebar's Recent list is MRU order.
-  const recents = [...doc.querySelectorAll(".recent-item .recent-title")].map((n) => n.textContent);
-  assert.deepEqual(recents, ["Beta", "Alpha"]);
 
   // Split view pairs the two open tabs, one pane each, with a shared toolbar.
   const splitBtn = doc.querySelector('.tool-btn[title^="Split the editor"]');

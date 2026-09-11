@@ -1,15 +1,11 @@
-// Unit tests for the document tab strip / recent-list state. The module is
-// deliberately DOM-free, so ordering, capping and MRU rules are pinned here
+// Unit tests for the document tab strip state. The module is
+// deliberately DOM-free, so ordering and capping rules are pinned here
 // instead of through the jsdom shell.
 //
 // Run: node tests/doc-tabs.test.mjs  (or `npm run test:tabs`)
 import assert from "node:assert/strict";
 
-import {
-  createDocTabs,
-  DEFAULT_TAB_LIMIT,
-  DEFAULT_RECENT_LIMIT,
-} from "../static/js/doc-tabs.js";
+import { createDocTabs, DEFAULT_TAB_LIMIT } from "../static/js/doc-tabs.js";
 
 let failures = 0;
 function check(label, fn) {
@@ -24,16 +20,14 @@ function check(label, fn) {
 
 console.log("doc-tabs:");
 
-check("open adds a tab, activates it, and records it as recent", () => {
-  const t = createDocTabs({ max: 3, recentMax: 5 });
+check("open adds a tab and activates it", () => {
+  const t = createDocTabs({ max: 3 });
   assert.equal(t.open("a"), "a");
   assert.deepEqual(t.tabs, ["a"]);
   assert.equal(t.active, "a");
-  assert.deepEqual(t.recent, ["a"]);
   t.open("b");
   assert.deepEqual(t.tabs, ["a", "b"]);
   assert.equal(t.active, "b");
-  assert.deepEqual(t.recent, ["b", "a"]);
 });
 
 check("reopening an existing tab focuses it without duplicating", () => {
@@ -44,7 +38,6 @@ check("reopening an existing tab focuses it without duplicating", () => {
   t.open("a");
   assert.deepEqual(t.tabs, ["a", "b", "c"]);
   assert.equal(t.active, "a");
-  assert.deepEqual(t.recent, ["a", "c", "b"]);
 });
 
 check("overflow evicts the oldest inactive tab, keeping the active pinned", () => {
@@ -95,36 +88,24 @@ check("closing an unknown id is a no-op", () => {
   assert.deepEqual(t.tabs, ["a"]);
 });
 
-check("recent is MRU, de-duplicated and capped", () => {
-  const t = createDocTabs({ max: 5, recentMax: 3 });
-  t.open("a");
-  t.open("b");
-  t.open("c");
-  t.open("a"); // newest
-  t.open("d");
-  assert.deepEqual(t.recent, ["d", "a", "c"]);
-});
-
-check("forget removes a document from tabs and recent", () => {
+check("forget removes a document from the tabs", () => {
   const t = createDocTabs({ max: 5 });
   t.open("a");
   t.open("b");
   t.open("c");
   t.forget("b");
   assert.deepEqual(t.tabs, ["a", "c"]);
-  assert.deepEqual(t.recent, ["c", "a"]);
   assert.equal(t.active, "c");
   t.forget("c");
   assert.equal(t.active, "a");
 });
 
-check("rekey follows an id change in tabs, recent and active", () => {
+check("rekey follows an id change in tabs and active", () => {
   const t = createDocTabs({ max: 5 });
   t.open("a");
   t.open("b");
   t.rekey("a", "a/moved");
   assert.deepEqual(t.tabs, ["a/moved", "b"]);
-  assert.deepEqual(t.recent, ["b", "a/moved"]);
   t.open("a/moved");
   assert.equal(t.active, "a/moved");
 });
@@ -156,26 +137,16 @@ check("cycle is a no-op with fewer than two tabs", () => {
 });
 
 check("restore enforces caps and picks a valid active tab", () => {
-  const t = createDocTabs({ max: 2, recentMax: 2 });
-  const res = t.restore({ tabs: ["a", "b", "c"], active: "b", recent: ["x", "y", "z"] });
+  const t = createDocTabs({ max: 2 });
+  const res = t.restore({ tabs: ["a", "b", "c"], active: "b" });
   assert.deepEqual(res.tabs, ["b", "c"]);
   assert.equal(res.active, "b");
-  assert.deepEqual(res.recent, ["x", "y"]);
 });
 
 check("restore falls back to the last tab for a stale active id", () => {
   const t = createDocTabs({ max: 5 });
-  const res = t.restore({ tabs: ["a", "b"], active: "gone", recent: [] });
+  const res = t.restore({ tabs: ["a", "b"], active: "gone" });
   assert.equal(res.active, "b");
-});
-
-check("clearRecent empties only the recent list", () => {
-  const t = createDocTabs({ max: 5 });
-  t.open("a");
-  t.open("b");
-  t.clearRecent();
-  assert.deepEqual(t.recent, []);
-  assert.deepEqual(t.tabs, ["a", "b"]);
 });
 
 check("serialize/restore round-trips", () => {
@@ -187,12 +158,10 @@ check("serialize/restore round-trips", () => {
   other.restore(t.serialize());
   assert.deepEqual(other.tabs, t.tabs);
   assert.equal(other.active, t.active);
-  assert.deepEqual(other.recent, t.recent);
 });
 
-check("default limits are 10 tabs / 15 recent", () => {
+check("the default tab limit is 10", () => {
   assert.equal(DEFAULT_TAB_LIMIT, 10);
-  assert.equal(DEFAULT_RECENT_LIMIT, 15);
 });
 
 if (failures) {
