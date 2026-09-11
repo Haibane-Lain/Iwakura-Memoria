@@ -172,10 +172,12 @@ Legend for hooks: where the work would plug into the current code.
   (`@tiptap/core` GHSA-cp6q-959q-f8rh is patched only in 3.30.4). Markdown-only
   storage means the known advisory is not practically reachable.
 - **Splitting `static/js/project.js`** — tripwire: > ~4,000 lines or recurring
-  friction. It is now ~4,800 lines and well past the tripwire. The next
-  extraction should peel off the editor view (panes, tab strip, save pipeline)
-  the way `doc-tabs.js` and `editor-pool.js` already hold their pure state;
-  `renderEditorView` / `renderPane` / the `panes` records are the natural seam,
-  but they reach deep into `state`, so it is not a mechanical move.
+  friction. Phase A moved the export, dictionary, repetition, document-history,
+  and find & replace dialogs into their own leaf modules (each takes a small
+  `ctx` instead of importing back into the shell), bringing it from ~4,800 to
+  ~4,000 lines — right at the tripwire. What remains is the editor
+  view/controller (`renderEditorView` / `renderPane` / the `panes` records and
+  the per-pane save pipeline); it reaches deep into `state`, so it needs a
+  designed context interface rather than a mechanical move.
 - **Splitting `app/services/documents.py`** — tripwire: > ~1,800 lines or a
   size-traced bug.
