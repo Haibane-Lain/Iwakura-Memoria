@@ -79,6 +79,13 @@ def _installed(tmp_path, monkeypatch) -> Path:
 # --- service ----------------------------------------------------------------
 
 
+def test_unescape_strips_satellite_markers_and_escapes():
+    assert lookup_service._unescape("standing(a)") == "standing"
+    assert lookup_service._unescape("passing(p)") == "passing"
+    assert lookup_service._unescape("well_known") == "well known"
+    assert lookup_service._unescape("foo\\(bar\\)") == "foo(bar)"
+
+
 def test_finds_definitions_synonyms_and_examples(tmp_path, monkeypatch):
     _installed(tmp_path, monkeypatch)
 
@@ -148,6 +155,16 @@ def test_accepts_the_wordnet_root_or_its_dict_subfolder(tmp_path, monkeypatch):
     monkeypatch.setenv("IWAKURA_DICT_DIR", str(root))
     assert lookup_service.is_available() is True
     assert lookup_service.lookup("dog")["found"] is True
+
+
+def test_finds_the_official_tarball_folder_name(tmp_path, monkeypatch):
+    # WordNet-3.0.tar.gz unpacks as "WordNet-3.0"; the fallback must accept it.
+    _write_wordnet(tmp_path / "WordNet-3.0" / "dict")
+    monkeypatch.delenv("IWAKURA_DICT_DIR", raising=False)
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+
+    assert lookup_service.is_available() is True
+    assert lookup_service.lookup("dog")["headword"] == "dog"
 
 
 # --- route ------------------------------------------------------------------

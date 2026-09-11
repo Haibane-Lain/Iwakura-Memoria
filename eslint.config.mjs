@@ -13,6 +13,7 @@ export default [
       "_jre/**",
       "LanguageTool 6.9/**",
       "WordNet 3.0/**",
+      "WordNet-3.0/**",
       "static/lib/**",
       "static/dist/**",
       "dist/**",

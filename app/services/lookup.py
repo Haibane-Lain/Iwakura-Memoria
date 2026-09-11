@@ -26,7 +26,9 @@ from typing import Any, NamedTuple
 from app import config
 
 SOURCE = "wordnet"
-FALLBACK_DIRNAME = "WordNet 3.0"
+# The official tarball unpacks as ``WordNet-3.0``; accept the spaced spelling
+# and a lowercase variant too, so any reasonable drop-in is found.
+FALLBACK_DIRNAMES = ("WordNet-3.0", "WordNet 3.0", "wordnet")
 
 # WordNet part-of-speech codes: n(oun), v(erb), a(djective), r(adverb). The
 # data files also carry ``s`` for adjective satellites, which map onto ``a``.
@@ -41,6 +43,9 @@ _POS_LABEL = {"noun": "noun", "verb": "verb", "adj": "adjective", "adv": "adverb
 _CODE_TO_POS = {"n": "noun", "v": "verb", "a": "adj", "s": "adj", "r": "adv"}
 
 _MAX_WORD = 80
+
+# Adjective-satellite marker appended to a lemma in ``data.adj``.
+_SATELLITE_RE = re.compile(r"\((?:a|p|ip|s)\)$")
 
 
 class DictionaryUnavailable(RuntimeError):
@@ -87,7 +92,11 @@ def _dict_dir() -> Path | None:
         found = _resolve_dict_dir(Path(env))
         if found:
             return found
-    return _resolve_dict_dir(config.PROJECT_ROOT / FALLBACK_DIRNAME)
+    for name in FALLBACK_DIRNAMES:
+        found = _resolve_dict_dir(config.PROJECT_ROOT / name)
+        if found:
+            return found
+    return None
 
 
 def is_available() -> bool:
@@ -98,7 +107,10 @@ def is_available() -> bool:
 
 
 def _unescape(token: str) -> str:
-    # WordNet escapes spaces as ``_`` and parentheses as ``\(`` / ``\)``.
+    # WordNet escapes spaces as ``_`` and parentheses as ``\(`` / ``\)``. An
+    # adjective satellite also carries a bare ``(a)`` / ``(p)`` / ``(ip)``
+    # marker, which is database bookkeeping rather than part of the word.
+    token = _SATELLITE_RE.sub("", token)
     return token.replace("\\(", "(").replace("\\)", ")").replace("_", " ")
 
 

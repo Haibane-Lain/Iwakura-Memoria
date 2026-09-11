@@ -295,12 +295,13 @@ document — the selection if it still holds the looked-up word, otherwise the
 caret — so it doubles as a thesaurus.
 
 The data is **WordNet 3.0**, read locally; nothing is sent anywhere. Point the
-app at it with an `IWAKURA_DICT_DIR` environment variable, or place a
-`WordNet 3.0/` folder next to the code (the same way the LanguageTool folder is
-located). The folder holds the standard `dict/` files:
+app at it with an `IWAKURA_DICT_DIR` environment variable, or drop the official
+tarball (which unpacks as `WordNet-3.0/`) next to the code — a `WordNet 3.0/`
+spelling works too, the same way the LanguageTool folder is located. The folder
+holds the standard `dict/` files:
 
 ```
-WordNet 3.0/
+WordNet-3.0/
   dict/
     data.noun  data.verb  data.adj  data.adv
     index.noun index.verb index.adj index.adv
@@ -308,11 +309,10 @@ WordNet 3.0/
 ```
 
 WordNet is free from https://wordnet.princeton.edu/ (the 3.0 database,
-`WordNet-3.0.tar.gz`). In development, drop the folder next to the code; a
-packaged build can include it by adding `WordNet 3.0/` to `extraResources` (as
-`wordnet`), which the Electron shell already passes as `IWAKURA_DICT_DIR`. When
-the data is missing, Lookup says so instead of failing, and everything else
-keeps working.
+`WordNet-3.0.tar.gz`). A packaged build can include it by adding the folder to
+`extraResources` (as `wordnet`), which the Electron shell already passes as
+`IWAKURA_DICT_DIR`. When the data is missing, Lookup says so instead of failing,
+and everything else keeps working.
 
 ## Export
 
