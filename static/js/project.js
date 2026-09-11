@@ -2,6 +2,7 @@ import { api, encodePath } from "./api.js";
 import { renderExportDialog } from "./export-dialog.js";
 import { renderRepetitionDialog } from "./repetition-dialog.js";
 import { renderDictionaryDialog } from "./dictionary-dialog.js";
+import { renderLookupDialog } from "./lookup-dialog.js";
 import { renderSnapshotsDialog } from "./snapshots-dialog.js";
 import { renderSearchDialog } from "./search-dialog.js";
 import * as router from "./router.js";
@@ -1744,14 +1745,16 @@ const RIBBON = [
     ],
   },
   {
+    label: "Reference",
+    rows: [[
+      { cmd: "lookup", label: "🔎", text: "Lookup", title: "Look up a word — definition & synonyms" },
+      dictionaryBtn,
+    ]],
+  },
+  {
     label: "Tools",
     rows: [
-      [
-        grammarToggle,
-        dictionaryBtn,
-        repetitionBtn,
-        { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" },
-      ],
+      [grammarToggle, repetitionBtn, { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" }],
       [searchBtn, historyBtn, splitToggle],
     ],
   },
@@ -1789,14 +1792,61 @@ function grammarToggle() {
 function dictionaryBtn() {
   const btn = el("button", {
     class: "tool-btn",
-    title: "Project dictionary",
+    title: "Spelling — words the grammar check ignores",
     onclick: () => renderDictionaryDialog({
       projectId: state.project.id,
       words: [...(state.dictionary.words || [])],
       onChanged: applyDictionaryWords,
     }),
-  }, "Dict");
+  }, "Spelling");
   return btn;
+}
+
+// --- word lookup ------------------------------------------------------------
+
+function currentSelectionWord() {
+  const editor = state.editorCtrl && state.editorCtrl.editor;
+  if (!editor) return "";
+  const selection = editor.state.selection;
+  if (selection.empty) return "";
+  return editor.state.doc.textBetween(selection.from, selection.to, " ").trim();
+}
+
+function preserveCase(original, replacement) {
+  const word = String(replacement || "");
+  if (!word) return word;
+  const first = String(original || "").trim().charAt(0);
+  if (first && first === first.toUpperCase() && first !== first.toLowerCase()) {
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }
+  return word;
+}
+
+// Put the chosen synonym/antonym back into the document. When the selection
+// still holds the looked-up word, replace it; otherwise drop the word at the
+// caret (the user moved on while browsing).
+function replaceLookupWord(original, replacement) {
+  const ctrl = state.editorCtrl;
+  if (!ctrl) return;
+  const editor = ctrl.editor;
+  const selection = editor.state.selection;
+  const selected = selection.empty
+    ? ""
+    : editor.state.doc.textBetween(selection.from, selection.to, " ");
+  const text = preserveCase(original, replacement);
+  if (!selection.empty && selected.trim().toLowerCase() === String(original).toLowerCase()) {
+    editor.chain().focus().insertContentAt({ from: selection.from, to: selection.to }, text).run();
+  } else {
+    editor.chain().focus().insertContent(text).run();
+  }
+  markActiveDirty();
+}
+
+function openLookup(word) {
+  renderLookupDialog({
+    word: word || currentSelectionWord(),
+    onReplace: replaceLookupWord,
+  });
 }
 
 function repetitionBtn() {
@@ -1944,6 +1994,10 @@ function toolbarCommand(cmd, button) {
   }
   if (cmd === "revise") {
     toggleRevisionMode();
+    return;
+  }
+  if (cmd === "lookup") {
+    openLookup();
     return;
   }
   if (cmd === "color") {

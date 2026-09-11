@@ -2053,6 +2053,124 @@ a {
   padding-top: 12vh;
 }
 
+/* ---------- Lookup (definitions & synonyms) ---------- */
+
+.lookup-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.lookup-sub {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.lookup-search {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.lookup-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.lookup-status {
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.lookup-status.error {
+  color: var(--danger, #b34747);
+}
+
+.lookup-results {
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.lookup-headword,
+.lookup-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 4px 0 8px;
+}
+
+.lookup-entry {
+  margin-bottom: 12px;
+}
+
+.lookup-pos {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.lookup-senses {
+  margin: 0 0 0 18px;
+  padding: 0;
+}
+
+.lookup-sense {
+  margin-bottom: 10px;
+}
+
+.lookup-def {
+  font-size: 13.5px;
+}
+
+.lookup-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 3px;
+}
+
+.lookup-example {
+  font-style: italic;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.lookup-words {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.lookup-words-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+
+.lookup-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lookup-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .dict-dialog {
   background: var(--surface);
   border: 1px solid var(--border);

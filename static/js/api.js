@@ -72,6 +72,11 @@ export const api = {
     update: (patch) => api.put("/api/settings", patch),
   },
 
+  lookup: {
+    get: (word) => api.get(`/api/lookup?word=${encodeURIComponent(word)}`),
+    status: () => api.get("/api/lookup/status"),
+  },
+
   projects: {
     list: () => api.get("/api/projects"),
     create: (name) => api.post("/api/projects", { name }),

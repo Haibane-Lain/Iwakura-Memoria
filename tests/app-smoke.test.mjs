@@ -361,6 +361,16 @@ await check("the project shell boots against a mocked API", async () => {
   const linkBtn = doc.querySelector('.tool-btn[title="Link to a note"]');
   assert.ok(linkBtn && linkBtn.querySelector(".tool-btn-text"), "icon buttons carry a text label");
 
+  // Reference: the Lookup button opens its dialog; the ignore list is now
+  // labelled Spelling so the two are not confused.
+  const lookupBtn = doc.querySelector('.tool-btn[title^="Look up a word"]');
+  assert.ok(lookupBtn, "the Lookup ribbon button exists");
+  lookupBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const lookupDialog = await waitFor(() => doc.querySelector(".modal-backdrop.lookup-modal"));
+  assert.match(lookupDialog.textContent, /Lookup/);
+  lookupDialog.remove();
+  assert.ok(doc.querySelector('.tool-btn[title^="Spelling"]'), "the ignore-list dialog is labelled Spelling");
+
   // The repetition dialog is the biggest new UI surface: open it, run a check
   // against the mocked endpoint, and confirm all three result sections render.
   const repeatBtn = doc.querySelector('.tool-btn[title^="Repetition check"]');
