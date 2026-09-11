@@ -1,5 +1,6 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { TEXT_COLORS } from "../static/js/text-colors.js";
 
 // A hand-rolled slash menu: type `/` at the start of a word and a filtered list
 // of insert commands appears above the caret. It is deliberately not built on
@@ -12,16 +13,6 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 // document until a command is chosen.
 
 const TRIGGER_RE = /(?:^|\s)\/([\p{L}0-9-]*)$/u;
-
-export const SLASH_COLORS = [
-  { label: "Default", value: null },
-  { label: "Red", value: "#c0392b" },
-  { label: "Orange", value: "#d35400" },
-  { label: "Yellow", value: "#b7950b" },
-  { label: "Green", value: "#1e8449" },
-  { label: "Blue", value: "#2471a3" },
-  { label: "Purple", value: "#7d3c98" },
-];
 
 // The command list the menu shows. `run` builds a fresh chain each time so it
 // always acts on the current selection.
@@ -112,7 +103,7 @@ function paint() {
   if (palette) {
     const row = document.createElement("div");
     row.className = "slash-swatches";
-    for (const color of SLASH_COLORS) {
+    for (const color of TEXT_COLORS) {
       const swatch = document.createElement("button");
       swatch.type = "button";
       swatch.className = "slash-swatch";

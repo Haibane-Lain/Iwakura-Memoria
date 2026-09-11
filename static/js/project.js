@@ -44,6 +44,7 @@ import {
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import { DEFAULT_WIKI_ZOOM, DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
 import { keepScrollTop } from "./scroll-keep.js";
+import { TEXT_COLORS } from "./text-colors.js";
 import {
   el,
   toast,
@@ -1681,6 +1682,10 @@ const TOOLBAR = [
   { cmd: "italic", label: "I", title: "Italic", strong: true },
   { cmd: "underline", label: "U", title: "Underline", strong: true },
   { cmd: "strike", label: "S", title: "Strikethrough", strong: true },
+  { cmd: "highlight", label: "▮", title: "Highlight" },
+  { cmd: "color", label: "A", title: "Text color" },
+  { cmd: "subscript", label: "A₂", title: "Subscript" },
+  { cmd: "superscript", label: "A²", title: "Superscript" },
   null,
   { cmd: "blockquote", label: "❝", title: "Blockquote" },
   { cmd: "bulletList", label: "• List", title: "Bullet list" },
@@ -1781,6 +1786,7 @@ function historyBtn() {
 }
 
 function toolbar(wiki) {
+  closeColorMenu();
   const bar = el("div", { class: "editor-toolbar" });
   toolbarButtons = [];
   for (const def of TOOLBAR) {
@@ -1794,7 +1800,7 @@ function toolbar(wiki) {
       title: def.title,
       dataset: { cmd: def.cmd },
       style: def.strong ? { fontWeight: "800" } : {},
-      onclick: () => toolbarCommand(def.cmd),
+      onclick: (e) => toolbarCommand(def.cmd, e.currentTarget),
     }, def.label);
     bar.append(btn);
     toolbarButtons.push({ def, btn });
@@ -1828,7 +1834,7 @@ function toolbar(wiki) {
   return bar;
 }
 
-function toolbarCommand(cmd) {
+function toolbarCommand(cmd, button) {
   if (cmd === "linkNote") {
     insertWikilinkDialog();
     return;
@@ -1843,7 +1849,58 @@ function toolbarCommand(cmd) {
     }
     return;
   }
+  if (cmd === "color") {
+    openColorMenu(button);
+    return;
+  }
   if (state.editorCtrl) state.editorCtrl.run(cmd);
+}
+
+let colorMenu = null;
+
+function closeColorMenu() {
+  if (colorMenu) {
+    colorMenu.remove();
+    colorMenu = null;
+  }
+}
+
+// A small palette under the color button, using the same swatches as the slash
+// menu (static/js/text-colors.js) so the two never drift.
+function openColorMenu(anchor) {
+  const sameAnchor = !!colorMenu && colorMenu._anchor === anchor;
+  closeColorMenu();
+  if (sameAnchor || !anchor) return;
+
+  const pop = el("div", { class: "color-popover" });
+  for (const color of TEXT_COLORS) {
+    pop.append(
+      el("button", {
+        class: `color-swatch${color.value ? "" : " color-swatch-default"}`,
+        title: color.label,
+        style: color.value ? { background: color.value } : {},
+        onclick: (e) => {
+          e.stopPropagation();
+          if (state.editorCtrl) state.editorCtrl.setTextColor(color.value);
+          closeColorMenu();
+          refreshToolbar();
+        },
+      })
+    );
+  }
+  document.body.append(pop);
+  const rect = anchor.getBoundingClientRect();
+  pop.style.left = `${Math.round(rect.left)}px`;
+  pop.style.top = `${Math.round(rect.bottom + 6)}px`;
+  pop._anchor = anchor;
+  colorMenu = pop;
+
+  const onOutside = (event) => {
+    if (pop.contains(event.target) || (anchor && anchor.contains(event.target))) return;
+    closeColorMenu();
+    document.removeEventListener("mousedown", onOutside, true);
+  };
+  setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
 }
 
 function refreshToolbar() {
@@ -1856,6 +1913,10 @@ function refreshToolbar() {
     else if (cmd === "italic") active = editor.isActive("italic");
     else if (cmd === "underline") active = editor.isActive("underline");
     else if (cmd === "strike") active = editor.isActive("strike");
+    else if (cmd === "highlight") active = editor.isActive("highlight");
+    else if (cmd === "subscript") active = editor.isActive("subscript");
+    else if (cmd === "superscript") active = editor.isActive("superscript");
+    else if (cmd === "color") active = editor.isActive("textColor");
     else if (cmd === "blockquote") active = editor.isActive("blockquote");
     else if (cmd === "bulletList") active = editor.isActive("bulletList");
     else if (cmd === "orderedList") active = editor.isActive("orderedList");

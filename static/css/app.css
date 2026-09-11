@@ -1246,6 +1246,36 @@ a {
   background: repeating-linear-gradient(45deg, var(--surface-3) 0 4px, var(--surface-2) 4px 8px);
 }
 
+/* The color palette under the ribbon's A button. */
+.color-popover {
+  position: fixed;
+  z-index: 41;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.color-swatch:hover {
+  transform: scale(1.12);
+}
+
+.color-swatch-default {
+  background: repeating-linear-gradient(45deg, var(--surface-3) 0 4px, var(--surface-2) 4px 8px);
+}
+
 /* ---------------- inline images ---------------- */
 
 .ProseMirror img.doc-image {

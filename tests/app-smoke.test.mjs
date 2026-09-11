@@ -334,6 +334,22 @@ await check("the project shell boots against a mocked API", async () => {
     "the empty Write tab renders its empty state"
   );
 
+  // The inline-mark primitives are visible in the ribbon, not only in the slash
+  // menu. The editor bundle is not loaded in this smoke test, so a swatch click
+  // is a no-op on the document but must still close the palette.
+  for (const title of ["Highlight", "Text color", "Subscript", "Superscript"]) {
+    assert.ok(doc.querySelector(`.tool-btn[title="${title}"]`), `${title} ribbon button exists`);
+  }
+  const colorBtn = doc.querySelector('.tool-btn[title="Text color"]');
+  colorBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const palette = doc.querySelector(".color-popover");
+  assert.ok(palette, "the color button opens its palette");
+  assert.equal(palette.querySelectorAll(".color-swatch").length, 7);
+  palette
+    .querySelector(".color-swatch")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.ok(!doc.querySelector(".color-popover"), "choosing a swatch closes the palette");
+
   // The repetition dialog is the biggest new UI surface: open it, run a check
   // against the mocked endpoint, and confirm all three result sections render.
   const repeatBtn = doc.querySelector('.tool-btn[title^="Repetition check"]');
