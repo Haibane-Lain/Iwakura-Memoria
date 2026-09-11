@@ -399,12 +399,14 @@ def export_pdf(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     serif_family = "Serif" if fonts["serif"] else "Helvetica"
     mono_family = "Mono" if fonts["mono"] else "Courier"
     if fonts["serif"]:
-        pdf.add_font("Serif", "", fonts["serif"][0], uni=True)
-        pdf.add_font("Serif", "B", fonts["serif"][1], uni=True)
-        pdf.add_font("Serif", "I", fonts["serif"][2], uni=True)
-        pdf.add_font("Serif", "BI", fonts["serif"][3], uni=True)
+        # fpdf2 infers Unicode support from a TrueType font file; the old
+        # ``uni=True`` argument is deprecated and removed in newer releases.
+        pdf.add_font("Serif", "", fonts["serif"][0])
+        pdf.add_font("Serif", "B", fonts["serif"][1])
+        pdf.add_font("Serif", "I", fonts["serif"][2])
+        pdf.add_font("Serif", "BI", fonts["serif"][3])
     if fonts["mono"]:
-        pdf.add_font("Mono", "", fonts["mono"][0], uni=True)
+        pdf.add_font("Mono", "", fonts["mono"][0])
 
     pdf.set_font(serif_family, "B", 22)
     pdf.cell(0, 14, project_title, new_x="LMARGIN", new_y="NEXT", align="C")

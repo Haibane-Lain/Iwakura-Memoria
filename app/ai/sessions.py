@@ -92,16 +92,23 @@ def load(project_id: str, session_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _remove_storage(project_id: str, session_id: str) -> None:
+    """Delete a session's attachment directory (best-effort).
+
+    The directory (raw uploads, extracted text and metadata.json) is a sibling
+    of the JSON file and must go whenever the session does, or deleted/pruned
+    sessions leak their files on disk forever. Best-effort: a locked file is
+    left behind rather than failing the caller.
+    """
+    shutil.rmtree(session_dir(project_id, session_id), ignore_errors=True)
+
+
 def delete(project_id: str, session_id: str) -> bool:
     path = _path(project_id, session_id)
     if not path.exists():
         return False
     path.unlink()
-    # The session's attachment directory (raw uploads, extracted text and
-    # metadata.json) is a sibling of the JSON file and must go too, or deleted
-    # sessions leak their files on disk forever. Best-effort: if a file is
-    # locked it's left behind rather than failing the delete.
-    shutil.rmtree(session_dir(project_id, session_id), ignore_errors=True)
+    _remove_storage(project_id, session_id)
     # Drop the now-empty per-project directory if it has nothing left.
     _cleanup(project_id)
     return True
@@ -166,5 +173,16 @@ def _cleanup(project_id: str) -> None:
             path.unlink()
         except OSError:
             pass
+        # Pruning the JSON must also remove the session's attachment storage,
+        # or every auto-pruned session leaves its sibling directory behind.
+        if _SESSION_ID_RE.match(path.stem):
+            _remove_storage(project_id, path.stem)
+    # Sweep directories whose session JSON is gone — including leaks left by
+    # older versions that pruned the JSON only. A live session always has its
+    # JSON (`save` writes it before any attachment can be added).
+    kept_ids = {p.stem for p in directory.glob("*.json")}
+    for child in list(directory.iterdir()):
+        if child.is_dir() and _SESSION_ID_RE.match(child.name) and child.name not in kept_ids:
+            shutil.rmtree(child, ignore_errors=True)
     if not any(directory.iterdir()):
         shutil.rmtree(directory, ignore_errors=True)

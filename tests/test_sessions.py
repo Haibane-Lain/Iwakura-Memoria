@@ -1,6 +1,8 @@
 """Tests for AI session persistence and per-session cleanup."""
 from __future__ import annotations
 
+import os
+
 from app.ai import sessions
 
 
@@ -44,6 +46,40 @@ def test_delete_removes_json_and_attachment_dir(data_dir):
     assert sessions.delete("proj", sid) is True
     assert sessions.load("proj", sid) is None
     assert not sessions.session_dir("proj", sid).exists()
+
+
+def test_cleanup_prunes_the_attachment_dir_with_the_session(data_dir, monkeypatch):
+    """Auto-pruning past ``_MAX_SESSIONS`` must delete the session's sibling
+    attachment directory too, not just its JSON. Regression: ``_cleanup``
+    unlinked the JSON, so every pruned session leaked its raw uploads."""
+    old = sessions.create("proj")
+    new = sessions.create("proj")
+    att = sessions.session_dir("proj", old["sessionId"]) / "attachments"
+    att.mkdir(parents=True)
+    (att / "abc123.pdf").write_bytes(b"%PDF-fake")
+
+    # Force a deterministic age order so the session we gave storage to is the
+    # one that overflows the (patched) cap.
+    monkeypatch.setattr(sessions, "_MAX_SESSIONS", 1)
+    os.utime(sessions._path("proj", old["sessionId"]), (1_000_000, 1_000_000))
+    os.utime(sessions._path("proj", new["sessionId"]), (2_000_000, 2_000_000))
+    sessions._cleanup("proj")
+
+    assert sessions.load("proj", old["sessionId"]) is None
+    assert not sessions.session_dir("proj", old["sessionId"]).exists()
+    assert sessions.load("proj", new["sessionId"]) is not None
+
+
+def test_cleanup_sweeps_orphaned_attachment_dirs(data_dir):
+    """A session directory with no sibling JSON is a leak from an older version
+    that pruned the JSON only; the next cleanup should reclaim it."""
+    orphan = sessions.session_dir("proj", "a" * 32) / "attachments"
+    orphan.mkdir(parents=True)
+    (orphan / "old.pdf").write_bytes(b"%PDF-fake")
+
+    sessions.create("proj")  # create() runs _cleanup()
+
+    assert not sessions.session_dir("proj", "a" * 32).exists()
 
 
 def test_delete_missing_returns_false(data_dir):

@@ -195,7 +195,8 @@ orphaned server left behind by a previous session), it is **reused** instead
 of starting a second one — so grammar keeps working even after an unclean
 exit, and restarts are instant.
 
-- Enable or disable per session from the **toolbar toggle**.
+- Enable or disable from the **toolbar toggle**; the choice is remembered
+  across restarts (stored as `grammarEnabled` in `settings.json`).
 - Underlines appear inline in the editor with a 1.5s debounce.
 - Click an underline to see the error message and replacement suggestions.
 - Apply a replacement to automatically correct the text.

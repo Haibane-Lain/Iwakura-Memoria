@@ -24,6 +24,7 @@ class SettingsPatch(BaseModel):
     editorAlign: str | None = None
     editorZoom: int | None = None
     wikiZoom: int | None = None
+    grammarEnabled: bool | None = None
     ai: dict | None = None
 
 
