@@ -174,10 +174,12 @@ Legend for hooks: where the work would plug into the current code.
 - **Splitting `static/js/project.js`** — tripwire: > ~4,000 lines or recurring
   friction. Phase A moved the export, dictionary, repetition, document-history,
   and find & replace dialogs into their own leaf modules (each takes a small
-  `ctx` instead of importing back into the shell), bringing it from ~4,800 to
-  ~4,000 lines — right at the tripwire. What remains is the editor
-  view/controller (`renderEditorView` / `renderPane` / the `panes` records and
-  the per-pane save pipeline); it reaches deep into `state`, so it needs a
-  designed context interface rather than a mechanical move.
+  `ctx` instead of importing back into the shell). Phase B moved the pure halves
+  of the shell into `doc-tree.js` (tree flatten/search helpers) and
+  `editor-prefs.js` (document/global preference resolution), both with unit
+  tests. `project.js` is now ~3,950 lines — just under the tripwire. What remains
+  is the editor view/controller (`renderEditorView` / `renderPane` / the `panes`
+  records and the per-pane save pipeline); it reaches deep into `state`, so it
+  needs a designed context interface rather than a mechanical move.
 - **Splitting `app/services/documents.py`** — tripwire: > ~1,800 lines or a
   size-traced bug.
