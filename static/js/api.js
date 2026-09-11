@@ -105,6 +105,8 @@ export const api = {
     stats: (id) => api.get(`/api/projects/${encodePath(id)}/stats`),
     statsDaily: (id) => api.get(`/api/projects/${encodePath(id)}/stats/daily`),
     wiki: (id) => api.get(`/api/projects/${encodePath(id)}/wiki`),
+    repetition: (id, payload) =>
+      api.post(`/api/projects/${encodePath(id)}/repetition/check`, payload),
     dictionary: {
       get: (id) => api.get(`/api/projects/${encodePath(id)}/dictionary`),
       update: (id, words) => api.put(`/api/projects/${encodePath(id)}/dictionary`, { words }),

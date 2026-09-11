@@ -54,6 +54,11 @@ Grammar checking requires **Java 17+** and a LanguageTool server. See the
   ignore dictionary.
 - **Per-project dictionary** — Words you add to the dictionary are filtered
   from grammar results across the entire project.
+- **Repetition check** — The **Repeat** toolbar button scans any combination of
+  folders and chapters for overused words, words echoed close together, and
+  repeated sentences. Pick the scope from the folder/chapter tree, tune the
+  thresholds under **Options**, and click a flagged sentence to open it in the
+  editor.
 - **Export** — Native save-as dialog for ZIP, DOCX, PDF, and EPUB. Select
   which folders to include.
 - **AI assistant (Lain)** — DeepSeek-powered sidebar that helps organize your

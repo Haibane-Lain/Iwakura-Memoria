@@ -157,6 +157,34 @@ const PROJECT = {
   documents: 0,
 };
 const EMPTY_TREE = { folders: [], documents: [] };
+// Used by the repetition dialog (it asks for scope "all"); the shell boot
+// itself only fetches the write and wiki trees, so this never affects the
+// empty-write-tab assertions below.
+const SAMPLE_TREE = {
+  folders: [
+    {
+      name: "Act 1",
+      id: "Act 1",
+      folders: [],
+      documents: [{ id: "Act 1/01-a", title: "Scene One", kind: "chapter", words: 10 }],
+    },
+  ],
+  documents: [],
+};
+const REPETITION = {
+  documents: 1,
+  words: 10,
+  overused: [{ word: "wolf", count: 5, per10k: 100.0, documents: ["Scene One"], proper: false }],
+  echoes: [{ word: "sighed", count: 2, minGap: 4, documents: ["Scene One"] }],
+  sentences: [
+    {
+      text: "The wolf ran.",
+      count: 2,
+      occurrences: [{ docId: "Act 1/01-a", title: "Scene One", text: "The wolf ran." }],
+    },
+  ],
+  truncated: { overused: false, echoes: false, sentences: false },
+};
 const EMPTY_WIKI = { notes: [], links: [], backlinks: {}, broken: {}, linkCounts: {} };
 const SETTINGS = {
   theme: "gothic",
@@ -185,10 +213,11 @@ const PROJECT_ROUTES = [
   [/\/api\/settings$/, () => SETTINGS],
   [/\/api\/projects\/demo\/tree\?scope=write$/, () => EMPTY_TREE],
   [/\/api\/projects\/demo\/tree\?scope=wiki$/, () => EMPTY_TREE],
-  [/\/api\/projects\/demo\/tree\?scope=all$/, () => EMPTY_TREE],
+  [/\/api\/projects\/demo\/tree\?scope=all$/, () => SAMPLE_TREE],
   [/\/api\/projects\/demo\/dictionary$/, () => ({ words: [] })],
   [/\/api\/projects\/demo\/wiki$/, () => EMPTY_WIKI],
   [/\/api\/projects\/demo\/stats$/, () => STATS],
+  [/\/api\/projects\/demo\/repetition\/check$/, () => REPETITION],
   [/\/api\/projects\/demo\/templates$/, () => []],
   [/\/api\/projects\/demo$/, () => PROJECT],
   [/\/api\/backups$/, () => []],
@@ -260,6 +289,36 @@ await check("the project shell boots against a mocked API", async () => {
     /Nothing open/,
     "the empty Write tab renders its empty state"
   );
+
+  // The repetition dialog is the biggest new UI surface: open it, run a check
+  // against the mocked endpoint, and confirm all three result sections render.
+  const repeatBtn = doc.querySelector('.tool-btn[title^="Repetition check"]');
+  assert.ok(repeatBtn, "repetition ribbon button exists");
+  repeatBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const dialog = await waitFor(() => doc.querySelector(".repetition-modal"));
+  assert.match(dialog.textContent, /Repetition check/);
+  assert.match(dialog.textContent, /Scene One/, "scope tree lists the chapter");
+  dialog
+    .querySelector(".icon-btn.primary")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => dialog.querySelector(".rep-summary"));
+  assert.match(dialog.textContent, /Overused words/);
+  assert.match(dialog.textContent, /Nearby echoes/);
+  assert.match(dialog.textContent, /Repeated sentences/);
+  assert.match(dialog.querySelector(".rep-summary").textContent, /words across/);
+
+  // The results filter hides whole categories without re-running the check.
+  const filter = dialog.querySelector(".rep-filter");
+  assert.ok(filter, "results filter exists");
+  const sectionWith = (text) =>
+    [...dialog.querySelectorAll(".rep-section")].find((node) => node.textContent.includes(text));
+  filter.value = "sentences";
+  filter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.ok(sectionWith("Overused words").hidden, "Words hidden for the Sentences filter");
+  assert.ok(!sectionWith("Repeated sentences").hidden, "Sentences shown for the Sentences filter");
+  filter.value = "all";
+  filter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.ok(!sectionWith("Overused words").hidden, "All shows the word sections again");
 
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   assert.equal(capture.errors.length, 0, `a tab threw: ${capture.errors.map(String).join("; ")}`);

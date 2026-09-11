@@ -476,6 +476,65 @@ def get_tree(
     return _children(folder, folder, mode, exclude_wiki=True)
 
 
+def iter_documents(
+    project_id: str,
+    folders: list[str] | None = None,
+    documents: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Selected documents with their parsed bodies, in on-disk order.
+
+    Used by the analysis tools (not the tree). Selection is ``(folders,
+    documents)``:
+
+    - both ``None`` -> the whole project, wiki entries included;
+    - otherwise a document is included when its id is in ``documents``, when
+      any of its ancestor folders is in ``folders``, or when ``"."`` is in
+      ``folders`` and it sits at the project root.
+
+    Ids use the same form as the tree (``Part One/01-scene``), so a selection
+    taken straight from ``get_tree`` works unchanged. Hidden files and the
+    ``.reorder-tmp`` staging area are skipped.
+    """
+    project = _project_folder(project_id)
+    select_all = folders is None and documents is None
+    selected_folders = {
+        f.strip().strip("/").replace("\\", "/") for f in (folders or []) if f.strip() and f.strip() != "."
+    }
+    include_root = any(f.strip() == "." for f in (folders or []))
+    selected_docs = {d.strip().replace("\\", "/") for d in (documents or []) if d.strip()}
+
+    results: list[dict[str, Any]] = []
+    for path in _md_files_recursive(project):
+        rel = path.relative_to(project)
+        if config.REORDER_TMP_DIRNAME in rel.parts or rel.name.startswith("."):
+            continue
+        doc_id = _entry_id(path, project)
+        parents = list(rel.parent.parts) if rel.parent != Path(".") else []
+        if not select_all:
+            chosen = doc_id in selected_docs
+            if not chosen and parents:
+                chosen = any("/".join(parents[:i]) in selected_folders for i in range(1, len(parents) + 1))
+            if not chosen and include_root and not parents:
+                chosen = True
+            if not chosen:
+                continue
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        meta, body = parse_frontmatter(raw)
+        title = meta.get("title")
+        if title is None:
+            title = _display_name(path.stem).replace("-", " ").title()
+        results.append(
+            {
+                "id": doc_id,
+                "title": str(title),
+                "kind": _doc_kind(raw),
+                "folder": "/".join(_display_name(p) for p in parents),
+                "body": body,
+            }
+        )
+    return results
+
+
 def _migrate_legacy(project_id: str) -> None:
     """One-time migration from the old fixed layout.
 
