@@ -3161,6 +3161,7 @@ registerShell({
   deleteCurrentDoc,
   createMissingNote,
   showContextMenu,
+  openLookup,
   onWikilinkClick,
   uploadImageFile,
   showImageOverlay,

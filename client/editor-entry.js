@@ -7,7 +7,7 @@ import Underline from "@tiptap/extension-underline";
 import Paragraph from "@tiptap/extension-paragraph";
 import Heading from "@tiptap/extension-heading";
 import { Markdown } from "tiptap-markdown";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { DOMSerializer } from "@tiptap/pm/model";
 import {
@@ -32,6 +32,7 @@ import {
   makeInlineMarkExtensions,
 } from "./editor-primitives.js";
 import { makeSlashMenuExtension } from "./slash-menu.js";
+import { wordRange } from "./word-at.js";
 import {
   applyCommentsMeta,
   collectCommentRanges,
@@ -97,6 +98,57 @@ const Wikilink = Extension.create({
   name: "wikilink",
   addProseMirrorPlugins() {
     return [wikilinkPlugin];
+  },
+});
+
+/* ---------------- right-click word menu ---------------- */
+
+// A right-click inside the text selects the word under the pointer and hands
+// it to the shell (`onWordMenu`), which shows the app's context menu and can
+// open the Lookup dialog. The plugin owns only the ProseMirror side: finding
+// the word and moving the selection so a later "replace" has a target.
+let _onWordMenu = null;
+
+function wordAt(view, pos) {
+  const $pos = view.state.doc.resolve(pos);
+  const parent = $pos.parent;
+  if (!parent || !parent.isTextblock) return null;
+  const found = wordRange(parent.textContent, $pos.parentOffset);
+  if (!found) return null;
+  return {
+    word: found.word,
+    from: $pos.start() + found.start,
+    to: $pos.start() + found.end,
+  };
+}
+
+const wordMenuPlugin = new Plugin({
+  key: new PluginKey("lain-word-menu"),
+  props: {
+    handleDOMEvents: {
+      contextmenu(view, event) {
+        if (!_onWordMenu) return false;
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (!coords || typeof coords.pos !== "number") return false;
+        const found = wordAt(view, coords.pos);
+        if (!found) return false;
+        event.preventDefault();
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, found.from, found.to)
+          )
+        );
+        _onWordMenu({ word: found.word, x: event.clientX, y: event.clientY });
+        return true;
+      },
+    },
+  },
+});
+
+const WordMenu = Extension.create({
+  name: "wordMenu",
+  addProseMirrorPlugins() {
+    return [wordMenuPlugin];
   },
 });
 
@@ -191,6 +243,7 @@ let _lastDocOffsets = null;
 let _lastDocText = null;
 let _grammarDictionaryWords = [];
 let _grammarAddToDictCallback = null;
+let _onLookupWord = null;
 let _grammarBusy = false;
 
 function _grammarHash(text) {
@@ -584,6 +637,21 @@ function _grammarShowTooltip(errorEl) {
     tip.appendChild(addBtn);
   }
 
+  if (matchedWord && _onLookupWord && matchedWord.length > 1) {
+    const sep = document.createElement("div");
+    sep.className = "grammar-tooltip-sep";
+    tip.appendChild(sep);
+    const synonymBtn = document.createElement("button");
+    synonymBtn.className = "grammar-dict-btn";
+    synonymBtn.textContent = `Synonyms for “${matchedWord}”`;
+    synonymBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _onLookupWord(matchedWord);
+      _grammarHideTooltip();
+    });
+    tip.appendChild(synonymBtn);
+  }
+
   document.body.appendChild(tip);
 
   const rect = errorEl.getBoundingClientRect();
@@ -912,6 +980,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       CharacterCount,
       Markdown.configure({ html: true, tightLists: true, linkify: true, breaks: false }),
       Wikilink,
+      WordMenu,
       FontSize,
       FontFamily,
       ...(navWidget ? [NavBox.configure({ navWidget })] : []),
@@ -1167,6 +1236,12 @@ window.LainEditor = {
       },
       setOnAddToDictionary(callback) {
         _grammarAddToDictCallback = callback;
+      },
+      setOnWordMenu(callback) {
+        _onWordMenu = callback;
+      },
+      setOnLookupWord(callback) {
+        _onLookupWord = callback;
       },
       run(command) {
         const chain = editor.chain().focus();

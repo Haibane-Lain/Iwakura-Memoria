@@ -678,24 +678,35 @@ function mountPaneEditor(pane, doc) {
   }
   pane.ctrl = ctrl;
   editorPool.add(doc.id, ctrl);
-  ctrl.setOnAddToDictionary(async (word) => {
-    const words = state.dictionary.words || [];
-    if (words.some((w) => w.toLowerCase() === word.toLowerCase())) return;
-    words.push(word);
-    state.dictionary.words = words;
-    ctrl.setDictionaryWords(words);
-    try {
-      await api.projects.dictionary.update(state.project.id, words);
-    } catch {
-      /* ignore */
-    }
-    if (ctrl.editor) {
-      ctrl.editor.view.dispatch(ctrl.editor.state.tr.setMeta("forceGrammar", true));
-    }
+  ctrl.setOnAddToDictionary((word) => addWordToDictionary(ctrl, word));
+  ctrl.setOnWordMenu(({ word, x, y }) => {
+    shell.showContextMenu(x, y, [
+      { label: `Look up “${word}”`, action: () => shell.openLookup(word) },
+      { label: `Add “${word}” to spelling`, action: () => addWordToDictionary(ctrl, word) },
+    ]);
   });
+  ctrl.setOnLookupWord((word) => shell.openLookup(word));
   ctrl.editor.on("transaction", () => { shell.refreshToolbar(); shell.refreshEditorContext(); });
   ctrl.editor.on("selectionUpdate", () => { shell.refreshToolbar(); shell.refreshEditorContext(); });
   return true;
+}
+
+// Add a word to the project's grammar ignore list and refresh every live
+// editor's copy. Shared by the grammar tooltip and the right-click menu.
+async function addWordToDictionary(ctrl, word) {
+  const words = state.dictionary.words || [];
+  if (words.some((w) => w.toLowerCase() === word.toLowerCase())) return;
+  words.push(word);
+  state.dictionary.words = words;
+  ctrl.setDictionaryWords(words);
+  try {
+    await api.projects.dictionary.update(state.project.id, words);
+  } catch {
+    /* ignore */
+  }
+  if (ctrl.editor) {
+    ctrl.editor.view.dispatch(ctrl.editor.state.tr.setMeta("forceGrammar", true));
+  }
 }
 
 // Redraw the whole editor tab from pane state: tab strip, one shared toolbar,
