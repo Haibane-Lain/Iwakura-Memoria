@@ -1178,6 +1178,31 @@ a {
   line-height: 0;
 }
 
+/* ---------------- comment anchors ---------------- */
+
+.ProseMirror .comment-anchor {
+  border-bottom: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+  cursor: pointer;
+}
+
+.ProseMirror .comment-anchor.resolved {
+  border-bottom-color: var(--border);
+  background: transparent;
+  opacity: 0.6;
+}
+
+.ProseMirror .comment-anchor.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.ProseMirror .comment-anchor.orphan {
+  border-bottom-style: dotted;
+  border-bottom-color: var(--warn);
+}
+
 /* ---------------- slash menu ---------------- */
 
 .slash-menu {

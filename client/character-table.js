@@ -94,6 +94,10 @@ function markTag(mark) {
       return ["<sub>", "</sub>"];
     case "superscript":
       return ["<sup>", "</sup>"];
+    case "comment":
+      return mark.attrs && mark.attrs.cid
+        ? [`<span data-cid="${escapeHtmlAttr(mark.attrs.cid)}">`, "</span>"]
+        : null;
     default:
       return null;
   }

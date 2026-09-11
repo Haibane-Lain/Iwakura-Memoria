@@ -32,6 +32,12 @@ import {
   makeInlineMarkExtensions,
 } from "./editor-primitives.js";
 import { makeSlashMenuExtension } from "./slash-menu.js";
+import {
+  applyCommentsMeta,
+  collectCommentRanges,
+  makeCommentsExtension,
+  removeCommentMarks,
+} from "./comments.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
@@ -914,6 +920,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       ...makeTaskListExtensions(),
       ...makeInlineMarkExtensions(),
       makeSlashMenuExtension(),
+      makeCommentsExtension(),
       ...makeCharacterTableNodes(imageOpts),
     ],
     content,
@@ -1041,6 +1048,35 @@ window.LainEditor = {
       setTextColor(color) {
         if (color) editor.chain().focus().setMark("textColor", { color }).run();
         else editor.chain().focus().unsetMark("textColor").run();
+      },
+      /* ---------------- comments ---------------- */
+      // The shell owns the sidecar bodies; these only manage the inline
+      // `data-cid` markers and the decoration state the panel paints.
+      setComments(meta) {
+        applyCommentsMeta(editor, meta);
+      },
+      setComment(cid) {
+        if (cid) editor.chain().focus().setMark("comment", { cid }).run();
+      },
+      removeComment(cid) {
+        removeCommentMarks(editor, [cid]);
+      },
+      removeComments(cids) {
+        removeCommentMarks(editor, cids);
+      },
+      getCommentRanges() {
+        return collectCommentRanges(editor.state.doc);
+      },
+      revealComment(cid) {
+        const range = collectCommentRanges(editor.state.doc).find((r) => r.cid === cid);
+        if (!range) return false;
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from: range.from, to: range.to })
+          .scrollIntoView()
+          .run();
+        return true;
       },
       // Grammar decorations share one "active view" slot. A freshly created
       // editor takes it; a cached one reclaims it when it is re-mounted, and
