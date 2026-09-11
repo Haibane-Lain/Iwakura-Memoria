@@ -25,6 +25,7 @@ from app.main import create_app
 
 PROJECT_JS = config.PROJECT_ROOT / "static" / "js" / "project.js"
 EDITOR_PREFS_JS = config.PROJECT_ROOT / "static" / "js" / "editor-prefs.js"
+EDITOR_WORKSPACE_JS = config.PROJECT_ROOT / "static" / "js" / "editor-workspace.js"
 ZOOM_JS = config.PROJECT_ROOT / "static" / "js" / "zoom.js"
 THEMES_JS = config.PROJECT_ROOT / "static" / "js" / "themes.js"
 INDEX_HTML = config.PROJECT_ROOT / "static" / "index.html"
@@ -121,9 +122,13 @@ def test_each_tab_falls_back_to_its_own_default():
 def test_the_empty_state_uses_the_tab_it_belongs_to():
     """With no document open there are no overrides to inherit, and the host
     would otherwise keep the previous document's zoom."""
-    js = PROJECT_JS.read_text(encoding="utf-8")
-    assert re.search(r"if \(!doc\) \{\n(?:.*\n)*?\s*state\.docStyle = \{\};\n\s*applyDocStyle\(\);", js), (
-        "the empty editor must be styled for its own tab"
+    workspace = EDITOR_WORKSPACE_JS.read_text(encoding="utf-8")
+    assert re.search(
+        r"if \(!rendered\.length\) \{\n(?:.*\n)*?\s*state\.docStyle = \{\};\n\s*shell\.applyDocStyle\(\);",
+        workspace,
+    ), "the empty editor must be styled for its own tab"
+    assert re.search(r"active\.host = emptyHost;", workspace), (
+        "the empty host must be the one applyDocStyle styles"
     )
 
 

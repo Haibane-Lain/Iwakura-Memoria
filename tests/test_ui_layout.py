@@ -20,6 +20,9 @@ from pathlib import Path
 
 CSS_PATH = Path(__file__).resolve().parent.parent / "static" / "css" / "app.css"
 PROJECT_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "project.js"
+EDITOR_WORKSPACE_JS = (
+    Path(__file__).resolve().parent.parent / "static" / "js" / "editor-workspace.js"
+)
 WRITE_COLUMN = 760
 WIKI_COLUMN_MIN = 1000
 CONTENTS_MIN = 200
@@ -107,10 +110,11 @@ def test_opening_a_document_keeps_the_sidebar_scroll_position():
     assert re.search(r"renderTree\(bar, \{ keepScroll \}\)", js), (
         "renderSidebar must pass the option on to renderTree"
     )
-    assert js.count("keepScroll: true") == 1, (
+    workspace = EDITOR_WORKSPACE_JS.read_text(encoding="utf-8")
+    assert workspace.count("keepScroll: true") == 1, (
         "exactly one caller — opening a document — may pin the list"
     )
-    assert re.search(r"renderSidebar\(\{ keepScroll: true \}\)", js), (
+    assert re.search(r"renderSidebar\(\{ keepScroll: true \}\)", workspace), (
         "openDocument is the caller that pins the list"
     )
 

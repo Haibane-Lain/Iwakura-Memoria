@@ -165,12 +165,19 @@ def test_startup_runs_the_rebase(data_dir, make_project, monkeypatch):
 def test_project_js_maps_zoom_through_the_helper():
     """Every CSS zoom write goes through zoomFactor, so the 2x baseline cannot
     be silently dropped from one of them. The three writes are the global
-    default (root), the active pane's document override (applyDocStyle), and
-    each fresh pane's scope default (renderPane). jsdom has no layout engine,
-    so this is pinned at the source the way tests/test_ui_layout.py pins CSS."""
-    source = (config.PROJECT_ROOT / "static" / "js" / "project.js").read_text(encoding="utf-8")
-    writes = [line for line in source.splitlines() if '"--editor-zoom"' in line]
+    default (root) and the active pane's document override (applyDocStyle), both
+    still in the shell, plus each fresh pane's scope default (renderPane), now in
+    the editor workspace. jsdom has no layout engine, so this is pinned at the
+    source the way tests/test_ui_layout.py pins CSS."""
+    js_dir = config.PROJECT_ROOT / "static" / "js"
+    source = (js_dir / "project.js").read_text(encoding="utf-8")
+    workspace = (js_dir / "editor-workspace.js").read_text(encoding="utf-8")
+    writes = [
+        line for line in (source + "\n" + workspace).splitlines() if '"--editor-zoom"' in line
+    ]
     assert len(writes) == 3
     assert all("zoomFactor(" in line for line in writes)
     assert "effectiveZoom() / 100" not in source
     assert "state.settings.editorZoom || 100" not in source
+    assert "effectiveZoom() / 100" not in workspace
+    assert "state.settings.editorZoom || 100" not in workspace

@@ -9,11 +9,21 @@ import * as theme from "./themes.js";
 import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
 import { filterTree } from "./tree-search.js";
-import { createEditorPool } from "./editor-pool.js";
-import { createDocTabs } from "./doc-tabs.js";
+import {
+  state,
+  panes,
+  paneList,
+  activePane,
+  editorPool,
+  docTabs,
+  allDocs,
+  findDocAny,
+  docTitleAny,
+  registerShell,
+} from "./project-context.js";
+import * as workspace from "./editor-workspace.js";
 import {
   collectTree,
-  allDocs as collectAllDocs,
   findDocIn,
   resolveDocByTitle as resolveDocByTitleIn,
   prettyPath,
@@ -42,41 +52,36 @@ import {
   showModal,
   countWords,
   formatNumber,
-  escapeHtml,
 } from "./ui.js";
 
-const state = {
-  project: null,
-  tree: null,
-  wikiTree: null,
-  wiki: null,
-  templates: null,
-  settings: { wordCountMode: "auto", autosaveMs: 800 },
-  currentDocId: null,
-  writeDocId: null,
-  wikiDocId: null,
-  currentTab: "write",
-  // Split view: which pane has focus and whether the second pane is visible.
-  // The document shown in each pane lives in `panes` (see below).
-  activePane: "primary",
-  split: false,
-  editorCtrl: null,
-  dirty: false,
-  saving: false,
-  saveTimer: null,
-  savePromise: null,
-  wikiTimer: null,
-  expanded: new Set(),
-  wikiExpanded: new Set(),
-  docStyle: {},
-  currentSection: null,
-  selectionActive: false,
-  dictionary: { words: [] },
-  statsThrottledAt: 0,
-  wikiThrottledAt: 0,
-  wikiQuery: "",
-  writeQuery: "",
-};
+// The workspace owns the editing surface, but the shell still calls into it by
+// name (openDocument, flushSave, renderEditorView, …), so bind those locally.
+const {
+  openDocument,
+  closeDocumentTab,
+  cycleTabs,
+  toggleSplit,
+  openInSplit,
+  renderEditorTab,
+  renderEditorView,
+  renderDocTabs,
+  recentSection,
+  applyDictionaryWords,
+  invalidateEditorCache,
+  dropTab,
+  dropEditorFor,
+  resetEditorPool,
+  restoreTabs,
+  persistTabs,
+  reconcileTabs,
+  revealText,
+  markActiveDirty,
+  parkEditor,
+  flushSave,
+  updateTreeWords,
+  afterSnapshotRestore,
+  refreshAfterReplace,
+} = workspace;
 
 // Folders the current sidebar search render must show expanded. Display-only:
 // searching never edits state.expanded / state.wikiExpanded.
@@ -85,155 +90,8 @@ let _treeSearchOpen = new Set();
 let lainCtrl = null;
 let _creating = false;
 
-// Editors stay alive after their document is closed so undo/redo survives a
-// switch. See editor-pool.js; the active document is pinned against eviction.
-const editorPool = createEditorPool({ max: 10 });
 let _switching = false;
-let _opening = false;
 let _beforeUnload = null;
-
-// Which documents are open (the tab strip) and the cross-session recent list.
-// Pure state lives in doc-tabs.js; this keeps persistence next to the project.
-const docTabs = createDocTabs();
-const LS_TABS = "im.tabs";
-const LS_RECENT_OPEN = "im.recent.open";
-
-function tabsStorageKey() {
-  return state.project ? `${LS_TABS}.${state.project.id}` : null;
-}
-
-// Persist the strip, the split pairing, and a title for each id. Titles are how
-// a stale path is repaired after a folder rename/move rewrites ids.
-function persistTabs() {
-  const key = tabsStorageKey();
-  if (!key) return;
-  const data = docTabs.serialize();
-  const titles = {};
-  for (const id of [...data.tabs, ...data.recent, panes.secondary.docId].filter(Boolean)) {
-    const title = docTitleAny(id);
-    if (title) titles[id] = title;
-  }
-  try {
-    localStorage.setItem(key, JSON.stringify({
-      ...data,
-      split: state.split,
-      secondary: panes.secondary.docId,
-      titles,
-    }));
-  } catch {
-    /* private mode / quota — tabs are a convenience, never load-bearing */
-  }
-}
-
-function restoreTabs() {
-  const key = tabsStorageKey();
-  let data = null;
-  if (key) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) data = JSON.parse(raw);
-    } catch {
-      data = null;
-    }
-  }
-  data = data || { tabs: [], active: null, recent: [] };
-  const docs = allDocs();
-  const valid = new Set(docs.map((d) => d.id));
-  const titles = data.titles && typeof data.titles === "object" ? data.titles : {};
-  const repair = (id) => {
-    if (!id) return null;
-    if (valid.has(id)) return id;
-    const byTitle = titles[id] ? docs.find((d) => d.title === titles[id]) : null;
-    return byTitle ? byTitle.id : null;
-  };
-  data.tabs = (Array.isArray(data.tabs) ? data.tabs : []).map(repair).filter(Boolean);
-  data.recent = (Array.isArray(data.recent) ? data.recent : []).map(repair).filter(Boolean);
-  data.active = repair(data.active);
-  docTabs.restore(data);
-
-  // Rehydrate the split companion. It must still be a tab and never the same
-  // document as the primary, otherwise the split is dropped.
-  panes.secondary.docId = null;
-  panes.secondary.wiki = false;
-  state.split = false;
-  const secondary = repair(data.secondary);
-  if (data.split && secondary && docTabs.has(secondary) && secondary !== docTabs.active) {
-    panes.secondary.docId = secondary;
-    panes.secondary.wiki = secondary.startsWith("worldbuilding/");
-    state.split = true;
-  }
-}
-
-/* ---------------- split panes ---------------- */
-
-// Two independent editor panes. The primary always follows the tab strip; the
-// secondary is the split companion. Each pane owns its own save state, so one
-// pane's pending autosave can never clobber the other's.
-function makePane(name) {
-  return {
-    name,
-    docId: null,
-    wiki: false,
-    ctrl: null,
-    root: null,
-    mount: null,
-    panel: null,
-    wordsEl: null,
-    saveEl: null,
-    dirty: false,
-    saving: false,
-    timer: null,
-    savePromise: null,
-  };
-}
-
-const panes = { primary: makePane("primary"), secondary: makePane("secondary") };
-
-function paneList() {
-  return state.split ? [panes.primary, panes.secondary] : [panes.primary];
-}
-
-function activePane() {
-  return panes[state.activePane] || panes.primary;
-}
-
-function paneForCtrl(ctrl) {
-  return [panes.primary, panes.secondary].find((p) => p.ctrl === ctrl) || null;
-}
-
-function paneForDoc(docId) {
-  return [panes.primary, panes.secondary].find((p) => p.docId === docId) || null;
-}
-
-// Move focus (and the shared grammar slot, toolbar and style target) to a pane.
-function setActivePane(name) {
-  if (name === "secondary" && !state.split) name = "primary";
-  if (!panes[name]) name = "primary";
-  state.activePane = name;
-  const pane = activePane();
-  state.editorCtrl = pane.ctrl;
-  state.currentDocId = pane.docId;
-  for (const p of paneList()) {
-    if (!p.ctrl) continue;
-    if (p === pane) {
-      p.ctrl.activate();
-      p.ctrl.setGrammarEnabled(state.settings.grammarEnabled);
-    } else {
-      p.ctrl.deactivate();
-    }
-  }
-  syncPaneFocus();
-  refreshToolbar();
-  refreshEditorContext();
-  updateTargetIndicator();
-  syncEditorControls();
-}
-
-function syncPaneFocus() {
-  for (const p of paneList()) {
-    if (p.root) p.root.classList.toggle("focused", p.name === state.activePane);
-  }
-}
 
 /* ---------------- helpers ---------------- */
 
@@ -261,10 +119,6 @@ function setTreeQuery(query) {
 
 // The pure tree helpers live in doc-tree.js; these thin wrappers bind them to
 // the current scope's trees and document-title lookups.
-function allDocs() {
-  return collectAllDocs(state.tree, state.wikiTree);
-}
-
 function resolveDocByTitle(title) {
   return resolveDocByTitleIn(allDocs(), title);
 }
@@ -1762,45 +1616,6 @@ async function deleteFolder(folderId) {
   }
 }
 
-async function openDocument(docId) {
-  // Already visible in a pane? Focus it rather than showing it twice.
-  const visible = paneForDoc(docId);
-  if (visible) {
-    if (state.activePane !== visible.name) setActivePane(visible.name);
-    return;
-  }
-  if (docId === state.currentDocId) return;
-  console.warn("[diag] openDocument start", docId, { _opening, _switching, _creating });
-  if (_opening) {
-    _opening = false;
-  }
-  _opening = true;
-  try {
-  await flushSave();
-  const wiki = docId.startsWith("worldbuilding/");
-  try {
-    const doc = await api.docs.get(state.project.id, docId);
-    docTabs.open(docId);
-    persistTabs();
-    state.currentDocId = docId;
-    state.currentTab = wiki ? "wiki" : "write";
-    if (wiki) state.wikiDocId = docId;
-    else state.writeDocId = docId;
-    setActiveTab(state.currentTab);
-    // This re-render only moves the .active highlight, so the list must not
-    // move with it (see keepScrollTop: Chromium nudges a scrolled container's
-    // offset when its children are replaced).
-    renderSidebar({ keepScroll: true });
-    await renderEditorTab(doc, { wiki });
-  } catch (err) {
-    console.warn("openDocument failed", docId, err);
-    toast(err.message, "error");
-  }
-  } finally {
-    _opening = false;
-  }
-}
-
 async function deleteCurrentDoc() {
   const info = findDocAny(state.currentDocId);
   if (!info) return;
@@ -1903,21 +1718,6 @@ function grammarToggle() {
   }, "✓");
   btn.classList.add(state.settings.grammarEnabled ? "grammar-on" : "grammar-off");
   return btn;
-}
-
-// Push the dictionary into every mounted editor (both panes) and nudge grammar
-// to re-run. The dialog reports changes through this so a split companion gets
-// the update too, not just the focused pane.
-function applyDictionaryWords(words) {
-  state.dictionary.words = [...words];
-  for (const pane of [panes.primary, panes.secondary]) {
-    const ctrl = pane.ctrl;
-    if (!ctrl) continue;
-    ctrl.setDictionaryWords(state.dictionary.words);
-    if (ctrl.editor) {
-      ctrl.editor.view.dispatch(ctrl.editor.state.tr.setMeta("forceGrammar", true));
-    }
-  }
 }
 
 function dictionaryBtn() {
@@ -2063,81 +1863,6 @@ function refreshToolbar() {
     else if (cmd === "h3") active = editor.isActive("heading", { level: 3 });
     btn.classList.toggle("active", active);
   }
-}
-
-function docHeader(doc, pane) {
-  if (!doc) return null;
-  const typeLabel =
-    doc.type && doc.type !== "note" && doc.type !== "chapter"
-      ? doc.type.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-      : doc.kind === "chapter"
-        ? "Chapter"
-        : "Note";
-  const focusPane = () => {
-    if (pane && state.split && state.activePane !== pane.name) setActivePane(pane.name);
-  };
-  return el("div", { class: "doc-header" }, [
-    el("input", {
-      class: "doc-title-input",
-      value: doc.title,
-      placeholder: "Untitled",
-      title: "Rename document",
-      onchange: (e) => {
-        focusPane();
-        renameCurrentDoc(e.target.value.trim());
-      },
-    }),
-    el("span", { class: "chip" }, typeLabel),
-    el("div", { class: "topbar-spacer" }),
-    el("button", {
-      class: "icon-btn danger",
-      onclick: () => {
-        focusPane();
-        deleteCurrentDoc();
-      },
-    }, "Delete"),
-  ]);
-}
-
-function backlinksPanel(pane) {
-  const panel = el("div", { class: "side-panel" });
-  const render = async () => {
-    const docId = pane ? pane.docId : state.currentDocId;
-    const wiki = state.wiki;
-    let inner;
-    if (!docId) {
-      inner = [el("p", { class: "empty-hint" }, "Open a document to see its backlinks.")];
-    } else if (!wiki) {
-      inner = [el("p", { class: "empty-hint" }, "Loading…")];
-    } else {
-      const backlinks = (wiki.backlinks[docId] || []).map((id) => {
-        const t = docTitleAny(id);
-        return el("div", {
-          class: "backlink",
-          onclick: () => openDocument(id),
-        }, t || id);
-      });
-      const broken = (wiki.broken[docId] || []).map((target) =>
-        el("div", { class: "backlink broken-link" }, [
-          el("span", { class: "name" }, `[[${escapeHtml(target)}]]`),
-          el("button", {
-            class: "mini-add",
-            title: `Create "${target}"`,
-            onclick: () => createMissingNote(target, docId),
-          }, "+"),
-        ])
-      );
-      inner = [
-        el("div", { class: "panel-title" }, "Links to this document"),
-        backlinks.length ? el("div", { class: "backlink-list" }, backlinks) : el("p", { class: "empty-hint" }, "Nothing links here yet."),
-        el("div", { class: "panel-title", style: { marginTop: "18px" } }, "Unresolved links"),
-        broken.length ? el("div", { class: "backlink-list" }, broken) : el("p", { class: "empty-hint" }, "None."),
-      ];
-    }
-    panel.replaceChildren(...inner);
-  };
-  panel._render = render;
-  return panel;
 }
 
 /* ---------------- inline images ---------------- */
@@ -2286,871 +2011,6 @@ function pickImageFiles(portrait) {
   }
   _portraitTarget = target;
   _imageInput.click();
-}
-
-/* ---------------- editor cache (undo survives document switches) -------- */
-
-// Detach every mounted pane's editor without destroying it, so ProseMirror
-// state (undo/redo history) is kept in the pool under its document id.
-function parkEditor() {
-  for (const pane of [panes.primary, panes.secondary]) {
-    clearTimeout(pane.timer);
-    pane.timer = null;
-    const ctrl = pane.ctrl;
-    if (!ctrl) continue;
-    try {
-      ctrl.deactivate();
-    } catch {
-      /* ignore */
-    }
-    const dom = ctrl.editor && ctrl.editor.view && ctrl.editor.view.dom;
-    if (dom && dom.parentNode) dom.parentNode.removeChild(dom);
-  }
-  state.editorCtrl = null;
-}
-
-// Structural changes (delete, move, rename, restore, AI edits) can rewrite
-// document bodies or reuse ids behind the cache's back. Drop the affected
-// editors so anything reopened is rebuilt from disk. `keepActive` spares the
-// visible panes when their own content is still valid.
-function invalidateEditorCache(keepActive = false) {
-  const keep = new Set();
-  if (keepActive) {
-    for (const pane of [panes.primary, panes.secondary]) {
-      if (pane.docId) keep.add(pane.docId);
-    }
-  }
-  for (const id of editorPool.keys()) {
-    if (keep.has(id)) continue;
-    const ctrl = editorPool.forget(id);
-    if (ctrl) {
-      try {
-        ctrl.destroy();
-      } catch {
-        /* already gone */
-      }
-    }
-  }
-  for (const pane of [panes.primary, panes.secondary]) {
-    if (pane.docId && !editorPool.has(pane.docId)) pane.ctrl = null;
-  }
-  if (!keepActive) state.editorCtrl = null;
-}
-
-// A fresh project route starts with no warm editors.
-function resetEditorPool() {
-  state.editorCtrl = null;
-  for (const pane of [panes.primary, panes.secondary]) {
-    clearTimeout(pane.timer);
-    pane.timer = null;
-    pane.ctrl = null;
-    pane.docId = null;
-    pane.dirty = false;
-  }
-  editorPool.destroyAll();
-}
-
-/* ---------------- document tabs ---------------- */
-
-function findDocAny(docId) {
-  return allDocs().find((d) => d.id === docId) || null;
-}
-
-function docTitleAny(docId) {
-  const d = findDocAny(docId);
-  return d ? d.title : null;
-}
-
-function tabKind(id) {
-  const d = findDocAny(id);
-  if (d && d.kind === "chapter") return "chapter";
-  return id.startsWith("worldbuilding/") ? "wiki" : "note";
-}
-
-function tabGlyph(id) {
-  const kind = tabKind(id);
-  return kind === "chapter" ? "≣" : kind === "wiki" ? "✦" : "◦";
-}
-
-// A deleted document is gone from the tree but may still be in the strip; this
-// removes it and rewrites any id a folder move changed (matched by title).
-function reconcileTabs(oldTabs) {
-  const docs = allDocs();
-  const present = new Set(docs.map((d) => d.id));
-  for (const { id, title } of oldTabs) {
-    if (present.has(id)) continue;
-    const byTitle = title ? docs.find((d) => d.title === title) : null;
-    if (byTitle) docTabs.rekey(id, byTitle.id);
-    else docTabs.forget(id);
-  }
-  persistTabs();
-}
-
-function renderDocTabs() {
-  const strip = document.getElementById("doc-tabs");
-  if (!strip) return;
-  const ids = docTabs.tabs;
-  strip.style.display = ids.length ? "" : "none";
-  strip.replaceChildren(
-    ...ids.map((id) => {
-      const active = id === state.currentDocId;
-      const splitDoc = state.split && panes.secondary.docId === id && !active;
-      const info = findDocAny(id);
-      const title = info ? info.title : id;
-      return el("div", {
-        class: `doc-tab doc-tab-${tabKind(id)}${active ? " active" : ""}${splitDoc ? " split-doc" : ""}`,
-        dataset: { docid: id },
-        title: info ? prettyPath(info) : id,
-        onclick: () => {
-          if (!active) openDocument(id);
-        },
-        onauxclick: (e) => {
-          if (e.button === 1) {
-            e.preventDefault();
-            closeDocumentTab(id);
-          }
-        },
-        oncontextmenu: (e) => {
-          e.preventDefault();
-          showContextMenu(e.clientX, e.clientY, [
-            { label: "Open", action: () => openDocument(id) },
-            { label: "Open in split", action: () => openInSplit(id) },
-            null,
-            { label: "Close tab", action: () => closeDocumentTab(id) },
-          ]);
-        },
-      }, [
-        el("span", { class: "doc-tab-title" }, title),
-        el("button", {
-          class: "doc-tab-close",
-          title: "Close tab",
-          onclick: (e) => {
-            e.stopPropagation();
-            closeDocumentTab(id);
-          },
-        }, "✕"),
-      ]);
-    })
-  );
-}
-
-// Destroy the warm editor for a document and clear it from whichever pane is
-// showing it (collapsing the split if it was the companion). Used when a body
-// changes behind the cache's back without the document tab being closed.
-function dropEditorFor(docId) {
-  const pane = paneForDoc(docId);
-  if (pane) {
-    clearTimeout(pane.timer);
-    pane.timer = null;
-    pane.ctrl = null;
-    pane.dirty = false;
-    pane.docId = null;
-    if (pane.name === "secondary") {
-      state.split = false;
-      panes.secondary.wiki = false;
-      if (state.activePane === "secondary") state.activePane = "primary";
-    }
-  }
-  editorPool.destroy(docId);
-  if (state.writeDocId === docId) state.writeDocId = null;
-  if (state.wikiDocId === docId) state.wikiDocId = null;
-  state.editorCtrl = activePane().ctrl;
-  state.currentDocId = activePane().docId;
-}
-
-// Remove a tab and its warm editor without rendering. Returns the next tab.
-function dropTab(id) {
-  const pane = paneForDoc(id);
-  const wasSecondary = panes.secondary.docId === id;
-  const { next } = docTabs.close(id);
-  persistTabs();
-  if (pane) {
-    clearTimeout(pane.timer);
-    pane.timer = null;
-    pane.ctrl = null;
-    pane.dirty = false;
-    pane.docId = null;
-  }
-  editorPool.destroy(id);
-  if (state.writeDocId === id) state.writeDocId = null;
-  if (state.wikiDocId === id) state.wikiDocId = null;
-  if (wasSecondary) {
-    state.split = false;
-    panes.secondary.wiki = false;
-    if (state.activePane === "secondary") state.activePane = "primary";
-  }
-  const active = activePane();
-  state.editorCtrl = active.ctrl;
-  state.currentDocId = active.docId;
-  return { next };
-}
-
-async function closeDocumentTab(id) {
-  if (!docTabs.has(id)) return;
-  const isSecondary = panes.secondary.docId === id;
-  const isPrimary = panes.primary.docId === id;
-
-  if (!isPrimary && !isSecondary) {
-    // An off-screen tab: drop it without touching the panes on screen.
-    dropTab(id);
-    renderSidebar();
-    renderDocTabs();
-    return;
-  }
-
-  // Flush whichever panes are about to be rebuilt.
-  if (isSecondary) {
-    await flushPane(panes.secondary);
-  } else {
-    await flushPane(panes.primary);
-    if (state.split) await flushPane(panes.secondary);
-  }
-
-  const { next } = dropTab(id);
-  if (isSecondary) {
-    renderSidebar();
-    renderDocTabs();
-    await renderEditorView();
-    return;
-  }
-
-  // The primary document is gone. Show the neighbour; if that neighbour is the
-  // companion, promote it instead of showing it in both panes.
-  if (next && next === panes.secondary.docId) {
-    panes.primary.docId = next;
-    panes.primary.wiki = panes.secondary.wiki;
-    state.split = false;
-    panes.secondary.docId = null;
-    panes.secondary.wiki = false;
-    state.activePane = "primary";
-    state.currentDocId = next;
-    persistTabs();
-    renderSidebar();
-    renderDocTabs();
-    await renderEditorView();
-    return;
-  }
-  if (next) {
-    state.activePane = "primary";
-    try {
-      const doc = await api.docs.get(state.project.id, next);
-      await renderEditorTab(doc, { wiki: next.startsWith("worldbuilding/"), pane: "primary" });
-    } catch (err) {
-      toast(err.message, "error");
-    }
-    return;
-  }
-
-  // No tabs left: promote the companion if present, else show the empty state.
-  if (state.split && panes.secondary.docId) {
-    panes.primary.docId = panes.secondary.docId;
-    panes.primary.wiki = panes.secondary.wiki;
-    state.split = false;
-    panes.secondary.docId = null;
-    panes.secondary.wiki = false;
-  }
-  state.activePane = "primary";
-  state.currentDocId = panes.primary.docId;
-  persistTabs();
-  renderSidebar();
-  renderDocTabs();
-  await renderEditorView();
-}
-
-function cycleTabs(direction) {
-  const next = docTabs.cycle(direction);
-  if (next && next !== state.currentDocId) openDocument(next);
-}
-
-// Turn the split companion on (pairing with another open tab) or off.
-async function toggleSplit() {
-  if (state.split) {
-    await flushPane(panes.secondary);
-    state.split = false;
-    panes.secondary.docId = null;
-    panes.secondary.wiki = false;
-    state.activePane = "primary";
-    state.currentDocId = panes.primary.docId;
-    persistTabs();
-    renderDocTabs();
-    await renderEditorView();
-    return;
-  }
-  await flushSave();
-  const primary = panes.primary.docId;
-  const other = docTabs.tabs.find((id) => id !== primary && findDocAny(id)) || null;
-  if (!other) {
-    toast("Open another document to split the view", "info");
-    return;
-  }
-  state.split = true;
-  panes.secondary.docId = other;
-  panes.secondary.wiki = other.startsWith("worldbuilding/");
-  if (!docTabs.has(other)) docTabs.open(other);
-  state.activePane = "secondary";
-  state.currentDocId = other;
-  persistTabs();
-  renderDocTabs();
-  renderSidebar();
-  await renderEditorView();
-}
-
-// Show a document in the secondary pane (from a tab or the tree).
-async function openInSplit(docId) {
-  if (!state.project || !docId) return;
-  if (panes.secondary.docId === docId) {
-    setActivePane("secondary");
-    return;
-  }
-  if (panes.primary.docId === docId) {
-    if (state.split) {
-      toast("Already open in the other pane", "info");
-      return;
-    }
-    return openDocument(docId);
-  }
-  await flushSave();
-  try {
-    await api.docs.get(state.project.id, docId);
-    docTabs.open(docId);
-    state.split = true;
-    panes.secondary.docId = docId;
-    panes.secondary.wiki = docId.startsWith("worldbuilding/");
-    state.activePane = "secondary";
-    state.currentDocId = docId;
-    persistTabs();
-    renderDocTabs();
-    renderSidebar();
-    await renderEditorView();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-/* ---------------- recent documents ---------------- */
-
-function recentIds() {
-  return docTabs.recent.filter((id) => findDocAny(id));
-}
-
-function recentOpen() {
-  try {
-    return localStorage.getItem(LS_RECENT_OPEN) !== "0";
-  } catch {
-    return true;
-  }
-}
-
-function recentSection() {
-  const ids = recentIds();
-  if (!ids.length) return null;
-  const open = recentOpen();
-  const list = el(
-    "div",
-    { class: "recent-list", style: { display: open ? "" : "none" } },
-    ids.map((id) => {
-      const d = findDocAny(id);
-      return el("div", {
-        class: `recent-item${id === state.currentDocId ? " active" : ""}`,
-        title: prettyPath(d),
-        onclick: () => openDocument(id),
-      }, [
-        el("span", { class: "recent-kind" }, tabGlyph(id)),
-        el("span", { class: "recent-title" }, d.title),
-      ]);
-    })
-  );
-  return el("div", { class: "recent-section" }, [
-    el("div", { class: "recent-head" }, [
-      el("span", { class: "recent-heading" }, "Recent"),
-      el("button", {
-        class: "recent-toggle",
-        title: open ? "Collapse recent" : "Expand recent",
-        onclick: () => {
-          try {
-            localStorage.setItem(LS_RECENT_OPEN, open ? "0" : "1");
-          } catch {
-            /* ignore */
-          }
-          renderSidebar();
-        },
-      }, open ? "▾" : "▸"),
-    ]),
-    list,
-  ]);
-}
-
-// Compatibility entry point: put `doc` in the target pane and redraw the view.
-// Most callers mean the primary pane; sidebar/tab clicks go to the focused one.
-async function renderEditorTab(doc, { wiki, pane } = {}) {
-  let target = pane || (state.split ? state.activePane : "primary");
-  if (target === "secondary" && !state.split) target = "primary";
-  const p = panes[target] || panes.primary;
-  p.docId = doc ? doc.id : null;
-  p.wiki = !!wiki;
-  // Never show the same document in both panes; opening the companion in the
-  // primary pane just closes the split.
-  if (doc && target === "primary" && panes.secondary.docId === doc.id) {
-    panes.secondary.docId = null;
-    panes.secondary.wiki = false;
-    state.split = false;
-  }
-  if (!doc) {
-    p.dirty = false;
-    if (target === "secondary") {
-      state.split = false;
-      panes.secondary.docId = null;
-      panes.secondary.wiki = false;
-      state.activePane = "primary";
-    }
-  } else {
-    docTabs.open(doc.id);
-    persistTabs();
-  }
-  if (!state.split) {
-    panes.secondary.docId = null;
-    panes.secondary.wiki = false;
-    state.activePane = "primary";
-  } else {
-    state.activePane = target;
-  }
-  state.currentDocId = activePane().docId;
-  await renderEditorView();
-}
-
-// Build one pane's chrome (header, editor host, backlinks, status) and stash the
-// element references on the pane record so focus and saving can reach them.
-function renderPane(pane, doc) {
-  const header = docHeader(doc, pane);
-  const mount = el("div", { class: "editor-mount" });
-  const host = el("div", { class: "editor-host" + (pane.wiki ? " wiki-host" : "") }, [mount]);
-  host.style.setProperty("--editor-font", fontStack(state.settings.editorFont));
-  host.style.setProperty("--editor-size", `${state.settings.editorSize || 18}px`);
-  host.style.setProperty("--editor-align", state.settings.editorAlign || "left");
-  host.style.setProperty("--editor-zoom", String(zoomFactor(defaultZoomForScope(pane.wiki))));
-  const panel = backlinksPanel(pane);
-  const wrap = el("div", { class: "editor-wrap" }, [host, panel]);
-  const wordsEl = el("span", { class: "st-words" }, "0 words");
-  const saveEl = el("span", { class: "st-save status-save" }, "Ready");
-  const status = el("div", { class: "editor-status" }, [
-    wordsEl,
-    el("div", { class: "spacer" }),
-    el("button", {
-      class: "icon-btn",
-      title: "Toggle backlinks",
-      onclick: () => panel.classList.toggle("open"),
-    }, "Backlinks"),
-    saveEl,
-  ]);
-  const root = el("div", {
-    class: `editor-pane${pane.name === state.activePane ? " focused" : ""}`,
-    dataset: { pane: pane.name },
-  }, [header, wrap, status].filter(Boolean));
-  // Clicking into a pane focuses it, so the shared toolbar and grammar follow.
-  root.addEventListener("mousedown", (e) => {
-    if (state.split && state.activePane !== pane.name && !e.target.closest("button, input, select")) {
-      setActivePane(pane.name);
-    }
-  });
-  pane.root = root;
-  pane.host = host;
-  pane.mount = mount;
-  pane.panel = panel;
-  pane.wordsEl = wordsEl;
-  pane.saveEl = saveEl;
-  return root;
-}
-
-function mountPaneEditor(pane, doc) {
-  const cached = editorPool.get(doc.id);
-  if (cached) {
-    // Re-mount the editor we kept: its undo history is still in ProseMirror.
-    pane.mount.appendChild(cached.editor.view.dom);
-    pane.ctrl = cached;
-    editorPool.activate(doc.id);
-    return true;
-  }
-  let ctrl = null;
-  try {
-    ctrl = window.LainEditor.create({
-      element: pane.mount,
-      content: doc.content || "",
-      placeholder: pane.wiki ? "Begin lore entry…" : "Begin writing…",
-      onChange: (md) => onEditorUpdate(ctrl, md),
-      onWikilinkClick,
-      showNav: pane.wiki,
-      projectId: state.project.id,
-      uploadImage: uploadImageFile,
-      onImageError: (message) => toast(message, "error"),
-      onUploadState: (busy) => {
-        if (busy) setPaneSaveStatus(pane, "pending", "Uploading image…");
-      },
-      onOpenImage: showImageOverlay,
-      onPickPortrait: (pos) => pickImageFiles(pos),
-    });
-  } catch {
-    toast("Editor failed to load", "error");
-    return false;
-  }
-  pane.ctrl = ctrl;
-  editorPool.add(doc.id, ctrl);
-  ctrl.setOnAddToDictionary(async (word) => {
-    const words = state.dictionary.words || [];
-    if (words.some((w) => w.toLowerCase() === word.toLowerCase())) return;
-    words.push(word);
-    state.dictionary.words = words;
-    ctrl.setDictionaryWords(words);
-    try {
-      await api.projects.dictionary.update(state.project.id, words);
-    } catch {
-      /* ignore */
-    }
-    if (ctrl.editor) {
-      ctrl.editor.view.dispatch(ctrl.editor.state.tr.setMeta("forceGrammar", true));
-    }
-  });
-  ctrl.editor.on("transaction", () => { refreshToolbar(); refreshEditorContext(); });
-  ctrl.editor.on("selectionUpdate", () => { refreshToolbar(); refreshEditorContext(); });
-  return true;
-}
-
-// Redraw the whole editor tab from pane state: tab strip, one shared toolbar,
-// then one or two panes side by side.
-async function renderEditorView() {
-  parkEditor();
-  navListEl = null;
-  const main = document.getElementById("main-content");
-  const tabsEl = el("div", { class: "doc-tabs", id: "doc-tabs" });
-  const container = el("div", { class: `editor-panes${state.split ? " split" : ""}` });
-
-  const targets = paneList().filter((p) => p.docId);
-  const docs = new Map();
-  await Promise.all(targets.map(async (pane) => {
-    try {
-      docs.set(pane.docId, await api.docs.get(state.project.id, pane.docId));
-    } catch {
-      docs.set(pane.docId, null);
-    }
-  }));
-
-  const rendered = [];
-  for (const pane of targets) {
-    const doc = docs.get(pane.docId);
-    if (!doc) {
-      pane.docId = null;
-      pane.dirty = false;
-      continue;
-    }
-    pane.wiki = doc.id.startsWith("worldbuilding/");
-    pane.dirty = false;
-    rendered.push({ pane, doc });
-  }
-  if (rendered.length && !rendered.some((r) => r.pane.name === state.activePane)) {
-    state.activePane = rendered[0].pane.name;
-  }
-  const active = activePane();
-  const activeDoc = docs.get(active.docId) || null;
-
-  const tb = toolbar(active.wiki);
-  for (const { pane, doc } of rendered) container.append(renderPane(pane, doc));
-  if (!rendered.length) {
-    container.append(
-      el("div", { class: "editor-host" + (active.wiki ? " wiki-host" : "") }, [
-        el("div", { class: "empty-state" }, [
-          el("h2", {}, "Nothing open"),
-          el("p", {}, active.wiki ? "Pick a lore entry from the sidebar, or create one." : "Pick a chapter or note from the sidebar, or create one."),
-        ]),
-      ])
-    );
-  }
-
-  const children = [];
-  if (docTabs.tabs.length) children.push(tabsEl);
-  children.push(tb, container);
-  main.classList.add("no-scroll");
-  main.replaceChildren(...children);
-  renderDocTabs();
-
-  if (!rendered.length) {
-    state.docStyle = {};
-    applyDocStyle();
-    return;
-  }
-
-  // Mount each pane's editor, pin both visible documents in the pool, and hand
-  // focus (and the shared grammar slot) to the active pane.
-  editorPool.unpinAll();
-  for (const { pane, doc } of rendered) {
-    if (mountPaneEditor(pane, doc)) editorPool.pin(doc.id);
-  }
-  for (const { pane } of rendered) {
-    if (pane.ctrl) pane.ctrl.setDictionaryWords(state.dictionary.words || []);
-  }
-  setActivePane(state.activePane);
-
-  if (activeDoc) {
-    state.docStyle = activeDoc.style || {};
-    state.currentDocId = active.docId;
-    if (active.wiki) state.wikiDocId = active.docId;
-    else state.writeDocId = active.docId;
-    state.currentSection = null;
-    state.selectionActive = false;
-  } else {
-    state.docStyle = {};
-  }
-  applyDocStyle();
-  for (const { pane } of rendered) {
-    if (pane.panel) pane.panel._render();
-    updateLiveWords(pane);
-  }
-  if (active.ctrl) {
-    if (active.wiki) {
-      initNavBox();
-      updateContentsBox(active.ctrl.getMarkdown(), docTitleAny(active.docId));
-    }
-    active.ctrl.focus();
-  }
-}
-
-/* ---------------- navigation box (wiki) ---------------- */
-
-let navListEl = null;
-
-function initNavBox() {
-  const navEl = state.editorCtrl && state.editorCtrl.navEl;
-  if (!navEl) return;
-  // A cached editor is re-mounted on every render; keep its existing controls.
-  const existing = navEl.querySelector(".nav-list");
-  if (existing) {
-    navListEl = existing;
-    return;
-  }
-  const list = el("div", { class: "nav-list" });
-  const toggle = el("button", {
-    class: "nav-toggle",
-    title: "Collapse navigation",
-    onclick: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const hidden = list.classList.toggle("collapsed");
-      toggle.textContent = hidden ? "+" : "–";
-      toggle.title = hidden ? "Expand navigation" : "Collapse navigation";
-    },
-  }, "–");
-  navEl.append(
-    el("div", { class: "nav-head" }, [
-      el("span", { class: "nav-title" }, "Contents"),
-      toggle,
-    ]),
-    list
-  );
-  navListEl = list;
-}
-
-function parseHeadings(md) {
-  const headings = [];
-  for (const line of (md || "").split("\n")) {
-    const m = line.match(/^(#{1,6})\s+(.*)$/);
-    if (m) {
-      headings.push({ level: m[1].length, text: m[2].trim() });
-      continue;
-    }
-    const h = line.match(/^<h([1-6])(?:\s[^>]*)?>(.*?)<\/h\1>$/i);
-    if (h) {
-      headings.push({ level: Number(h[1]), text: h[2].replace(/<[^>]+>/g, "").trim() });
-    }
-  }
-  return headings;
-}
-
-function buildOutline(title, headings) {
-  const items = [{ isRoot: true, depth: 0, number: "1", text: title || "Untitled", level: 0, pos: 0 }];
-  const stack = [{ level: 0, num: "1", count: 0 }];
-  for (const h of headings) {
-    const L = h.level;
-    while (stack.length > 1 && stack[stack.length - 1].level >= L) stack.pop();
-    const top = stack[stack.length - 1];
-    top.count += 1;
-    const num = top.num + "." + top.count;
-    stack.push({ level: L, num, count: 0 });
-    items.push({ isRoot: false, depth: stack.length - 1, number: num, text: h.text, level: L, pos: -1 });
-  }
-  return items;
-}
-
-function updateContentsBox(markdown, title) {
-  if (!navListEl) return;
-  const outline = buildOutline(title, parseHeadings(markdown));
-  navListEl.replaceChildren(
-    ...outline.map((item) =>
-      el("button", {
-        class: "nav-btn" + (item.isRoot ? " nav-root" : ""),
-        style: { paddingLeft: `${8 + item.depth * 16}px` },
-        title: item.isRoot ? "Jump to top" : `Jump to ${item.text}`,
-        onclick: (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          scrollToHeading(item);
-        },
-      }, [
-        el("span", { class: "nav-num" }, item.number),
-        el("span", { class: "nav-text" }, item.text),
-      ])
-    )
-  );
-}
-
-function scrollToHeading(item) {
-  const editor = state.editorCtrl && state.editorCtrl.editor;
-  if (!editor) return;
-  let targetPos = item.pos === 0 ? 0 : null;
-  if (targetPos === null) {
-    editor.state.doc.descendants((node, pos) => {
-      if (!targetPos && node.type.name === "heading" && node.attrs.level === item.level && node.textContent.trim() === item.text) {
-        targetPos = pos;
-        return false;
-      }
-      return true;
-    });
-    if (targetPos === null) return;
-  }
-  editor.chain().focus().setTextSelection(targetPos).scrollIntoView().run();
-}
-
-function onEditorUpdate(ctrl, markdown) {
-  // A parked editor (kept around for undo history) must never mark a visible
-  // document dirty; only the mounted panes' changes count.
-  const pane = paneForCtrl(ctrl);
-  if (!pane) return;
-  if (state.split && state.activePane !== pane.name) setActivePane(pane.name);
-  pane.dirty = true;
-  if (pane === activePane()) state.dirty = true;
-  setPaneSaveStatus(pane, "pending", "Unsaved changes");
-  updateLiveWords(pane);
-  if (pane.wiki && pane === activePane()) updateContentsBox(markdown, docTitle(pane.docId));
-  clearTimeout(pane.timer);
-  pane.timer = setTimeout(() => savePane(pane), state.settings.autosaveMs || 800);
-}
-
-// Toolbar/style actions that change content outside the typing path.
-function markActiveDirty(text = "Unsaved changes") {
-  const pane = activePane();
-  if (!pane.ctrl) return;
-  pane.dirty = true;
-  state.dirty = true;
-  setPaneSaveStatus(pane, "pending", text);
-  clearTimeout(pane.timer);
-  pane.timer = setTimeout(() => savePane(pane), state.settings.autosaveMs || 800);
-}
-
-function updateLiveWords(pane = activePane()) {
-  if (!pane || !pane.ctrl || !pane.wordsEl) return;
-  const count = countWords(pane.ctrl.getText(), mode());
-  pane.wordsEl.textContent = `${formatNumber(count)} words`;
-}
-
-function setPaneSaveStatus(pane, kind, text) {
-  if (!pane || !pane.saveEl) return;
-  pane.saveEl.textContent = text;
-  pane.saveEl.className = `status-save ${kind === "pending" ? "pending" : ""}`;
-}
-
-async function _doSavePane(pane, docId, markdown) {
-  const t0 = performance.now();
-  pane.saving = true;
-  setPaneSaveStatus(pane, "pending", "Saving…");
-  console.warn("[diag] save start", docId);
-  try {
-    const saved = await api.docs.save(state.project.id, docId, markdown);
-    console.warn(`[diag] save done ${(performance.now() - t0).toFixed(0)}ms`, docId);
-    if (pane.docId === docId) setPaneSaveStatus(pane, "", "Saved");
-    updateTreeWords(docId, saved.words);
-    scheduleWikiRefresh();
-    updateTopbar();
-    return saved;
-  } catch (err) {
-    console.warn(`[diag] save error ${(performance.now() - t0).toFixed(0)}ms`, docId, err.message);
-    pane.dirty = true;
-    if (pane === activePane()) state.dirty = true;
-    setPaneSaveStatus(pane, "pending", `Save failed: ${err.message}`);
-    if (pane.ctrl && pane.docId === docId) {
-      clearTimeout(pane.timer);
-      pane.timer = setTimeout(() => savePane(pane), state.settings.autosaveMs || 800);
-    }
-    throw err;
-  } finally {
-    pane.saving = false;
-    pane.savePromise = null;
-  }
-}
-
-async function savePane(pane) {
-  if (!pane.ctrl || !pane.docId || pane.saving) return;
-  if (!pane.dirty) return;
-  const markdown = pane.ctrl.getMarkdown();
-  pane.dirty = false;
-  if (pane === activePane()) state.dirty = false;
-  pane.savePromise = _doSavePane(pane, pane.docId, markdown);
-  try {
-    await pane.savePromise;
-  } catch {
-    /* handled in _doSavePane */
-  }
-}
-
-const FLUSH_SAVE_TIMEOUT_MS = 5000;
-
-async function flushPane(pane) {
-  if (!pane.ctrl || !pane.docId) return;
-  if (pane.savePromise) {
-    console.warn("[diag] flushPane reusing in-flight save", pane.docId);
-    try {
-      await Promise.race([
-        pane.savePromise,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("save timed out")), FLUSH_SAVE_TIMEOUT_MS)
-        ),
-      ]);
-    } catch (err) {
-      console.warn(`[diag] flushPane awaited in-flight save: ${err.message}`);
-    }
-    return;
-  }
-  if (!pane.dirty) return;
-  const docId = pane.docId;
-  const markdown = pane.ctrl.getMarkdown();
-  pane.dirty = false;
-  if (pane === activePane()) state.dirty = false;
-  pane.savePromise = _doSavePane(pane, docId, markdown);
-  try {
-    await Promise.race([
-      pane.savePromise,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("save timed out")), FLUSH_SAVE_TIMEOUT_MS)
-      ),
-    ]);
-  } catch (err) {
-    console.warn(`[diag] flushPane error: ${err.message}`);
-    if (err.message === "save timed out") {
-      toast("Save is taking a while; continuing without waiting");
-    } else {
-      toast(`Couldn't save before switching: ${err.message}`, "error");
-    }
-  }
-}
-
-async function flushSave() {
-  await Promise.all(paneList().map(flushPane));
-}
-
-function updateTreeWords(docId, words) {
-  const walk = (n) => {
-    for (const d of n.documents || []) if (d.id === docId) d.words = words;
-    for (const f of n.folders || []) walk(f);
-  };
-  walk(state.tree);
-  walk(state.wikiTree);
-  renderSidebar();
 }
 
 async function insertWikilinkDialog() {
@@ -3394,98 +2254,6 @@ function statCard(label, value, sub) {
     el("div", { class: "value" }, value),
     el("div", { class: "sub" }, sub),
   ]);
-}
-
-/* ---------------- editor navigation ---------------- */
-
-// Best-effort "jump to the match": the editor's text is what the check saw,
-// but finding it by string is cheap and works for the common case. Markdown
-// drift simply opens the document without a selection. ``occurrence`` selects
-// the Nth hit within the document (search passes the one the user clicked).
-function revealText(text, occurrence = 0) {
-  const editor = state.editorCtrl && state.editorCtrl.editor;
-  const needle = (text || "").trim();
-  if (!editor || !needle) return false;
-  const lower = needle.toLowerCase();
-  let remaining = Math.max(0, occurrence | 0);
-  let found = -1;
-  editor.state.doc.descendants((node, pos) => {
-    if (found >= 0 || !node.isTextblock) return found < 0;
-    const content = node.textContent;
-    const offsets = [];
-    let index = content.indexOf(needle);
-    if (index >= 0) {
-      // Exact-case hits first, then a case-insensitive pass catches the rest
-      // (mirrors the old single-match behavior, now across every block).
-      while (index >= 0) {
-        offsets.push(index);
-        index = content.indexOf(needle, index + 1);
-      }
-    } else {
-      const haystack = content.toLowerCase();
-      index = haystack.indexOf(lower);
-      while (index >= 0) {
-        offsets.push(index);
-        index = haystack.indexOf(lower, index + 1);
-      }
-    }
-    if (remaining < offsets.length) {
-      found = pos + 1 + offsets[remaining];
-      return false;
-    }
-    remaining -= offsets.length;
-    return true;
-  });
-  if (found < 0) return false;
-  editor.chain().focus().setTextSelection({ from: found, to: found + needle.length }).scrollIntoView().run();
-  return true;
-}
-
-// The restored body came from disk behind the editor's back: drop just this
-// document's warm editor (other warm editors keep their undo) and reload it.
-async function afterSnapshotRestore(docId) {
-  const pane = paneForDoc(docId);
-  if (pane) {
-    clearTimeout(pane.timer);
-    pane.timer = null;
-    pane.ctrl = null;
-    editorPool.destroy(docId);
-    if (state.activePane === pane.name) state.editorCtrl = null;
-  } else {
-    editorPool.destroy(docId);
-  }
-  await refreshTree();
-  await refreshWiki();
-  updateTopbar();
-  if (!pane) return;
-  state.activePane = pane.name;
-  state.currentDocId = pane.docId;
-  if (pane.wiki) state.wikiDocId = pane.docId;
-  else state.writeDocId = pane.docId;
-  await renderEditorView();
-}
-
-// A project-wide replace wrote documents behind the editor cache's back. Drop
-// each changed warm editor; reload any changed document that is on screen.
-async function refreshAfterReplace(docIds) {
-  const changed = new Set(docIds || []);
-  if (!changed.size) return;
-  for (const id of changed) {
-    const pane = paneForDoc(id);
-    if (pane) {
-      clearTimeout(pane.timer);
-      pane.timer = null;
-      pane.ctrl = null;
-      if (state.activePane === pane.name) state.editorCtrl = null;
-    }
-    editorPool.destroy(id);
-  }
-  await refreshTree();
-  await refreshWiki();
-  updateTopbar();
-  if (paneList().some((p) => p.docId && changed.has(p.docId))) {
-    await renderEditorView();
-  }
 }
 
 /* ---------------- wiki tab ---------------- */
@@ -4000,7 +2768,7 @@ async function renderSettingsTab() {
 /* ---------------- tab switching ---------------- */
 
 async function switchTab(tab) {
-  console.warn("[diag] switchTab start", tab, { _switching, _creating, _opening });
+  console.warn("[diag] switchTab start", tab, { _switching, _creating });
   if (_creating) _creating = false;
   if (_switching) _switching = false;
   _switching = true;
@@ -4162,6 +2930,32 @@ async function init(params) {
     switchTab("write");
   }
 }
+
+// Hand the workspace the shell services it calls back into. Runs at module
+// load; the workspace only reads `shell` when a document is opened, so this is
+// early enough.
+registerShell({
+  setActiveTab,
+  renderSidebar,
+  refreshToolbar,
+  refreshEditorContext,
+  updateTargetIndicator,
+  syncEditorControls,
+  renameCurrentDoc,
+  deleteCurrentDoc,
+  createMissingNote,
+  showContextMenu,
+  onWikilinkClick,
+  uploadImageFile,
+  showImageOverlay,
+  pickImageFiles,
+  toolbar,
+  applyDocStyle,
+  scheduleWikiRefresh,
+  updateTopbar,
+  refreshTree,
+  refreshWiki,
+});
 
 export function register() {
   setupFileDropGuard();
