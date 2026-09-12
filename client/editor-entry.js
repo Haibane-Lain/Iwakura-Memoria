@@ -968,7 +968,12 @@ async function insertImageFiles(view, files, pos, imageOpts) {
 
 function toMarkdown(editor) {
   let md = editor.storage.markdown.getMarkdown();
-  md = md.replace(/\\\[/g, "[").replace(/\\\]/g, "]");
+  // Wikilinks are literal text decorated by WIKILINK_RE, not nodes, so the
+  // Markdown serializer escapes each bracket and `[[Target]]` comes back as
+  // `\[\[Target\]\]`. Unescape only those doubled forms: a single `\[`/`\]` is
+  // a real escape (link labels, image alt text, code spans) and must survive
+  // the round trip untouched.
+  md = md.replace(/\\\[\\\[/g, "[[").replace(/\\\]\\\]/g, "]]");
   return md;
 }
 

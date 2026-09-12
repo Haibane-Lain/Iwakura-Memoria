@@ -77,6 +77,11 @@ SNAPSHOTS_DIRNAME = ".snapshots"
 # At the data root for the same reason as the trash and snapshots; unlike
 # those, it is content, so backups keep it.
 COMMENTS_DIRNAME = ".comments"
+# Marker written once the one-time zoom rebase (documents.rebase_zoom_scale)
+# has run. It is a *file* rather than a settings key so a stale settings writer
+# cannot drop it and let the rebase halve every stored zoom a second time — so
+# it must travel with a backup like any other piece of durable state.
+ZOOM_MARKER_FILENAME = ".zoom-rebased"
 WIKI_DIRNAME = "worldbuilding"
 TEMPLATES_DIRNAME = "templates"
 # Uploaded pictures for inline images, one folder per project. Deliberately a

@@ -103,12 +103,27 @@ def move_to_trash(
         "deletedAt": datetime.now().isoformat(timespec="seconds"),
         "words": words,
     }
+    # Write the metadata before moving the payload. If this fails, nothing of
+    # value has moved yet, so discarding the empty entry folder is safe.
     try:
-        shutil.move(str(path), str(dest / _ENTRY_NAME))
         (dest / _META_NAME).write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     except OSError:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
+    # Move the payload last. On failure the entry must be rolled back to where
+    # it came from, never deleted: the user's only copy may already be inside
+    # `dest`, so a blind rmtree here would turn a failed delete into data loss.
+    try:
+        shutil.move(str(path), str(dest / _ENTRY_NAME))
+    except OSError:
+        moved = dest / _ENTRY_NAME
+        if not path.exists() and moved.exists():
+            try:
+                shutil.move(str(moved), str(path))
+            except OSError:
+                pass
         shutil.rmtree(dest, ignore_errors=True)
         raise
     return meta

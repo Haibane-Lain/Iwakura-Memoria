@@ -153,6 +153,10 @@ export function parkEditor() {
     }
     const dom = ctrl.editor && ctrl.editor.view && ctrl.editor.view.dom;
     if (dom && dom.parentNode) dom.parentNode.removeChild(dom);
+    // The editor itself is safe in the pool (mountPaneEditor fetches it back by
+    // document id); drop the pane's reference so a late callback or timer can
+    // never save the old content to a document the pane has since switched to.
+    pane.ctrl = null;
   }
   state.editorCtrl = null;
 }
@@ -679,6 +683,8 @@ function mountPaneEditor(pane, doc) {
     return false;
   }
   pane.ctrl = ctrl;
+  // A freshly built editor holds exactly what is on disk, so the pane is clean.
+  pane.dirty = false;
   editorPool.add(doc.id, ctrl);
   ctrl.setOnAddToDictionary((word) => addWordToDictionary(ctrl, word));
   ctrl.setOnWordMenu(({ word, x, y }) => {
@@ -755,7 +761,10 @@ export async function renderEditorView() {
       continue;
     }
     pane.wiki = doc.id.startsWith("worldbuilding/");
-    pane.dirty = false;
+    // Do NOT clear `pane.dirty` here: if a save failed (or a keystroke landed
+    // between the caller's flush and this render) the editor being remounted
+    // from the pool still holds unsaved text, and clearing the flag would
+    // discard it. The retry below re-arms the autosave for dirty panes.
     rendered.push({ pane, doc });
   }
   if (rendered.length && !rendered.some((r) => r.pane.name === state.activePane)) {
@@ -801,6 +810,15 @@ export async function renderEditorView() {
   }
   for (const { pane } of rendered) {
     if (pane.ctrl) pane.ctrl.setDictionaryWords(state.dictionary.words || []);
+  }
+  // parkEditor() cleared the autosave timer; a pane that is still dirty after
+  // remounting (a failed save, or an edit made while the previous render was
+  // in flight) needs a fresh timer or it would never write.
+  for (const { pane } of rendered) {
+    if (pane.dirty && pane.ctrl) {
+      clearTimeout(pane.timer);
+      pane.timer = setTimeout(() => savePane(pane), state.settings.autosaveMs || 800);
+    }
   }
   setActivePane(state.activePane);
 
@@ -1057,7 +1075,6 @@ function setPaneSaveStatus(pane, kind, text) {
 
 async function _doSavePane(pane, docId, markdown) {
   const t0 = performance.now();
-  pane.saving = true;
   setPaneSaveStatus(pane, "pending", "Saving…");
   console.warn("[diag] save start", docId);
   try {
@@ -1079,22 +1096,43 @@ async function _doSavePane(pane, docId, markdown) {
     }
     throw err;
   } finally {
-    pane.saving = false;
     pane.savePromise = null;
   }
 }
 
+// One drain loop per pane. A single save captures the markdown at its start;
+// if the writer keeps typing during that request, `pane.dirty` is set again and
+// the loop makes another pass. Without this, the one-shot timer that fired the
+// first save is gone and the newer text would never be written.
+function _drainSaves(pane) {
+  if (pane.saveLoop) return pane.saveLoop;
+  pane.saveLoop = (async () => {
+    try {
+      while (pane.ctrl && pane.docId && pane.dirty) {
+        const docId = pane.docId;
+        const markdown = pane.ctrl.getMarkdown();
+        pane.dirty = false;
+        if (pane === activePane()) state.dirty = false;
+        pane.savePromise = _doSavePane(pane, docId, markdown);
+        try {
+          await pane.savePromise;
+        } finally {
+          pane.savePromise = null;
+        }
+      }
+    } finally {
+      pane.saveLoop = null;
+    }
+  })();
+  return pane.saveLoop;
+}
+
 async function savePane(pane) {
-  if (!pane.ctrl || !pane.docId || pane.saving) return;
-  if (!pane.dirty) return;
-  const markdown = pane.ctrl.getMarkdown();
-  pane.dirty = false;
-  if (pane === activePane()) state.dirty = false;
-  pane.savePromise = _doSavePane(pane, pane.docId, markdown);
+  if (!pane.ctrl || !pane.docId || !pane.dirty) return;
   try {
-    await pane.savePromise;
+    await _drainSaves(pane);
   } catch {
-    /* handled in _doSavePane */
+    /* _doSavePane reported the failure and scheduled a retry */
   }
 }
 
@@ -1102,29 +1140,13 @@ const FLUSH_SAVE_TIMEOUT_MS = 5000;
 
 async function flushPane(pane) {
   if (!pane.ctrl || !pane.docId) return;
-  if (pane.savePromise) {
-    console.warn("[diag] flushPane reusing in-flight save", pane.docId);
-    try {
-      await Promise.race([
-        pane.savePromise,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("save timed out")), FLUSH_SAVE_TIMEOUT_MS)
-        ),
-      ]);
-    } catch (err) {
-      console.warn(`[diag] flushPane awaited in-flight save: ${err.message}`);
-    }
-    return;
-  }
-  if (!pane.dirty) return;
-  const docId = pane.docId;
-  const markdown = pane.ctrl.getMarkdown();
-  pane.dirty = false;
-  if (pane === activePane()) state.dirty = false;
-  pane.savePromise = _doSavePane(pane, docId, markdown);
+  if (!pane.dirty && !pane.saveLoop) return;
+  // Await the whole drain, not just the request that happens to be in flight:
+  // the previous version returned after the first save and dropped anything
+  // typed while it ran.
   try {
     await Promise.race([
-      pane.savePromise,
+      _drainSaves(pane),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("save timed out")), FLUSH_SAVE_TIMEOUT_MS)
       ),

@@ -92,6 +92,34 @@ function installFetch() {
   return { saved };
 }
 
+// Like installFetch, but PUTs stay pending until the test releases them, so a
+// save can be held open while the test types more.
+function installDeferredFetch() {
+  const saved = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    const href = String(url);
+    const method = (opts.method || "GET").toUpperCase();
+    if (/\/api\/projects\/demo\/documents\/[^/]+$/.test(href)) {
+      const id = decodeURIComponent(href.split("/documents/")[1]);
+      if (method === "PUT") {
+        const entry = { id, content: JSON.parse(opts.body).content, release: null };
+        saved.push(entry);
+        return new Promise((resolve) => {
+          entry.release = () => resolve(jsonResponse({ words: 2 }));
+        });
+      }
+      return jsonResponse(DOCS[id] || {});
+    }
+    if (/\/api\/projects\/demo\/comments/.test(href)) {
+      return jsonResponse([]);
+    }
+    return jsonResponse({}, 404);
+  };
+  return { saved };
+}
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 // A fake editor: the workspace only needs this small contract, plus the options
 // it passes (so the test can fire onChange).
 function makeFakeEditor(slot) {
@@ -176,6 +204,7 @@ async function freshWorkspace() {
     pane.dirty = false;
     pane.timer = null;
     pane.savePromise = null;
+    pane.saveLoop = null;
   }
   ctx.state.project = { id: "demo" };
   ctx.state.tree = { folders: [], documents: [
@@ -245,6 +274,51 @@ await check("split panes save independently", async () => {
   await workspace.flushSave();
   const byId = Object.fromEntries(saved.map((s) => [s.id, s.content]));
   assert.deepEqual(byId, { "a.md": "Alpha v2", "b.md": "Beta v2" });
+  dom.window.close();
+});
+
+await check("an edit made during an in-flight save is not dropped", async () => {
+  const dom = makeDom();
+  const { saved } = installDeferredFetch();
+  const { ctx, workspace } = await freshWorkspace();
+  const slot = {};
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  slot.opts.onChange("v1");
+  const flush = workspace.flushSave();
+  await tick();
+  assert.equal(saved.length, 1, "the first save is in flight");
+  assert.equal(saved[0].content, "v1");
+
+  // Type again while the save is held open, then let it finish.
+  slot.opts.onChange("v2");
+  saved[0].release();
+  await tick();
+  assert.equal(saved.length, 2, "the drain loop makes a second save");
+  assert.equal(saved[1].content, "v2", "the newer text is persisted");
+  saved[1].release();
+  await flush;
+
+  assert.equal(ctx.panes.primary.dirty, false, "the pane drains clean");
+  dom.window.close();
+});
+
+await check("re-rendering keeps a dirty edit instead of discarding it", async () => {
+  const dom = makeDom();
+  const { saved } = installFetch();
+  const { ctx, workspace } = await freshWorkspace();
+  const slot = {};
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  slot.opts.onChange("Alpha v3");
+  // A re-render (tab switch, tree refresh) used to clear `dirty` and drop the
+  // edit; the pane must stay dirty and still write on the next flush.
+  await workspace.renderEditorView();
+  await workspace.flushSave();
+  assert.deepEqual(saved, [{ id: "a.md", content: "Alpha v3" }]);
+  assert.equal(ctx.panes.primary.dirty, false);
   dom.window.close();
 });
 

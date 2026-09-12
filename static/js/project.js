@@ -3230,6 +3230,8 @@ async function init(params) {
         keepalive: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: md }),
+      }).catch(() => {
+        /* the window is closing; nothing left to do with the failure */
       });
     }
   };

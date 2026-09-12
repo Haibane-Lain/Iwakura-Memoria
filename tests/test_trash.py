@@ -6,6 +6,7 @@ the request/response wiring and the 404s.
 from __future__ import annotations
 
 import zipfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -147,6 +148,80 @@ def test_backup_skips_the_trash(data_dir, make_project):
     assert not any(".trash" in name for name in names)
     # The live document is gone, so no copy of it should be in the backup.
     assert not any(name.endswith("01-a.md") for name in names)
+
+
+# --- failure safety ---------------------------------------------------------
+
+
+def test_metadata_write_failure_keeps_the_source(data_dir, make_project, monkeypatch):
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Alpha", content="hello world")
+    path = data_dir / "proj" / "01-alpha.md"
+
+    real_write = Path.write_text
+
+    def failing_write(self, *args, **kwargs):
+        if self.name == "meta.json":
+            raise OSError("disk full")
+        return real_write(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write)
+
+    with pytest.raises(OSError):
+        trash_service.move_to_trash(
+            "proj", path, name="Alpha", kind="document", original_id=doc["id"]
+        )
+
+    # The payload must still be where it was, and no half-built bin entry left.
+    assert path.exists()
+    assert "hello world" in path.read_text(encoding="utf-8")
+    trash_root = data_dir / ".trash" / "proj"
+    assert not trash_root.exists() or list(trash_root.iterdir()) == []
+
+
+def test_move_failure_keeps_the_source(data_dir, make_project, monkeypatch):
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Alpha", content="hello world")
+    path = data_dir / "proj" / "01-alpha.md"
+
+    def failing_move(src, dst):
+        raise OSError("file is locked")
+
+    monkeypatch.setattr(trash_service.shutil, "move", failing_move)
+
+    with pytest.raises(OSError):
+        trash_service.move_to_trash(
+            "proj", path, name="Alpha", kind="document", original_id=doc["id"]
+        )
+
+    assert path.exists()
+    trash_root = data_dir / ".trash" / "proj"
+    assert not trash_root.exists() or list(trash_root.iterdir()) == []
+
+
+def test_move_failure_after_payload_moved_restores_it(data_dir, make_project, monkeypatch):
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Alpha", content="hello world")
+    path = data_dir / "proj" / "01-alpha.md"
+
+    import shutil as shutil_module
+
+    real_move = shutil_module.move
+
+    def move_then_fail(src, dst):
+        real_move(src, dst)
+        raise OSError("interrupted after moving")
+
+    monkeypatch.setattr(trash_service.shutil, "move", move_then_fail)
+
+    with pytest.raises(OSError):
+        trash_service.move_to_trash(
+            "proj", path, name="Alpha", kind="document", original_id=doc["id"]
+        )
+
+    # The move half-succeeded; the rollback must put the only copy back.
+    assert path.exists()
+    assert "hello world" in path.read_text(encoding="utf-8")
 
 
 # --- route ------------------------------------------------------------------
