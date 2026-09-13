@@ -24,6 +24,7 @@ import {
   registerShell,
 } from "./project-context.js";
 import * as workspace from "./editor-workspace.js";
+import { renderBoardTab } from "./board-view.js";
 import {
   collectTree,
   findDocIn,
@@ -701,6 +702,7 @@ function sidebar() {
       { class: "tabs" },
       [
         ["write", "Write"],
+        ["board", "Board"],
         ["stats", "Stats"],
         ["wiki", "Wiki"],
         ["settings", "Settings"],
@@ -3123,6 +3125,7 @@ async function switchTab(tab) {
   parkEditor();
   if (tab === "stats") await renderStatsTab();
   else if (tab === "settings") await renderSettingsTab();
+  else if (tab === "board") await renderBoardTab();
   if (main) main.classList.remove("no-scroll");
   } catch (err) {
     console.warn("switchTab failed", tab, err);
@@ -3157,6 +3160,8 @@ async function init(params) {
   // A fresh project starts with unfiltered sidebars.
   state.wikiQuery = "";
   state.writeQuery = "";
+  state.boardFolder = "";
+  state.boardView = "outline";
   try {
     const settings = await api.settings.get();
     state.settings = {
@@ -3270,6 +3275,9 @@ registerShell({
   updateTopbar,
   refreshTree,
   refreshWiki,
+  newDocument,
+  newFolder,
+  performReorder,
 });
 
 export function register() {

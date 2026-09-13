@@ -98,19 +98,28 @@ Legend for hooks: where the work would plug into the current code.
     notes from every document.
   - Hooks: a list-all in `app/services/comments.py`; a workspace view.
 
-- [ ] **Scene / document metadata** `P2` `M`
-  - Frontmatter `tags` is read by `get_document` but there is **no way to set,
-    filter, or index tags**, and no status / POV / synopsis / word-target /
-    custom fields.
-  - Hooks: `parse_frontmatter` / `build_frontmatter` / `get_document` /
-    `update_style` in `app/services/documents.py`; a metadata editor in
-    `docHeader` and sidebar filters in `project.js`.
+- [x] **Scene / document metadata** `P2` `M` — shipped: frontmatter
+  `synopsis`, `status`, `pov`, `label`, `tags`, `target` and `beat` round-trip
+  through `get_document` / `_doc_summary` (so the tree carries them for free)
+  and are written by `update_metadata` under the same per-file lock as an
+  autosave; `PATCH /documents/{id}` merges only the fields present in the
+  request and clears one sent as null/empty. Editable from the doc header's
+  **Details** panel and the boards (`board-view.js`). Tags are stored and
+  returned but still have no sidebar filter/index.
+  Hooks: `parse_frontmatter` / `build_frontmatter` / `get_document` /
+  `update_style` in `app/services/documents.py`; a metadata editor in
+  `docHeader` and sidebar filters in `project.js`.
 
-- [ ] **Outline / corkboard / beat board** `P2` `L`
-  - Scrivener-style planning view: cards for scenes with synopsis/status/POV,
-    reorderable, mapped back onto the real tree.
-  - Hooks: build on the metadata above + `get_tree`
-    (`app/services/projects.py`); new tab in `project.js`.
+- [x] **Outline / corkboard / beat board** `P2` `L` — shipped: a **Board** tab
+  (`static/js/board-view.js`, pure transforms in `board-model.js`) with three
+  modes over a folder scope: an editable **Outline** table, a **Corkboard** of
+  synopsis cards, and a **Beats** kanban. Beat columns live in `project.json`
+  (`beats`), dragging a card sets the document's `beat`, and now-orphaned or
+  unassigned beats get their own columns so no value is hidden. Reordering
+  sends the folder's complete mixed entry list to `reorder_documents`, so files
+  renumber and wikilinks are rewritten.
+  Hooks: build on the metadata above + `get_tree`
+  (`app/services/projects.py`); new tab in `project.js`.
 
 - [ ] **Series / books, cross-project lore, copying between projects** `P3` `L`
   - No grouping or ordering of projects; no shared worldbuilding; documents and

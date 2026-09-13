@@ -38,6 +38,16 @@ class StylePayload(BaseModel):
 
 class DocumentPatch(BaseModel):
     title: str | None = None
+    # Scene-planning metadata (docs: SCENE_FIELDS). A field is only applied
+    # when it is present in the request, so an omitted key is left alone while
+    # an explicit null/empty value clears it.
+    synopsis: str | None = None
+    status: str | None = None
+    pov: str | None = None
+    label: str | None = None
+    tags: list[str] | None = None
+    target: int | None = None
+    beat: str | None = None
 
 
 class DocumentMove(BaseModel):
@@ -188,11 +198,24 @@ def save_document(project_id: str, doc_id: str, payload: DocumentContent):
 @router.patch("/{project_id}/documents/{doc_id:path}")
 def patch_document(project_id: str, doc_id: str, payload: DocumentPatch):
     try:
-        if payload.title is not None:
-            return documents_service.rename_document(
-                project_id, doc_id, payload.title, _mode()
+        provided = payload.model_dump(exclude_unset=True)
+        doc = None
+        # Metadata first (it addresses the current id); a rename may change the
+        # id, so it goes last and its result is what we return.
+        scene = {
+            key: value
+            for key, value in provided.items()
+            if key in documents_service.SCENE_FIELDS
+        }
+        if scene:
+            doc = documents_service.update_metadata(project_id, doc_id, scene, _mode())
+        if "title" in provided:
+            doc = documents_service.rename_document(
+                project_id, doc_id, provided["title"] or "", _mode()
             )
-        return documents_service.get_document(project_id, doc_id, _mode())
+        if doc is None:
+            doc = documents_service.get_document(project_id, doc_id, _mode())
+        return doc
     except (FileNotFoundError, ValueError) as exc:
         raise _http_error(exc) from exc
 

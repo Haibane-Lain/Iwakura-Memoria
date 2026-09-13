@@ -58,6 +58,14 @@ _REORDER_RECOVERY_MIN_AGE_S = 300
 # documents.py cannot import wiki.py without a cycle.
 _LINK_REWRITE_RE = re.compile(r"(\[\[)([^\]|]+)(\|[^\]]*)?(\]\])")
 
+# Scene-planning metadata, stored in the same frontmatter block as title/type/
+# styles so it travels with exports and backups. Every field is optional; an
+# absent key means "unset" and clearing a field removes the key again.
+SCENE_FIELDS = ("synopsis", "status", "pov", "label", "tags", "target", "beat")
+_SCENE_TEXT_MAX = 4000
+_SCENE_TAG_MAX = 50
+_SCENE_TAG_LEN_MAX = 100
+
 
 def recover_reorder_tmp() -> int:
     """Move any entries still staged in a stale ``.reorder-tmp`` folder back
@@ -181,6 +189,24 @@ def _locks_for(paths):
     finally:
         for lock in reversed(acquired):
             lock.release()
+
+
+@contextlib.contextmanager
+def _locked_meta(path: Path, doc_id: str):
+    """Yield ``(meta, body)`` for a locked frontmatter read-modify-write.
+
+    Reads the file under its save lock (so a concurrent autosave cannot slip a
+    newer body in between), hands the parsed block to the caller to mutate, and
+    writes it back on clean exit. An exception in the caller's block skips the
+    write, so a validation failure never corrupts the file.
+    """
+    with _save_lock_for(path):
+        if not path.exists():
+            raise FileNotFoundError(f"Document '{doc_id}' not found")
+        raw = path.read_text(encoding="utf-8")
+        meta, body = parse_frontmatter(raw)
+        yield meta, body
+        config._write_atomic(path, build_frontmatter(meta) + body)
 
 
 class DocumentError(ValueError):
@@ -337,6 +363,79 @@ def _style_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_tags(value: Any) -> list[str] | None:
+    """Normalize a tags value from a patch. ``None``/empty means "clear"."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        items = value.split(",")
+    elif isinstance(value, (list, tuple, set)):
+        items = value
+    else:
+        return None
+    result: list[str] = []
+    for item in items:
+        tag = str(item).strip()[:_SCENE_TAG_LEN_MAX]
+        if tag and tag not in result:
+            result.append(tag)
+        if len(result) >= _SCENE_TAG_MAX:
+            break
+    return result or None
+
+
+def _coerce_scene_text(value: Any) -> str | None:
+    """A trimmed, length-capped string, or ``None`` to clear the key."""
+    if value is None:
+        return None
+    text = str(value).strip()[:_SCENE_TEXT_MAX]
+    return text or None
+
+
+def _coerce_target(value: Any) -> int | None:
+    """A positive word target, or ``None`` to clear it."""
+    if value is None or value == "":
+        return None
+    try:
+        target = int(value)
+    except (TypeError, ValueError):
+        return None
+    return target if target > 0 else None
+
+
+def _normalize_scene_meta(patch: dict[str, Any]) -> dict[str, Any]:
+    """Keep only known scene fields, normalized. A ``None`` value clears it."""
+    result: dict[str, Any] = {}
+    for key in SCENE_FIELDS:
+        if key not in patch:
+            continue
+        value = patch[key]
+        if key == "tags":
+            result[key] = _normalize_tags(value)
+        elif key == "target":
+            result[key] = _coerce_target(value)
+        else:
+            result[key] = _coerce_scene_text(value)
+    return result
+
+
+def _scene_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    """The read shape of a document's scene metadata (never raises)."""
+    tags = meta.get("tags")
+    if isinstance(tags, str):
+        tags = tags.split(",")
+    elif not isinstance(tags, (list, tuple, set)):
+        tags = []
+    return {
+        "synopsis": str(meta.get("synopsis") or ""),
+        "status": str(meta.get("status") or ""),
+        "pov": str(meta.get("pov") or ""),
+        "label": str(meta.get("label") or ""),
+        "tags": [str(t).strip() for t in tags if str(t).strip()],
+        "target": _coerce_target(meta.get("target")),
+        "beat": str(meta.get("beat") or ""),
+    }
+
+
 def _project_folder(project_id: str) -> Path:
     if not config.is_safe_project_id(project_id):
         raise FileNotFoundError(f"Project '{project_id}' not found")
@@ -452,6 +551,7 @@ def _doc_summary(folder: Path, doc_id: str, mode: str = "auto") -> dict[str, Any
         "kind": _doc_kind(raw),
         "words": count_words(body, mode),
         "updatedAt": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        **_scene_meta(merged),
     }
 
 
@@ -749,11 +849,11 @@ def get_document(project_id: str, doc_id: str, mode: str = "auto") -> dict[str, 
         "title": str(merged.get("title", "")),
         "type": str(merged.get("type", "")),
         "kind": _doc_kind(raw),
-        "tags": merged.get("tags", []),
         "content": body,
         "style": _style_from_meta(meta),
         "words": count_words(body, mode),
         "updatedAt": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        **_scene_meta(merged),
     }
 
 
@@ -1294,12 +1394,7 @@ def update_style(
     path = _doc_path(folder, doc_id)
     # Read-modify-write of the frontmatter must serialize against autosaves of
     # the same file, or the newer body is clobbered by the body read here.
-    with _save_lock_for(path):
-        if not path.exists():
-            raise FileNotFoundError(f"Document '{doc_id}' not found")
-        raw = path.read_text(encoding="utf-8")
-        meta, body = parse_frontmatter(raw)
-
+    with _locked_meta(path, doc_id) as (meta, body):
         if target == "section":
             section_name = (section or "").strip()
             if not section_name:
@@ -1350,8 +1445,6 @@ def update_style(
                     meta["align"] = str(align)
                 if zoom is not None:
                     meta["zoom"] = int(zoom)
-
-        config._write_atomic(path, build_frontmatter(meta) + body)
     return get_document(project_id, doc_id, mode)
 
 
@@ -1361,17 +1454,36 @@ def rename_document(
     folder = _project_folder(project_id)
     path = _doc_path(folder, doc_id)
     # Serialize the frontmatter rewrite against an in-flight autosave.
-    with _save_lock_for(path):
-        if not path.exists():
-            raise FileNotFoundError(f"Document '{doc_id}' not found")
-        raw = path.read_text(encoding="utf-8")
-        meta, body = parse_frontmatter(raw)
+    with _locked_meta(path, doc_id) as (meta, body):
         old_title = str(meta.get("title", "") or "")
         meta["title"] = new_title.strip() or meta.get("title", "Untitled")
-        config._write_atomic(path, build_frontmatter(meta) + body)
     new_title = str(meta.get("title", "") or "")
     if old_title and old_title != new_title:
         rewrite_wikilink_titles(project_id, old_title, new_title)
+    return get_document(project_id, doc_id, mode)
+
+
+def update_metadata(
+    project_id: str, doc_id: str, patch: dict[str, Any], mode: str = "auto"
+) -> dict[str, Any]:
+    """Merge scene metadata into a document's frontmatter.
+
+    Only :data:`SCENE_FIELDS` are accepted; everything else in the document
+    (title, type, styles, the body) is preserved untouched. A field passed as
+    ``None``/empty is *removed*, so a cleared synopsis or status leaves no dead
+    key behind. The write is serialized against autosaves by ``_locked_meta``.
+    """
+    folder = _project_folder(project_id)
+    path = _doc_path(folder, doc_id)
+    normalized = _normalize_scene_meta(patch)
+    if not normalized:
+        return get_document(project_id, doc_id, mode)
+    with _locked_meta(path, doc_id) as (meta, _body):
+        for key, value in normalized.items():
+            if value is None:
+                meta.pop(key, None)
+            else:
+                meta[key] = value
     return get_document(project_id, doc_id, mode)
 
 

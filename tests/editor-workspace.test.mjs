@@ -73,6 +73,7 @@ const DOCS = {
 
 function installFetch() {
   const saved = [];
+  const patched = [];
   globalThis.fetch = async (url, opts = {}) => {
     const href = String(url);
     const method = (opts.method || "GET").toUpperCase();
@@ -82,6 +83,11 @@ function installFetch() {
         saved.push({ id, content: JSON.parse(opts.body).content });
         return jsonResponse({ words: 2 });
       }
+      if (method === "PATCH") {
+        const patch = JSON.parse(opts.body);
+        patched.push({ id, patch });
+        return jsonResponse({ ...(DOCS[id] || {}), ...patch, id });
+      }
       return jsonResponse(DOCS[id] || {});
     }
     if (/\/api\/projects\/demo\/comments/.test(href)) {
@@ -89,7 +95,7 @@ function installFetch() {
     }
     return jsonResponse({}, 404);
   };
-  return { saved };
+  return { saved, patched };
 }
 
 // Like installFetch, but PUTs stay pending until the test releases them, so a
@@ -319,6 +325,31 @@ await check("re-rendering keeps a dirty edit instead of discarding it", async ()
   await workspace.flushSave();
   assert.deepEqual(saved, [{ id: "a.md", content: "Alpha v3" }]);
   assert.equal(ctx.panes.primary.dirty, false);
+  dom.window.close();
+});
+
+await check("the doc header's scene details PATCH metadata", async () => {
+  const dom = makeDom();
+  const { patched } = installFetch();
+  const { workspace } = await freshWorkspace();
+  const slot = {};
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  const details = document.querySelector(".scene-details");
+  assert.ok(details, "the details panel is rendered");
+
+  const status = details.querySelector("select");
+  status.value = "draft";
+  status.dispatchEvent(new dom.window.Event("change"));
+  await tick();
+  assert.deepEqual(patched, [{ id: "a.md", patch: { status: "draft" } }]);
+
+  const synopsis = details.querySelector(".scene-synopsis");
+  synopsis.value = "A summary";
+  synopsis.dispatchEvent(new dom.window.Event("change"));
+  await tick();
+  assert.deepEqual(patched[1], { id: "a.md", patch: { synopsis: "A summary" } });
   dom.window.close();
 });
 

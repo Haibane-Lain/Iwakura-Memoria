@@ -30,12 +30,14 @@
     "test:tabs": "node tests/doc-tabs.test.mjs",
     "test:tabs-smoke": "node tests/doc-tabs-smoke.test.mjs",
     "test:doctree": "node tests/doc-tree.test.mjs",
+    "test:board-model": "node tests/board-model.test.mjs",
+    "test:board-view": "node tests/board-view.test.mjs",
     "test:editorprefs": "node tests/editor-prefs.test.mjs",
     "test:workspace": "node tests/editor-workspace.test.mjs",
     "test:zoom": "node tests/zoom.test.mjs",
     "test:scrollkeep": "node tests/scroll-keep.test.mjs",
     "test:smoke": "node tests/app-smoke.test.mjs",
-    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:markdown && npm run test:chartable && npm run test:primitives && npm run test:comments && npm run test:commentspanel && npm run test:lookup && npm run test:linkdialog && npm run test:wordat && npm run test:wikilinksuggest && npm run test:typewriter && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:editorprefs && npm run test:workspace && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
+    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:markdown && npm run test:chartable && npm run test:primitives && npm run test:comments && npm run test:commentspanel && npm run test:lookup && npm run test:linkdialog && npm run test:wordat && npm run test:wikilinksuggest && npm run test:typewriter && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:board-model && npm run test:board-view && npm run test:editorprefs && npm run test:workspace && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -25,6 +25,7 @@ import { fontStack } from "./fonts.js";
 import { zoomFactor } from "./zoom.js";
 import { defaultZoomForScope as resolveDefaultZoom } from "./editor-prefs.js";
 import { prettyPath } from "./doc-tree.js";
+import { STATUS_OPTIONS, LABELS } from "./board-model.js";
 import { commentsPanel } from "./comments-panel.js";
 
 /* ---------------- tab persistence ---------------- */
@@ -860,7 +861,8 @@ function docHeader(doc, pane) {
   const focusPane = () => {
     if (pane && state.split && state.activePane !== pane.name) setActivePane(pane.name);
   };
-  return el("div", { class: "doc-header" }, [
+  const details = sceneDetailsPanel(doc);
+  const row = el("div", { class: "doc-header" }, [
     el("input", {
       class: "doc-title-input",
       value: doc.title,
@@ -874,12 +876,84 @@ function docHeader(doc, pane) {
     el("span", { class: "chip" }, typeLabel),
     el("div", { class: "topbar-spacer" }),
     el("button", {
+      class: "icon-btn",
+      title: "Synopsis, status, POV, label and word target",
+      onclick: (e) => {
+        focusPane();
+        details.classList.toggle("open");
+        e.currentTarget.classList.toggle("active");
+      },
+    }, "Details"),
+    el("button", {
       class: "icon-btn danger",
       onclick: () => {
         focusPane();
         shell.deleteCurrentDoc();
       },
     }, "Delete"),
+  ]);
+  return el("div", { class: "doc-header-block" }, [row, details]);
+}
+
+// The scene-planning fields for the focused document. Edits are saved straight
+// to frontmatter; the boards read the same keys through the tree summary.
+function sceneDetailsPanel(doc) {
+  const patch = async (payload) => {
+    try {
+      const updated = await api.docs.update(state.project.id, doc.id, payload);
+      Object.assign(doc, updated);
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+  const statusOptions = [""].concat(STATUS_OPTIONS);
+  if (doc.status && !statusOptions.includes(doc.status)) statusOptions.push(doc.status);
+  const labelOptions = [{ id: "" }].concat(LABELS);
+  if (doc.label && !labelOptions.some((l) => l.id === doc.label)) labelOptions.push({ id: doc.label });
+
+  const synopsis = el("textarea", {
+    class: "scene-synopsis",
+    placeholder: "Synopsis…",
+    onchange: (e) => patch({ synopsis: e.target.value }),
+  });
+  synopsis.value = doc.synopsis || "";
+
+  return el("div", { class: "scene-details" }, [
+    el("div", { class: "scene-details-row" }, [
+      el("label", { class: "scene-field" }, [
+        el("span", {}, "Status"),
+        el("select", { onchange: (e) => patch({ status: e.target.value }) },
+          statusOptions.map((s) =>
+            el("option", { value: s, selected: (doc.status || "") === s }, s || "—")
+          )),
+      ]),
+      el("label", { class: "scene-field" }, [
+        el("span", {}, "POV"),
+        el("input", {
+          value: doc.pov || "",
+          placeholder: "POV",
+          onchange: (e) => patch({ pov: e.target.value }),
+        }),
+      ]),
+      el("label", { class: "scene-field" }, [
+        el("span", {}, "Label"),
+        el("select", { onchange: (e) => patch({ label: e.target.value }) },
+          labelOptions.map((l) =>
+            el("option", { value: l.id, selected: (doc.label || "") === l.id }, l.id || "—")
+          )),
+      ]),
+      el("label", { class: "scene-field" }, [
+        el("span", {}, "Target"),
+        el("input", {
+          type: "number",
+          min: "0",
+          value: doc.target || "",
+          placeholder: "words",
+          onchange: (e) => patch({ target: e.target.value }),
+        }),
+      ]),
+    ]),
+    synopsis,
   ]);
 }
 

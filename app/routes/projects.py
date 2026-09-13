@@ -1,6 +1,8 @@
 """Projects API."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -120,6 +122,26 @@ def get_dictionary(project_id: str):
 def put_dictionary(project_id: str, body: DictionaryPatch):
     try:
         return projects_service.update_dictionary(project_id, body.words)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+class BeatsPatch(BaseModel):
+    beats: list[dict[str, Any]] = []
+
+
+@router.get("/{project_id}/beats")
+def get_beats(project_id: str):
+    try:
+        return projects_service.get_beats(project_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.put("/{project_id}/beats")
+def put_beats(project_id: str, body: BeatsPatch):
+    try:
+        return projects_service.set_beats(project_id, body.beats)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

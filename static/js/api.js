@@ -87,6 +87,10 @@ export const api = {
       api.get(`/api/projects/${encodePath(id)}/tree${scope ? `?scope=${scope}` : ""}`),
     setGoal: (id, wordsPerDay, enabled) =>
       api.put(`/api/projects/${encodePath(id)}/goal`, { wordsPerDay, enabled }),
+    beats: {
+      get: (id) => api.get(`/api/projects/${encodePath(id)}/beats`),
+      update: (id, beats) => api.put(`/api/projects/${encodePath(id)}/beats`, { beats }),
+    },
     exportUrl: (id) => `/api/projects/${encodePath(id)}/export`,
     export: async (id, payload) => {
       const url = `/api/projects/${encodePath(id)}/export`;
@@ -156,6 +160,8 @@ export const api = {
       api.put(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}/style`, payload),
     rename: (pid, docId, title) =>
       api.patch(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}`, { title }),
+    update: (pid, docId, patch) =>
+      api.patch(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}`, patch),
     remove: (pid, docId) =>
       api.del(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}`),
     move: (pid, docId, folder, index) =>

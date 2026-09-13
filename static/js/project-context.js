@@ -44,6 +44,9 @@ export const state = {
   wikiThrottledAt: 0,
   wikiQuery: "",
   writeQuery: "",
+  // Board tab: which planning view is showing and which folder it is scoped to.
+  boardView: "outline",
+  boardFolder: "",
 };
 
 // Editors stay alive after their document is closed so undo/redo survives a

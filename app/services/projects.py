@@ -18,6 +18,32 @@ from app.services import trash as trash_service
 
 DICTIONARY_FILENAME = "dictionary.json"
 
+# Beat-board columns. Seeded for a project that has never edited them; stored
+# under the ``beats`` key in project.json once the user changes the list. The
+# ids are stable slugs so a document's frontmatter ``beat`` keeps pointing at
+# the same column across a rename.
+DEFAULT_BEATS: list[dict[str, str]] = [
+    {"id": "opening-image", "name": "Opening Image"},
+    {"id": "theme-stated", "name": "Theme Stated"},
+    {"id": "set-up", "name": "Set-Up"},
+    {"id": "catalyst", "name": "Catalyst"},
+    {"id": "debate", "name": "Debate"},
+    {"id": "break-into-two", "name": "Break Into Two"},
+    {"id": "b-story", "name": "B Story"},
+    {"id": "fun-and-games", "name": "Fun and Games"},
+    {"id": "midpoint", "name": "Midpoint"},
+    {"id": "bad-guys-close-in", "name": "Bad Guys Close In"},
+    {"id": "all-is-lost", "name": "All Is Lost"},
+    {"id": "dark-night", "name": "Dark Night of the Soul"},
+    {"id": "break-into-three", "name": "Break Into Three"},
+    {"id": "finale", "name": "Finale"},
+    {"id": "final-image", "name": "Final Image"},
+]
+
+_BEAT_NAME_MAX = 120
+_BEAT_DESC_MAX = 500
+_BEAT_COUNT_MAX = 100
+
 
 def _find_pdf_fonts():
     system = sys.platform
@@ -152,10 +178,13 @@ def get_project(project_id: str) -> dict[str, Any]:
         raise FileNotFoundError(f"Project '{project_id}' not found")
     meta = _read_meta(meta_path)
     stats = documents_service.project_word_stats(pid)
+    stored_beats = meta.get("beats")
+    beats = stored_beats if isinstance(stored_beats, list) and stored_beats else DEFAULT_BEATS
     return {
         "id": pid,
         "title": meta["title"],
         "goal": meta["goal"],
+        "beats": beats,
         "createdAt": meta["createdAt"],
         "updatedAt": meta["updatedAt"],
         "words": stats["words"],
@@ -270,6 +299,57 @@ def update_dictionary(project_id: str, words: list[str]) -> dict[str, Any]:
         json.dumps({"words": unique}, ensure_ascii=False, indent=2),
     )
     return {"words": unique}
+
+
+def _normalize_beats(beats: list[Any] | None) -> list[dict[str, str]]:
+    """Clean a beat list: non-empty names, stable unique ids, bounded size."""
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in beats or []:
+        if len(result) >= _BEAT_COUNT_MAX:
+            break
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()[:_BEAT_NAME_MAX]
+        if not name:
+            continue
+        beat_id = str(item.get("id", "")).strip()[:_BEAT_NAME_MAX] or _slugify_short(name)
+        base = beat_id
+        suffix = 2
+        while beat_id in seen:
+            beat_id = f"{base}-{suffix}"
+            suffix += 1
+        seen.add(beat_id)
+        entry: dict[str, str] = {"id": beat_id, "name": name}
+        description = str(item.get("description", "")).strip()[:_BEAT_DESC_MAX]
+        if description:
+            entry["description"] = description
+        result.append(entry)
+    return result
+
+
+def get_beats(project_id: str) -> dict[str, Any]:
+    pid = _safe_id(project_id)
+    meta_path = project_dir(pid) / config.PROJECT_META_FILENAME
+    if not meta_path.exists():
+        raise FileNotFoundError(f"Project '{project_id}' not found")
+    meta = _read_meta(meta_path)
+    stored = meta.get("beats")
+    beats = stored if isinstance(stored, list) and stored else DEFAULT_BEATS
+    return {"beats": beats}
+
+
+def set_beats(project_id: str, beats: list[Any]) -> dict[str, Any]:
+    pid = _safe_id(project_id)
+    folder = project_dir(pid)
+    meta_path = folder / config.PROJECT_META_FILENAME
+    if not meta_path.exists():
+        raise FileNotFoundError(f"Project '{project_id}' not found")
+    meta = _read_meta(meta_path)
+    meta["beats"] = _normalize_beats(beats)
+    meta["updatedAt"] = _now()
+    _write_meta(folder, meta)
+    return {"beats": meta["beats"]}
 
 
 def export_zip(project_id: str, folder_ids: list[str] | None = None) -> bytes:
