@@ -526,7 +526,17 @@ aside.character-table tr.ct-section th { text-align: center; font-weight: bold; 
 aside.character-table td.ct-label { width: 38%; color: #555; }
 aside.character-table tr.ct-portrait td { text-align: center; }
 aside.character-table tr.ct-portrait p { margin: 0; }
-aside.character-table img { max-width: 100%; height: auto; }""",
+aside.character-table img { max-width: 100%; height: auto; }
+/* Timelines stay in normal flow; the vertical line runs along the date column
+   and each event gets a dot, so the block reads as a timeline on a phone. */
+aside.timeline { border: 1px solid #ccc; border-radius: 3px; margin: 0.8em 0; font-size: 0.9em; }
+aside.timeline table.tl-rows { width: 100%; border-collapse: collapse; }
+aside.timeline th, aside.timeline td { border-top: 1px solid #e2e2e2; padding: 5px 8px; text-align: left; vertical-align: top; font-weight: normal; }
+aside.timeline tr:first-child th { border-top: none; }
+aside.timeline tr.tl-title th { font-size: 1.1em; font-weight: bold; text-align: center; }
+aside.timeline tr.tl-section th { text-align: center; font-weight: bold; background: #f2f2f2; text-transform: uppercase; font-size: 0.85em; }
+aside.timeline tr.tl-event td.tl-date { position: relative; width: 30%; text-align: right; font-weight: bold; border-right: 2px solid #ddd; padding-right: 14px; }
+aside.timeline tr.tl-event td.tl-body { padding-left: 14px; }""",
     )
     book.add_item(css)
 

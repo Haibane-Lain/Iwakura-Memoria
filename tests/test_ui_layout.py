@@ -20,6 +20,7 @@ from pathlib import Path
 
 CSS_PATH = Path(__file__).resolve().parent.parent / "static" / "css" / "app.css"
 PROJECT_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "project.js"
+LAIN_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "lain.js"
 EDITOR_WORKSPACE_JS = (
     Path(__file__).resolve().parent.parent / "static" / "js" / "editor-workspace.js"
 )
@@ -153,4 +154,86 @@ def test_the_sidebar_search_box_is_pinned_outside_the_scroller():
     )
     assert not re.search(r"overflow\s*:\s*(auto|scroll)", decls), (
         ".sidebar-pin must not be scrollable itself"
+    )
+
+
+def test_lain_panel_docks_at_the_bottom_of_the_editor_column():
+    """Lain is a bottom panel under the editor, not a right-hand column.
+
+    The project sidebar must keep its full height, so the panel is mounted into
+    ``.main`` (not the whole workspace) and only the editor column gives. jsdom
+    has no layout engine, so the docking contract is pinned here.
+    """
+    js = PROJECT_JS.read_text(encoding="utf-8")
+    assert re.search(r"lain\.mount\(main,", js), (
+        "project.js must mount Lain into the .main editor column"
+    )
+    assert not re.search(r"lain\.mount\(ws,", js), (
+        "Lain must not be mounted into the whole .workspace"
+    )
+
+    panel = _block(".lain-panel")
+    assert re.search(r"border-top\s*:\s*1px\s+solid", panel), (
+        ".lain-panel must be a bottom panel (border-top, not border-left)"
+    )
+    assert not re.search(r"border-left\s*:\s*1px\s+solid", panel), (
+        ".lain-panel must no longer be a right-hand column"
+    )
+    assert re.search(r"height\s*:\s*var\(--lain-h", panel), (
+        ".lain-panel height must come from the resizable --lain-h variable"
+    )
+
+    shown = _block(".main.lain-open .lain-panel")
+    assert re.search(r"display\s*:\s*flex", shown), (
+        "opening Lain must reveal the panel inside .main"
+    )
+
+
+def test_lain_panel_has_a_drag_handle_to_resize_vertically():
+    handle = _block(".lain-resize")
+    assert re.search(r"cursor\s*:\s*row-resize", handle), (
+        ".lain-resize must show a vertical-resize cursor"
+    )
+
+    js = LAIN_JS.read_text(encoding="utf-8")
+    assert re.search(r'class: "lain-resize"', js), (
+        "lain.js must build the resize handle"
+    )
+    assert re.search(r'addEventListener\("pointerdown"', js), (
+        "the resize handle must start a drag on pointerdown"
+    )
+    assert "setPointerCapture" in js, (
+        "the drag must capture the pointer so it survives leaving the handle"
+    )
+    assert re.search(r"applyPanelHeight\(", js), (
+        "lain.js must apply the dragged height to the panel"
+    )
+
+
+def test_lain_jobs_section_is_wired_end_to_end():
+    """Long jobs get a rail section, a hidden-by-default form, and API calls.
+
+    The form is hidden with the ``hidden`` attribute, which an author
+    ``display`` rule would override — the ``[hidden]`` rule is the contract.
+    """
+    jobs = _block(".lain-jobs")
+    assert jobs, ".lain-jobs must be styled"
+
+    form = _block(".lain-job-form")
+    assert re.search(r"display\s*:\s*flex", form), ".lain-job-form is a column"
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert re.search(r"\.lain-job-form\[hidden\][^{]*\{[^}]*display\s*:\s*none", css), (
+        "the hidden form must actually hide (author display beats [hidden])"
+    )
+
+    lain = LAIN_JS.read_text(encoding="utf-8")
+    for needle in ('class: "lain-jobs"', "renderJobs", "runJob", "loadJobs"):
+        assert needle in lain, f"lain.js must implement {needle!r}"
+
+    api_js = (Path(__file__).resolve().parent.parent / "static" / "js" / "api.js").read_text(
+        encoding="utf-8"
+    )
+    assert re.search(r"jobs\s*:\s*\{", api_js), "api.js must expose api.ai.jobs"
+    assert "jobs.stream" in lain or "api.ai.jobs.stream" in lain, (
+        "lain.js must stream job progress"
     )

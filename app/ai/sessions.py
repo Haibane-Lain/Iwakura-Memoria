@@ -20,6 +20,17 @@ from app import config
 _SESSION_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 _MAX_SESSIONS = 50
 
+# Lain has two independent settings:
+#   access — plan (read-only) or write; the default is plan.
+#   mode   — simple (user picks the context; write-only tools) or advanced
+#            (the full tool suite); the default is advanced.
+# Sessions created before either existed resolve to those defaults.
+VALID_ACCESS = ("plan", "write")
+DEFAULT_ACCESS = "plan"
+VALID_MODES = ("simple", "advanced")
+DEFAULT_MODE = "advanced"
+MAX_SELECTED_ENTRIES = 50
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -63,6 +74,9 @@ def create(project_id: str) -> dict[str, Any]:
         "updatedAt": now,
         "history": [],
         "scope": ["", "worldbuilding"],
+        "access": DEFAULT_ACCESS,
+        "mode": DEFAULT_MODE,
+        "selectedEntries": [],
         "currentDocId": None,
         "compressedSummary": None,
         "archived": [],
@@ -119,6 +133,78 @@ def rename(project_id: str, session_id: str, title: str) -> dict[str, Any] | Non
     if session is None:
         return None
     session["title"] = (title or "").strip() or session["title"]
+    save(project_id, session)
+    return session
+
+
+def session_access(session: dict[str, Any]) -> str:
+    """Return the session's access, falling back for old files.
+
+    Sessions written before the access/mode split stored ``plan``/``write``
+    under ``mode``; those values are read as access.
+    """
+    access = session.get("access")
+    if access in VALID_ACCESS:
+        return access
+    legacy = session.get("mode")
+    if legacy in VALID_ACCESS:
+        return legacy
+    return DEFAULT_ACCESS
+
+
+def session_mode(session: dict[str, Any]) -> str:
+    """Return the session's mode, falling back to the default for old files."""
+    mode = session.get("mode")
+    return mode if mode in VALID_MODES else DEFAULT_MODE
+
+
+def session_selected_entries(session: dict[str, Any]) -> list[str]:
+    """Return the session's manually picked entries (Simple-mode context)."""
+    entries = session.get("selectedEntries")
+    if not isinstance(entries, list):
+        return []
+    return [str(e) for e in entries if e]
+
+
+def set_access(project_id: str, session_id: str, access: str) -> dict[str, Any] | None:
+    """Persist a session's Plan/Write access. Raises ``ValueError`` if invalid."""
+    if access not in VALID_ACCESS:
+        raise ValueError("Invalid access")
+    session = load(project_id, session_id)
+    if session is None:
+        return None
+    session["access"] = access
+    save(project_id, session)
+    return session
+
+
+def set_mode(project_id: str, session_id: str, mode: str) -> dict[str, Any] | None:
+    """Persist a session's Simple/Advanced mode. Raises ``ValueError`` if invalid."""
+    if mode not in VALID_MODES:
+        raise ValueError("Invalid mode")
+    session = load(project_id, session_id)
+    if session is None:
+        return None
+    session["mode"] = mode
+    save(project_id, session)
+    return session
+
+
+def set_selected_entries(
+    project_id: str, session_id: str, entries: list[str]
+) -> dict[str, Any] | None:
+    """Persist the entries a Simple-mode session may read and write."""
+    session = load(project_id, session_id)
+    if session is None:
+        return None
+    cleaned: list[str] = []
+    for entry in entries or []:
+        entry = str(entry).strip()
+        if entry and entry not in cleaned:
+            cleaned.append(entry)
+        if len(cleaned) >= MAX_SELECTED_ENTRIES:
+            break
+    session["selectedEntries"] = cleaned
     save(project_id, session)
     return session
 

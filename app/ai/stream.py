@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from app.ai import agent, tools
+from app.ai import agent, jobs, tools
 
 # Active chat runs by session id. `cancel_run` signals the loop to stop at its
 # next checkpoint; `begin_run` additionally refuses a second concurrent run for
@@ -220,3 +220,57 @@ async def stream_chat(
         "pending": pending,
         "actions": result.get("actions", []),
     }
+
+
+async def stream_job(
+    project_id: str,
+    session: dict[str, Any],
+    job: dict[str, Any],
+    build_public: Callable[[], dict[str, Any]] | None = None,
+    cancelled: threading.Event | None = None,
+) -> Any:
+    """Yield a long job's progress events, then a final ``done``.
+
+    Mirrors :func:`stream_chat`: the blocking job runner runs on a thread and
+    forwards events through an asyncio queue. The per-session run guard is
+    shared with chat, so a job and a chat can never run on one session at once.
+    """
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    holder: dict[str, Any] = {}
+    session_id = session.get("sessionId", "")
+    own_run = cancelled is None
+    if own_run:
+        cancelled = begin_run(session_id)
+        if cancelled is None:
+            raise RunConflictError(
+                f"A Lain run for session '{session_id}' is already active"
+            )
+
+    def _run() -> None:
+        try:
+            for event in jobs.run_job(project_id, session, job, cancelled):
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+            holder["error"] = None
+        except Exception as exc:  # noqa: BLE001 — surfaced to the SSE stream
+            holder["error"] = exc
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    thread = threading.Thread(target=_run, name="lain-job-stream", daemon=True)
+    thread.start()
+    try:
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+    finally:
+        if own_run:
+            end_run(session_id, cancelled)
+        if thread.is_alive():
+            cancelled.set()
+        await asyncio.to_thread(thread.join)
+    if holder.get("error"):
+        raise holder["error"]
+    yield {"type": "done", "session": build_public() if build_public else session}

@@ -26,6 +26,7 @@ import {
   portraitTargetAt,
   setPortraitFromFiles,
 } from "./character-table.js";
+import { insertTimeline as insertTimelineAt, makeTimelineNodes } from "./timeline.js";
 import {
   makeTableExtensions,
   makeTaskListExtensions,
@@ -1005,6 +1006,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       makeTypewriterExtension(() => _typewriterEnabled),
       makeCommentsExtension(),
       ...makeCharacterTableNodes(imageOpts),
+      ...makeTimelineNodes(),
     ],
     content,
     editorProps: {
@@ -1257,6 +1259,11 @@ window.LainEditor = {
       // after the block the caret is in (never inside another box).
       insertCharacterTable(options) {
         return insertCharacterTableAt(editor, options || {});
+      },
+      // The ribbon's timeline button: a vertical list of dated events, inserted
+      // after the block the caret is in (never inside another bespoke block).
+      insertTimeline(options) {
+        return insertTimelineAt(editor, options || {});
       },
       // Fills a character table's picture slot, used by the click-to-choose
       // picker and by a drop on the slot.

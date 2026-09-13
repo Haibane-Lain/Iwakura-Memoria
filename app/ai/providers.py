@@ -16,6 +16,10 @@ import httpx
 MAX_OUTPUT_TOKENS = 65536
 TIMEOUT_SECONDS = 300.0
 
+# Gateways like OpenCode Go reject requests from generic HTTP-library user
+# agents, so every request identifies this app explicitly.
+USER_AGENT = "LainsWritingTools/0.1.0"
+
 
 class AIError(Exception):
     """Raised when a provider request fails (bad key, timeout, HTTP error)."""
@@ -32,6 +36,10 @@ class AIClient:
     # streaming responses report token usage. Left off by default because
     # some local servers (LM Studio, llama.cpp) reject unknown fields.
     supports_stream_usage = False
+    # Whether the endpoint accepts ``response_format={"type": "json_object"}``.
+    # Used by the long-job extractor; off by default because local servers
+    # often reject unknown fields.
+    supports_json_mode = False
 
     def __init__(
         self,
@@ -39,6 +47,7 @@ class AIClient:
         model: str = "",
         base_url: str = "",
         max_iterations: int | None = None,
+        session_id: str = "",
     ) -> None:
         self.api_key = api_key
         self.model = model or self.default_model
@@ -48,6 +57,20 @@ class AIClient:
             if max_iterations is not None
             else self.default_max_iterations
         )
+        # Stable per-conversation id sent as ``x-opencode-session`` by providers
+        # that route on it (see :class:`OpenCodeGoClient`).
+        self.session_id = session_id
+
+    def request_headers(self) -> dict[str, str]:
+        """Bearer headers for a JSON POST, overridable by subclasses.
+
+        Providers that need extra routing/identity headers (e.g. OpenCode Go)
+        override this so every dialect they speak sends them.
+        """
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
 
     def _check_http(self, resp: httpx.Response, label: str) -> None:
         """Raise ``AIError`` for common non-2xx statuses."""
@@ -64,6 +87,7 @@ class AIClient:
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.3,
         max_tokens: int | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """One chat-completions round trip.
 
@@ -82,15 +106,14 @@ class AIClient:
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
+        if response_format:
+            body["response_format"] = response_format
         label = self.label()
         try:
             with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
                 resp = client.post(
                     f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=self.request_headers(),
                     json=body,
                 )
         except httpx.HTTPError as exc:
@@ -158,10 +181,7 @@ class AIClient:
                 with client.stream(
                     "POST",
                     f"{self.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    headers=self.request_headers(),
                     json=body,
                 ) as resp:
                     if resp.status_code == 401:
@@ -273,6 +293,7 @@ class DeepSeekClient(AIClient):
     default_model = "deepseek-v4-flash"
     default_max_iterations = 20
     supports_stream_usage = True
+    supports_json_mode = True
 
 
 class LMStudioClient(AIClient):
@@ -573,6 +594,7 @@ class OpenCodeGoClient(AIClient):
     default_model = "deepseek-v4-flash"
     default_max_iterations = 20
     supports_stream_usage = True
+    supports_json_mode = True
 
     _RESPONSES_MODEL_PREFIXES = ("grok-", "gpt-", "muse-")
     _MESSAGES_MODEL_PREFIXES = ("minimax-", "qwen3")
@@ -588,13 +610,34 @@ class OpenCodeGoClient(AIClient):
             return "messages"
         return "chat"
 
+    def request_headers(self) -> dict[str, str]:
+        """Bearer headers plus the identity/routing headers OpenCode Go requires.
+
+        Go rejects requests without a stable ``x-opencode-session`` (they can't
+        be routed or cached) and asks clients to send their own user agent
+        rather than a generic SDK name. ``self.session_id`` is the app's chat
+        session, so every turn of one conversation reuses the same value.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        }
+        if self.session_id:
+            headers["x-opencode-session"] = self.session_id
+        return headers
+
     def _headers(self, bearer: bool) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
         if bearer:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        else:
-            headers["x-api-key"] = self.api_key
-            headers["anthropic-version"] = "2023-06-01"
+            return self.request_headers()
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "User-Agent": USER_AGENT,
+        }
+        if self.session_id:
+            headers["x-opencode-session"] = self.session_id
         return headers
 
     def _post_json(self, url: str, body: dict[str, Any], bearer: bool = True) -> dict[str, Any]:
@@ -616,13 +659,20 @@ class OpenCodeGoClient(AIClient):
         tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.3,
         max_tokens: int | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         route = self._route()
         if route == "responses":
             return self._chat_responses(messages, tools, temperature, max_tokens)
         if route == "messages":
             return self._chat_messages(messages, tools, temperature, max_tokens)
-        return super().chat(messages, tools=tools, temperature=temperature, max_tokens=max_tokens)
+        return super().chat(
+            messages,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
 
     def stream_chat(
         self,
@@ -944,8 +994,11 @@ def get_active_provider(settings: dict[str, Any]) -> str | None:
     return configured[0]
 
 
-def get_client(settings: dict[str, Any]) -> AIClient:
+def get_client(settings: dict[str, Any], session_id: str = "") -> AIClient:
     """Return a configured client for the active provider.
+
+    ``session_id`` is forwarded to the client so providers that route on a
+    per-conversation id (OpenCode Go's ``x-opencode-session``) can send it.
 
     Raises ``AIError`` when no provider has an API key configured.
     """
@@ -962,4 +1015,5 @@ def get_client(settings: dict[str, Any]) -> AIClient:
         model=str(cfg.get("model") or ""),
         base_url=str(cfg.get("baseUrl") or ""),
         max_iterations=int(max_iter) if max_iter is not None else None,
+        session_id=session_id,
     )

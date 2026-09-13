@@ -110,13 +110,22 @@ install; see [Lookup](#lookup).
   sections from the chips that appear on hover, and drag its corner to set the
   width. It is stored as plain HTML in the Markdown and carried into every
   export.
+- **Timelines** — The **📅 Timeline** button (in both the Write and Wiki
+  ribbons, or `/timeline`) inserts a vertical list of dated events: a title,
+  then any number of date/description events, optionally grouped by era, drawn
+  with a line and a dot level with each date. Type straight into the block —
+  `Enter`/`Tab` jump to the next field, `Enter` past the last event adds
+  another, `Shift+Enter` makes a line break inside one — and add or remove
+  events and eras from the chips that appear on hover. It is stored as plain
+  HTML in the Markdown and carried into every export.
 - **Tables, task lists & inline marks** — Generic GFM tables and checkbox task
   lists (buttons **▦** and **☑** in the ribbon), plus highlight, text color,
   inline code, super/subscript, URL links (the **🔗** button opens a small
   dialog that prefills an existing link and offers **Remove link**) and dividers
   (the **—** button). Type `/` for a slash menu of insert commands — headings,
-  lists, tables, task lists, quotes, code blocks, dividers, highlights,
-  super/subscript and text colors. Tables, task lists, links and inline code are
+  lists, tables, timelines, task lists, quotes, code blocks, dividers,
+  highlights, super/subscript and text colors. Tables, task lists, links and
+  inline code are
   stored as ordinary Markdown; the bespoke inline marks are stored as inline
   HTML and carried into every export.
 - **Comments & revision pass** — Select text and press the **💬** ribbon button
@@ -265,6 +274,24 @@ pictures are always `<img>` tags with a project-relative `src` — never the
 `![alt](src)` form, which would be shown as literal text. `data-width` is
 written only after a corner drag. Everything is still hand-editable.
 
+A **timeline** uses the same raw-HTML shape — a `tl-event` row per event
+(`tl-date` + `tl-body`), with `tl-title` and `tl-section` rows for headings:
+
+```html
+<aside class="timeline">
+<table class="tl-rows">
+<tr class="tl-title"><th colspan="2">Timeline of the War</th></tr>
+<tr class="tl-section"><th colspan="2">Early Era</th></tr>
+<tr class="tl-event"><td class="tl-date">1066</td><td class="tl-body">Norman Conquest</td></tr>
+</table>
+</aside>
+```
+
+Its class names are a contract too, and the same rule applies: no blank line
+inside the block, and never the Markdown picture form. Unlike the character
+table it sits in the normal text flow at the full column width rather than
+floating right.
+
 **Backups** live *next to* the data folder at
 `%LOCALAPPDATA%\IwakuraMemoria\backups\` (Settings → Export & backup → *Back
 up everything now*). Each is a timestamped zip of the whole `data/` layout —
@@ -351,6 +378,10 @@ carried over. With fpdf2's built-in fallback fonts (a machine with no system
 serif), characters outside latin-1 — a `•`, a typographic dash, CJK — degrade
 to `?` instead of failing the export.
 
+A **timeline** exports the same way: Word and PDF render it as a two-column
+table (date then description), and EPUB keeps the markup and draws the vertical
+line and dots from its stylesheet.
+
 ## Editing notes
 
 - `[[Note Title]]` links to other documents by title (type the brackets
@@ -409,6 +440,15 @@ to `?` instead of failing the export.
   on its slot, and it resizes and opens full size like any other picture.
   Grabbing the corner handle sets the box width (double-click it for the
   default); the width is saved with the document.
+- **Timelines** are inserted from the **📅 Timeline** button (both tabs) or the
+  `/timeline` slash command. The block arrives with a title and three empty
+  events, each a date and a description; click a field and type. **Enter** and
+  **Tab** move to the next field and add a new event once you run past the last
+  one, **Shift+Enter** makes a line break inside a field, and **Backspace** at
+  the start of an empty event folds it away. The chips that appear on hover add
+  an event or an era heading, remove the event you are in, or delete the whole
+  timeline. Like a character table it is stored as one raw-HTML block, so its
+  text is hand-editable in the Markdown and travels into every export.
 - **Tables, task lists and inline marks** are ordinary Markdown where Markdown
   can say it: a GFM pipe table (`| a | b |`) and a task list (`- [ ]`) round-trip
   untouched. Highlight, text color and super/subscript have no Markdown spelling,
@@ -562,10 +602,52 @@ improvements. Lain is **not** a ghost-writer: it won't write your prose.
   **Settings → AI assistant** (stored in `data/settings.json`; a **Test
   connection** button verifies it).
   OpenCode Go routes each model to the API dialect the gateway serves it with
-  (chat completions, OpenAI Responses, or Anthropic Messages) automatically.
+  (chat completions, OpenAI Responses, or Anthropic Messages) automatically,
+  and sends the `x-opencode-session` header (the app's chat session id) plus a
+  `LainsWritingTools` user agent, which Go requires to route and cache requests.
 - **Access control**: under "Lain can access" pick which folders (Write
   and/or Wiki subtrees) Lain may read and change. The restriction is
   enforced by the server on every tool call, not just requested.
+- **Access**: the **Access** switch (Plan / Write) controls what Lain may
+  change. New sessions start in **Plan** (read-only): Lain can list, read, and
+  analyze, and it describes the changes it would make instead of making them.
+  Switch to **Write** to let it create, edit, rename, move, and delete. Access
+  is stored per session and enforced server-side — in Plan the write tools
+  aren't even offered to the model, and any write call is refused.
+- **Mode**: the **Mode** switch (Simple / Advanced) controls how Lain gathers
+  context.
+  - **Advanced** (default) is the full agent: Lain explores the allowed
+    folders with its own read tools and has the complete tool suite.
+  - **Simple** has no browsing. You pick the entries Lain may use in the
+    **Context** list (search + checkboxes) under the switch; their text and a
+    titles-only outline of the allowed folders are supplied to the model, and
+    its tools are limited to writing — only the entries you selected can be
+    edited, renamed, moved, or deleted (new entries/folders can be created in
+    the allowed folders). Attached reference files are supplied as text too.
+  Both switches are locked while a confirmation is pending.
+- **Long jobs**: the **Jobs** section of the rail runs work that is far larger
+  than one context window (for example "build a timeline from a 100-chapter
+  folder"). Instead of reading everything into one conversation, a job chunks
+  the selection into bounded pieces, extracts **strict JSON records** from each
+  chunk with a separate, small model call, and then reduces those compact
+  records into the final result. Raw prose never accumulates, and each chunk's
+  records are saved as they complete, so a job is resumable (pause/resume,
+  server restart, page reload) and a single bad chunk doesn't kill the run.
+  - **Timeline** turns dated events into the editor's raw-HTML timeline block.
+    Events are deduped and grouped into sections, ordered chronologically when
+    the dates can be compared and kept in reading order otherwise. The HTML is
+    rendered deterministically by the server (never authored by the model), so
+    the block always parses in the editor and exporters.
+  - **Extraction** runs any instruction over the selection and produces a
+    Markdown report.
+  Jobs honor Access: in Plan a job still runs and produces its result, but the
+  final write waits for Write access. Progress streams live in the panel.
+- **Bottom panel**: the Lain button in the top bar toggles a panel docked at
+  the bottom of the editor column (the project sidebar keeps its full height).
+  Controls sit in a left rail, with the wide conversation and its input on the
+  right. Drag the strip along the panel's top edge to resize it vertically —
+  double-click the strip, or use ↑/↓ while it is focused, to reset/adjust; the
+  height is remembered between sessions.
 - **What Lain can do**: list trees, read entries, and create entries/folders
   immediately. Editing, renaming, moving, and deleting always pause for your
   confirmation first — the app computes the confirmation from the actual
@@ -597,6 +679,7 @@ static/
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
 client/character-table.js  # the wiki info box's TipTap nodes + Markdown form
+client/timeline.js         # the vertical timeline's TipTap nodes + Markdown form
 ```
 
 ## Word counting
@@ -659,6 +742,10 @@ live entirely in frontmatter.
   flattened text. It holds one portrait, several boxes per entry are allowed,
   and the right-hand float is an app convenience — exports put the box in the
   normal text flow, where a dragged width is not carried over.
+- A timeline is the editor's own shape too. Word and PDF export it as a
+  two-column table (date then description); the vertical line and dots are drawn
+  by the editor and the EPUB stylesheet, so those two formats show the rows
+  without them. An era heading is a plain labelled row, not a collapsible group.
 - Inline-styled text is stored as `<span style="…">` in the Markdown, and
   per-block aligned text as `<p style="text-align:…">` / `<h2 …>`. A
   hand-written span carrying *both* font-size and font-family keeps only

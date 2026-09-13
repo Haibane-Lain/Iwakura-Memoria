@@ -1796,6 +1796,14 @@ const RIBBON = [
       ],
       [
         { cmd: "image", label: "🖼", text: "Image", title: "Insert an image (or drag & drop / paste one)" },
+        // Works on both tabs: a vertical timeline of events, stored as raw HTML
+        // in the Markdown and carried into every export.
+        {
+          cmd: "timeline",
+          label: "📅",
+          text: "Timeline",
+          title: "Insert a vertical timeline of events",
+        },
         // The wiki's info box. The ribbon is shared with the Write tab, so the
         // button is marked wiki-only rather than living in a second toolbar.
         {
@@ -2075,6 +2083,12 @@ function toolbarCommand(cmd, button) {
   if (cmd === "charTable") {
     if (state.editorCtrl) {
       state.editorCtrl.insertCharacterTable({ title: docTitle(state.currentDocId) });
+    }
+    return;
+  }
+  if (cmd === "timeline") {
+    if (state.editorCtrl) {
+      state.editorCtrl.insertTimeline();
     }
     return;
   }
@@ -3205,7 +3219,9 @@ async function init(params) {
     el("div", { id: "main-content", class: "main-scroll" }),
   ]);
   const ws = el("div", { class: "workspace" }, [sb, main]);
-  lainCtrl = lain.mount(ws, {
+  // Lain docks at the bottom of the editor column (host is `.main`, not the
+  // whole workspace) so the project sidebar keeps its full height.
+  lainCtrl = lain.mount(main, {
     projectId: () => state.project.id,
     currentDocId: () => state.currentDocId,
     onActions: onLainActions,

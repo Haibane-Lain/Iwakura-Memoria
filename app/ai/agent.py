@@ -7,10 +7,13 @@ deferred tool calls needed to resume the loop after the user decides.
 from __future__ import annotations
 
 import json
+import re
 import threading
 from typing import Any
 
+from app.ai import attachments as attachments_service
 from app.ai import providers, sessions, tools
+from app.services import documents as documents_service
 from app.services import settings as settings_service
 
 KEEP_ON_COMPRESS = 8
@@ -28,6 +31,12 @@ EMPTY_RESPONSE_RETRIES = 2
 AUTO_COMPRESS_TOKENS = 50_000
 # Number of recent tool calls to report when the iteration ceiling is hit.
 LAST_ACTIONS_REPORTED = 5
+
+# Simple mode has no read tools, so the entries the user picked (and any
+# attached files) are injected into the prompt. Cap the outline and the total
+# injected text so a huge selection can't blow the context budget.
+SIMPLE_OUTLINE_CAP = 8_000
+SIMPLE_CONTEXT_CAP = 60_000
 
 # Tool types whose rounds are free (don't count toward the iteration ceiling).
 # Pure information-gathering rounds can number in the dozens for bulk-read tasks.
@@ -63,16 +72,19 @@ def _complete_once(
     client: providers.AIClient,
     messages: list[dict[str, Any]],
     callback: StepCallback | None,
+    mode: str = "advanced",
+    access: str = "write",
 ) -> dict[str, Any]:
     """One chat-completions round trip.
 
     Streams tokens to ``callback`` when one is attached; otherwise falls back
     to a plain non-streaming request. Returns the response message dict.
     """
+    tool_schemas = tools.schemas(mode, access)
     if callback is None:
-        return client.chat(messages, tools=tools.schemas())
+        return client.chat(messages, tools=tool_schemas)
     response: dict[str, Any] = {}
-    stream = client.stream_chat(messages, tools=tools.schemas())
+    stream = client.stream_chat(messages, tools=tool_schemas)
     try:
         for event in stream:
             if event["type"] == "delta":
@@ -84,19 +96,55 @@ def _complete_once(
     return response
 
 
+def _session_mode(session: dict[str, Any]) -> str:
+    """Resolve the session's Simple/Advanced mode (old sessions: Advanced)."""
+    return sessions.session_mode(session)
+
+
+def _session_access(session: dict[str, Any]) -> str:
+    """Resolve the session's Plan/Write access (old sessions: Plan)."""
+    return sessions.session_access(session)
+
+
+def _selected_entries(session: dict[str, Any]) -> list[str]:
+    return sessions.session_selected_entries(session)
+
+
+_READ_TITLE_RE = re.compile(r'^Entry: \[[^\]]*\] "([^"]*)"', re.MULTILINE)
+
+
+def _read_digest(entry_id: str, content: str) -> dict[str, str]:
+    """A short, persistent digest of an entry that was just read.
+
+    Tool results are dropped at the end of a turn, so without this the model
+    loses everything it read and the "already read" prompt hint is a lie. The
+    digest keeps the title plus a bounded snippet so later turns know what they
+    actually have.
+    """
+    title_match = _READ_TITLE_RE.search(content or "")
+    title = title_match.group(1) if title_match else entry_id
+    parts = (content or "").split("\n---\n")
+    body = parts[1] if len(parts) >= 2 else ""
+    snippet = " ".join(body.split())[:240]
+    return {"id": entry_id, "title": title, "snippet": snippet}
+
+
 def system_prompt(
     scope: list[str] | None,
     current_doc_id: str | None,
     summary: str | None,
     attachments: list[dict[str, Any]] | None = None,
     read_set: list[str] | None = None,
+    mode: str = "advanced",
+    access: str = "write",
+    read_digests: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build Lain's system prompt.
 
     The fixed instruction block must stay identical across every session and
     turn so DeepSeek's automatic prefix cache can hit it. All variable content
-    (scope, attachments, summary, facesheet, viewing doc) is appended at the
-    end, after the fixed block.
+    (scope, mode, attachments, summary, facesheet, viewing doc) is appended at
+    the end, after the fixed block.
     """
     lines = [
         "You are Lain, a diligent, professional, and concise assistant for a writer's project.",
@@ -119,7 +167,38 @@ def system_prompt(
         "say 'continue' and I'll do the next batch\"). Never stop silently mid-job.",
         f"You may only access these folders (and their contents): {_describe_scope(scope)}. The app enforces this.",
     ]
-    if attachments:
+    if mode == "simple":
+        lines.append(
+            "You are in SIMPLE mode. You cannot browse the project: there are no read tools. "
+            "The user has selected the entries you may use, and their content plus a titles-only "
+            "outline of the accessible folders are provided in the context message that follows."
+        )
+        if access == "plan":
+            lines.append(
+                "Access is PLAN: read and answer from the provided material only, and do not try "
+                "to change anything. When you spot a change worth making, describe it and tell the "
+                "user to switch Access to Write to apply it."
+            )
+        else:
+            lines.append(
+                "Access is WRITE: you may edit, rename, move, or delete the selected entries, and "
+                "create new entries or folders in the accessible folders. You cannot change entries "
+                "the user did not select."
+            )
+    elif access == "plan":
+        lines.append(
+            "Access is PLAN: you may only read. You cannot create, edit, rename, move, or delete "
+            "entries or folders right now. When you spot changes worth making, do not attempt them "
+            "— lay out the exact plan as text instead: which entries, which sections, the proposed "
+            "content, and why. Then tell the user to switch Access to Write to apply it."
+        )
+    if attachments and mode == "simple":
+        names = ", ".join(a["name"] for a in attachments)
+        lines.append(
+            f"Reference files attached to this session: {names}. Their extracted text is included "
+            "in the context below; treat it as read-only source material you cannot edit or move."
+        )
+    elif attachments:
         names = ", ".join(a["name"] for a in attachments)
         lines.append(
             f"Reference files attached to this session: {names}. Read their extracted text with the "
@@ -128,7 +207,19 @@ def system_prompt(
         )
     if summary:
         lines.append("A compressed summary of the earlier conversation follows:\n" + summary)
-    if read_set:
+    if read_digests:
+        lines.append(
+            "Entries already read this session. These are short digests (title + an excerpt), "
+            "not the full text. If you need a detail that is not shown, call read_entry with a "
+            "small 'limit' to refresh just that part — do not re-read whole entries you have "
+            "already covered:"
+        )
+        digests = list(read_digests.values()) if isinstance(read_digests, dict) else list(read_digests)
+        for digest in digests[:20]:
+            title = digest.get("title") or digest.get("id")
+            snippet = digest.get("snippet") or ""
+            lines.append(f"- {title}: {snippet}" if snippet else f"- {title}")
+    elif read_set:
         paths = ", ".join(tools._display_path(r) for r in read_set)
         if len(paths) > 400:
             paths = paths[:400] + "…"
@@ -164,7 +255,69 @@ def _history_messages(session: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _build_messages(session: dict[str, Any], user_message: str) -> list[dict[str, Any]]:
+def _selected_context(project_id: str, session: dict[str, Any]) -> str:
+    """Context block for Simple mode: the picked entries plus a folder outline.
+
+    The model gets no read tools in Simple mode, so everything it may read is
+    assembled here: a titles-only outline of the accessible folders (so it
+    knows ids for writes) and the full text of the entries the user picked.
+    Everything is scope-checked and capped; unfetchable ids are skipped.
+    """
+    scope = session.get("scope")
+    parts: list[str] = []
+
+    outline = tools._tree_text(project_id, scope, titles_only=True)
+    if outline and not outline.startswith("("):
+        if len(outline) > SIMPLE_OUTLINE_CAP:
+            outline = outline[:SIMPLE_OUTLINE_CAP] + "\n… (outline truncated)"
+        parts.append("Accessible folders and entries (titles only):\n" + outline)
+
+    blocks: list[str] = []
+    used = 0
+    for entry_id in _selected_entries(session):
+        if not tools._scope_ok(scope, entry_id):
+            continue
+        try:
+            doc = documents_service.get_document(project_id, entry_id)
+        except (FileNotFoundError, ValueError):
+            continue
+        content = str(doc.get("content") or "")
+        if len(content) > tools.READ_CONTENT_CAP:
+            content = content[: tools.READ_CONTENT_CAP] + "\n… (truncated)"
+        block = f'### [{doc["id"]}] "{doc["title"]}"\n{content}'
+        if used + len(block) > SIMPLE_CONTEXT_CAP:
+            blocks.append("… (more selected entries omitted — context cap reached)")
+            break
+        blocks.append(block)
+        used += len(block)
+    if blocks:
+        parts.append("Entries selected by the user for this session:\n\n" + "\n\n".join(blocks))
+
+    session_id = session.get("sessionId")
+    if session_id:
+        attach_blocks: list[str] = []
+        for item in attachments_service.list_attachments(project_id, session_id):
+            if item.get("error") or not item.get("id"):
+                continue
+            text = attachments_service.get_text(project_id, session_id, item["id"])
+            if len(text) > tools.READ_CONTENT_CAP:
+                text = text[: tools.READ_CONTENT_CAP] + "\n… (truncated)"
+            block = f'### Attachment "{item.get("name", "")}"\n{text}'
+            if used + len(block) > SIMPLE_CONTEXT_CAP:
+                attach_blocks.append("… (more attachments omitted — context cap reached)")
+                break
+            attach_blocks.append(block)
+            used += len(block)
+        if attach_blocks:
+            parts.append("Attached reference files:\n\n" + "\n\n".join(attach_blocks))
+
+    return "\n\n".join(parts)
+
+
+def _build_messages(
+    project_id: str, session: dict[str, Any], user_message: str
+) -> list[dict[str, Any]]:
+    mode = _session_mode(session)
     messages: list[dict[str, Any]] = [
         {
             "role": "system",
@@ -174,9 +327,16 @@ def _build_messages(session: dict[str, Any], user_message: str) -> list[dict[str
                 session.get("compressedSummary"),
                 session.get("attachments"),
                 session.get("readSet"),
+                mode,
+                _session_access(session),
+                read_digests=list((session.get("readDigests") or {}).values()),
             ),
         }
     ]
+    if mode == "simple":
+        context = _selected_context(project_id, session)
+        if context:
+            messages.append({"role": "system", "content": context})
     messages.extend(_history_messages(session))
     if user_message:
         messages.append({"role": "user", "content": user_message})
@@ -243,10 +403,16 @@ def _run_loop(
     """Run the agent loop. Returns done/pending result, mutating ``messages``."""
     scope = session.get("scope")
     session_id = session.get("sessionId")
-    client = providers.get_client(settings_service.get_settings())
+    mode = _session_mode(session)
+    access = _session_access(session)
+    selected = _selected_entries(session)
+    client = providers.get_client(
+        settings_service.get_settings(), session_id=str(session_id or "")
+    )
     actions: list[dict[str, Any]] = []
     usage = _usage_dict()
     new_read_ids: list[str] = []
+    new_read_digests: list[dict[str, Any]] = []
     last_tool_labels: list[str] = []
     iterations = 0
     while True:
@@ -257,6 +423,7 @@ def _run_loop(
                 "actions": actions,
                 "usage": usage,
                 "readIds": new_read_ids,
+                "readDigests": new_read_digests,
             }
         if iterations >= client.max_iterations:
             detail = ""
@@ -275,6 +442,7 @@ def _run_loop(
                 "actions": actions,
                 "usage": usage,
                 "readIds": new_read_ids,
+                "readDigests": new_read_digests,
             }
         if _estimated_input_tokens(messages) > MAX_CONTEXT_TOKENS:
             return {
@@ -287,8 +455,9 @@ def _run_loop(
                 "actions": actions,
                 "usage": usage,
                 "readIds": new_read_ids,
+                "readDigests": new_read_digests,
             }
-        response = _complete_once(client, messages, callback)
+        response = _complete_once(client, messages, callback, mode, access)
         _accumulate_usage(usage, response.get("usage"))
         tool_calls = response.get("tool_calls") or []
         content = (response.get("content") or "").strip()
@@ -302,7 +471,7 @@ def _run_loop(
             # Re-sending the identical request when the model hit the output
             # ceiling is guaranteed to fail again — stop and report instead.
             empty_attempts += 1
-            response = _complete_once(client, messages, callback)
+            response = _complete_once(client, messages, callback, mode, access)
             _accumulate_usage(usage, response.get("usage"))
             tool_calls = response.get("tool_calls") or []
             content = (response.get("content") or "").strip()
@@ -315,6 +484,7 @@ def _run_loop(
                 "actions": actions,
                 "usage": usage,
                 "readIds": new_read_ids,
+                "readDigests": new_read_digests,
             }
         if not content and not tool_calls:
             finish_reason = response.get("finish_reason")
@@ -337,6 +507,7 @@ def _run_loop(
                 "actions": actions,
                 "usage": usage,
                 "readIds": new_read_ids,
+                "readDigests": new_read_digests,
             }
         assistant = {
             "role": "assistant",
@@ -352,6 +523,7 @@ def _run_loop(
                 "actions": actions,
                 "usage": usage,
                 "readIds": new_read_ids,
+                "readDigests": new_read_digests,
             }
         pending = None
         deferred: list[dict[str, Any]] = []
@@ -374,7 +546,14 @@ def _run_loop(
                 callback.on_tool_start(name, args)
             try:
                 result = tools.dispatch(
-                    name, args, project_id, scope, session_id=session_id
+                    name,
+                    args,
+                    project_id,
+                    scope,
+                    session_id=session_id,
+                    mode=mode,
+                    access=access,
+                    selected_entries=selected,
                 )
             except Exception as exc:  # noqa: BLE001 — a tool error must not crash the turn
                 if callback:
@@ -397,7 +576,9 @@ def _run_loop(
             if callback:
                 callback.on_tool_result(name, args, content)
             if name == "read_entry" and args.get("entryId"):
-                new_read_ids.append(str(args["entryId"]))
+                entry_id = str(args["entryId"])
+                new_read_ids.append(entry_id)
+                new_read_digests.append(_read_digest(entry_id, content))
             if action:
                 actions.append(action)
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": content})
@@ -412,6 +593,7 @@ def _run_loop(
                 "actions": actions,
                 "usage": usage,
                 "readIds": new_read_ids,
+                "readDigests": new_read_digests,
             }
 
 
@@ -438,18 +620,25 @@ def chat(
     session["history"] = (session.get("history") or []) + [
         {"role": "user", "content": user_message}
     ]
-    messages = _build_messages(session, "")
+    messages = _build_messages(project_id, session, "")
     if _estimated_input_tokens(messages) > AUTO_COMPRESS_TOKENS:
         try:
             compress(project_id, session, keep_messages=KEEP_ON_COMPRESS)
         except Exception:  # noqa: BLE001 — auto-compress is best-effort
             pass
-        messages = _build_messages(session, "")
+        messages = _build_messages(project_id, session, "")
     result = _run_loop(project_id, session, messages, callback=callback, cancelled=cancelled)
     if result.get("readIds"):
         seen = set(session.get("readSet") or [])
         seen.update(str(r) for r in result["readIds"])
         session["readSet"] = list(seen)[-20:]
+    if result.get("readDigests"):
+        digests = dict(session.get("readDigests") or {})
+        for digest in result["readDigests"]:
+            if digest.get("id"):
+                digests[digest["id"]] = digest
+        ordered = list(digests.values())[-20:]
+        session["readDigests"] = {digest["id"]: digest for digest in ordered}
     _record_turn_usage(session, result.get("usage"))
     if result["done"]:
         reply: dict[str, Any] = {"role": "assistant", "content": result["reply"]}
@@ -563,7 +752,9 @@ def compress(
         for m in to_compress
     )[:MAX_COMPRESS_CHARS]
 
-    client = providers.get_client(settings_service.get_settings())
+    client = providers.get_client(
+        settings_service.get_settings(), session_id=str(session.get("sessionId") or "")
+    )
     response = client.chat(
         [
             {
@@ -586,6 +777,7 @@ def compress(
     session["archived"] = (session.get("archived") or []) + to_compress
     session["compressedSummary"] = summary
     session["readSet"] = []
+    session["readDigests"] = {}
     session["history"] = kept
     sessions.save(project_id, session)
     return session

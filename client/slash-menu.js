@@ -1,6 +1,7 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TEXT_COLORS } from "../static/js/text-colors.js";
+import { insertTimeline } from "./timeline.js";
 
 // A hand-rolled slash menu: type `/` at the start of a word and a filtered list
 // of insert commands appears above the caret. It is deliberately not built on
@@ -30,6 +31,7 @@ export function slashCommands(editor) {
     { id: "codeBlock", label: "Code block", hint: "Preformatted text", keywords: "pre", run: run(() => chain().toggleCodeBlock()) },
     { id: "horizontalRule", label: "Divider", hint: "Horizontal rule", keywords: "hr line", run: run(() => chain().setHorizontalRule()) },
     { id: "table", label: "Table", hint: "3×3 with a header row", keywords: "grid", run: run(() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true })) },
+    { id: "timeline", label: "Timeline", hint: "Vertical list of dated events", keywords: "events history chronology", run: () => insertTimeline(editor, {}) },
     { id: "highlight", label: "Highlight", hint: "Mark the text", keywords: "mark", run: run(() => chain().toggleHighlight()) },
     { id: "subscript", label: "Subscript", hint: "Lowered text", run: run(() => chain().toggleSubscript()) },
     { id: "superscript", label: "Superscript", hint: "Raised text", run: run(() => chain().toggleSuperscript()) },

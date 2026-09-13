@@ -327,7 +327,7 @@ await check("typing / opens the slash menu and filters it", () => {
   s.ctrl.editor.chain().insertContent("/").run();
   const menu = slashMenu();
   assert.ok(menu, "the menu opens on /");
-  assert.equal(menu.querySelectorAll(".slash-item").length, 14);
+  assert.equal(menu.querySelectorAll(".slash-item").length, 15);
 
   s.ctrl.editor.chain().insertContent("tab").run();
   const labels = [...slashMenu().querySelectorAll(".slash-item-label")].map((n) => n.textContent);

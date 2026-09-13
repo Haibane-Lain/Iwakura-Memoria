@@ -98,6 +98,43 @@ user's behalf — the sanitizer closes that hole.
 
 ---
 
+## Long jobs (`app/ai/jobs.py`) — added after this review
+
+The single-context loop is fine for medium work but cannot build, say, a timeline
+from a 100-chapter folder: ~1.8M chars ≈ 450k tokens of prose against a 600k
+context ceiling, with `read_entry` capped at 8k chars (~300 calls), read rounds
+free for the iteration counter, and no mid-loop compaction. Worse, the
+"work in batches, say continue" fallback was unsound: tool results are dropped at
+turn end while `readSet` told the model it still "knows their content".
+
+**Design.** Jobs are a separate, persisted execution path:
+
+- `plan_chunks` packs whole entries into ~24k-char chunks (oversized entries are
+  split with overlap). Raw prose never accumulates.
+- Each chunk is a *map* call with a strict JSON contract (`EntryRecords` /
+  `TimelineRecords`, validated with pydantic); results are saved after every
+  chunk, so a job is idempotent and resumable. A changed entry (words changed)
+  invalidates only its chunk.
+- *Reduce* is deterministic in Python. The timeline renderer
+  (`render_timeline`) mirrors `client/timeline.js` and `client/raw-html.js`
+  exactly — same classes, `colspan="2"` headings, no blank lines — so the model
+  never authors HTML.
+- State lives at `data/ai-sessions/<project>/<session>/jobs/<jobId>.json`, inside
+  the session dir, so it is removed with the session.
+- Writes go through `tools.dispatch`, so scope/Plan/confirmation are unchanged;
+  in Plan the artifact waits for Write access (`output.status = "pending_access"`).
+
+**Also fixed here:** session `readDigests` now persist a title + bounded excerpt
+per read entry, and the prompt describes them as digests instead of falsely
+claiming full recall. This is what makes cross-turn batching coherent.
+
+**Not done / follow-ups:** chunk map passes are serial (concurrency 1); JSON mode
+is only sent to providers that advertise `supports_json_mode` (DeepSeek/OpenCode
+Go), with tolerant parsing + one repair call elsewhere; `archived[]` growth is
+unchanged.
+
+---
+
 ## Distribution considerations this review surfaced (addressed in Workstream A)
 
 - Hardened `webPreferences` in `electron/main.js` are already correct for a

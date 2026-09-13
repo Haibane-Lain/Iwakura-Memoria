@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -19,6 +20,9 @@ class ChatPayload(BaseModel):
     message: str = ""
     folders: list[str] | None = None
     currentDocId: str | None = None
+    access: str | None = None
+    mode: str | None = None
+    selectedEntries: list[str] | None = None
 
 
 class ConfirmPayload(BaseModel):
@@ -34,8 +38,11 @@ class CancelPayload(BaseModel):
     sessionId: str
 
 
-class SessionRename(BaseModel):
-    title: str
+class SessionPatch(BaseModel):
+    title: str | None = None
+    access: str | None = None
+    mode: str | None = None
+    selectedEntries: list[str] | None = None
 
 
 def _session_or_404(project_id: str, session_id: str) -> dict[str, Any]:
@@ -66,6 +73,9 @@ def _public_session(session: dict[str, Any]) -> dict[str, Any]:
         "title": session.get("title", "New session"),
         "history": session.get("history", []),
         "scope": session.get("scope", []),
+        "access": sessions.session_access(session),
+        "mode": sessions.session_mode(session),
+        "selectedEntries": sessions.session_selected_entries(session),
         "currentDocId": session.get("currentDocId"),
         "compressedSummary": session.get("compressedSummary"),
         "archivedCount": len(session.get("archived", [])),
@@ -73,6 +83,33 @@ def _public_session(session: dict[str, Any]) -> dict[str, Any]:
         "tokensUsed": session.get("tokensUsed", {"prompt": 0, "completion": 0, "total": 0}),
         "pending": pending,
     }
+
+
+def _apply_entries(session: dict[str, Any], entries: list[str]) -> None:
+    cleaned: list[str] = []
+    for entry in entries:
+        entry = str(entry).strip()
+        if entry and entry not in cleaned:
+            cleaned.append(entry)
+        if len(cleaned) >= sessions.MAX_SELECTED_ENTRIES:
+            break
+    session["selectedEntries"] = cleaned
+
+
+def _apply_chat_payload(session: dict[str, Any], payload: ChatPayload) -> None:
+    """Merge per-turn scope/doc/access/mode/entries from the client."""
+    session["scope"] = payload.folders if payload.folders is not None else session.get("scope", [])
+    session["currentDocId"] = payload.currentDocId or session.get("currentDocId")
+    if payload.access is not None:
+        if payload.access not in sessions.VALID_ACCESS:
+            raise HTTPException(status_code=400, detail="access must be 'plan' or 'write'")
+        session["access"] = payload.access
+    if payload.mode is not None:
+        if payload.mode not in sessions.VALID_MODES:
+            raise HTTPException(status_code=400, detail="mode must be 'simple' or 'advanced'")
+        session["mode"] = payload.mode
+    if payload.selectedEntries is not None:
+        _apply_entries(session, payload.selectedEntries)
 
 
 @router.get("/ai/status")
@@ -103,7 +140,9 @@ def ai_status():
 @router.post("/ai/test")
 def ai_test():
     try:
-        client = providers.get_client(settings_service.get_settings())
+        client = providers.get_client(
+            settings_service.get_settings(), session_id=uuid.uuid4().hex
+        )
         content = client.chat(
             [{"role": "user", "content": "Reply with exactly: ok"}],
             temperature=0,
@@ -148,10 +187,30 @@ def get_session(project_id: str, session_id: str):
 
 
 @router.patch("/projects/{project_id}/ai/sessions/{session_id}")
-def rename_session(project_id: str, session_id: str, payload: SessionRename):
-    session = sessions.rename(project_id, session_id, payload.title)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+def patch_session(project_id: str, session_id: str, payload: SessionPatch):
+    session = _session_or_404(project_id, session_id)
+    if payload.access is not None or payload.mode is not None:
+        agent_state = session.get("agentState") or {}
+        if agent_state.get("pending"):
+            raise HTTPException(
+                status_code=409,
+                detail="There is a pending confirmation — decide it before changing access or mode.",
+            )
+        if payload.access is not None:
+            if payload.access not in sessions.VALID_ACCESS:
+                raise HTTPException(status_code=400, detail="access must be 'plan' or 'write'")
+            session["access"] = payload.access
+        if payload.mode is not None:
+            if payload.mode not in sessions.VALID_MODES:
+                raise HTTPException(status_code=400, detail="mode must be 'simple' or 'advanced'")
+            session["mode"] = payload.mode
+    if payload.selectedEntries is not None:
+        _apply_entries(session, payload.selectedEntries)
+    if payload.title is not None:
+        title = payload.title.strip()
+        if title:
+            session["title"] = title
+    sessions.save(project_id, session)
     return _public_session(session)
 
 
@@ -217,8 +276,7 @@ def chat(project_id: str, payload: ChatPayload):
             )
     else:
         session = sessions.create(project_id)
-    session["scope"] = payload.folders if payload.folders is not None else session.get("scope", [])
-    session["currentDocId"] = payload.currentDocId or session.get("currentDocId")
+    _apply_chat_payload(session, payload)
     session_id = session["sessionId"]
     cancelled = stream.begin_run(session_id)
     if cancelled is None:
@@ -256,8 +314,7 @@ async def chat_stream(project_id: str, payload: ChatPayload):
             )
     else:
         session = sessions.create(project_id)
-    session["scope"] = payload.folders if payload.folders is not None else session.get("scope", [])
-    session["currentDocId"] = payload.currentDocId or session.get("currentDocId")
+    _apply_chat_payload(session, payload)
     session_id = session["sessionId"]
     cancelled = stream.begin_run(session_id)
     if cancelled is None:

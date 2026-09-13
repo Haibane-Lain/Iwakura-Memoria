@@ -13,6 +13,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import config
 from app.routes import ai as ai_routes
+from app.routes import ai_jobs as ai_jobs_routes
 from app.routes import assets as assets_routes
 from app.routes import backups as backup_routes
 from app.routes import comments as comments_routes
@@ -195,6 +196,7 @@ def create_app() -> FastAPI:
     app.include_router(wiki_routes.stats_router)
     app.include_router(templates_routes.router)
     app.include_router(ai_routes.router)
+    app.include_router(ai_jobs_routes.router)
     app.include_router(grammar_routes.router)
     app.include_router(lookup_routes.router)
     app.include_router(repetition_routes.router)

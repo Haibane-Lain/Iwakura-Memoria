@@ -24,6 +24,24 @@ CONFIRM_TOOLS = {
     "delete_folder",
 }
 
+# Tools that only observe the project. In Plan access Lain gets these and
+# nothing else; every other tool can change files and is refused.
+READ_TOOLS = {"list_tree", "read_entry", "read_attachment"}
+WRITE_TOOLS = set(CONFIRM_TOOLS) | {"create_entry", "create_folder"}
+
+# Simple mode never browses. It works from the entries the user picked, so it
+# gets no read tools, the entry-scoped writes are limited to those picks, and
+# folder moves/deletes (which no picked entry authorizes) stay Advanced-only.
+SIMPLE_WRITE_TOOLS = {
+    "create_entry",
+    "create_folder",
+    "edit_entry",
+    "rename_entry",
+    "move_entry",
+    "delete_entry",
+}
+ENTRY_WRITE_TOOLS = {"edit_entry", "rename_entry", "move_entry", "delete_entry"}
+
 READ_CONTENT_CAP = 8_000
 DIFF_LINE_CAP = 60
 TREE_TEXT_CAP = 100_000
@@ -724,7 +742,29 @@ TOOLS: dict[str, dict[str, Any]] = {
 }
 
 
-def schemas() -> list[dict[str, Any]]:
+def schemas(mode: str = "advanced", access: str = "write") -> list[dict[str, Any]]:
+    """Tool schemas to advertise to the model.
+
+    ``mode`` is simple/advanced and ``access`` is plan/write:
+
+    - advanced + plan  → read tools only
+    - advanced + write → every tool
+    - simple + plan    → no tools (chat over the picked entries)
+    - simple + write   → write tools only (no browsing)
+    """
+    if mode == "simple":
+        allowed = set() if access == "plan" else SIMPLE_WRITE_TOOLS
+        return [
+            schema
+            for schema in _SCHEMAS
+            if schema["function"]["name"] in allowed
+        ]
+    if access == "plan":
+        return [
+            schema
+            for schema in _SCHEMAS
+            if schema["function"]["name"] in READ_TOOLS
+        ]
     return _SCHEMAS
 
 
@@ -735,11 +775,47 @@ def dispatch(
     scope: list[str] | None,
     confirmed: bool = False,
     session_id: str | None = None,
+    mode: str = "advanced",
+    access: str = "write",
+    selected_entries: list[str] | None = None,
 ) -> PendingAction | tuple[str, dict[str, Any] | None]:
-    """Run a tool. Destructive tools without ``confirmed`` return a plan."""
+    """Run a tool. Destructive tools without ``confirmed`` return a plan.
+
+    ``mode``/``access`` are the session's settings and are enforced here — not
+    just by withholding schemas — so a model that calls a forbidden tool anyway
+    is refused.
+    """
     entry = TOOLS.get(name)
     if entry is None:
         raise ToolError(f"Unknown tool '{name}'")
+    if mode == "simple":
+        if access == "plan":
+            raise ToolError(
+                "Lain is in Simple mode with Plan access and can't change files — "
+                "switch Access to Write to apply changes."
+            )
+        if name in READ_TOOLS:
+            raise ToolError(
+                "Simple mode can't browse the project — pick the entries Lain "
+                "should use, or switch Mode to Advanced."
+            )
+        if name not in SIMPLE_WRITE_TOOLS:
+            raise ToolError(
+                "Simple mode can only change the entries you selected, so folder "
+                "moves and deletes are Advanced-only."
+            )
+        if name in ENTRY_WRITE_TOOLS:
+            entry_id = str(args.get("entryId") or args.get("entry_id") or "")
+            if entry_id not in (selected_entries or []):
+                raise ToolError(
+                    f"'{entry_id or '(no entry)'}' is not one of the entries selected "
+                    "for this session — only selected entries may be changed in Simple mode."
+                )
+    elif access == "plan" and name in WRITE_TOOLS:
+        raise ToolError(
+            "Lain is in Plan access and can't change files — switch Access to "
+            "Write to apply changes."
+        )
     try:
         if entry["confirm"]:
             plan = entry["plan"](project_id, args)

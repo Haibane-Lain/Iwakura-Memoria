@@ -9,20 +9,22 @@ import Highlight from "@tiptap/extension-highlight";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
 
-// The wiki's info box is stored as raw HTML: an `<aside class="character-table">`
-// wrapping `<table class="ct-rows">` with `ct-*` rows and cells. Once a generic
-// table node exists it matches `<table>`/`<tr>`/`<th>`/`<td>` too — including the
-// box's — so every generic rule steps aside when the element lives inside the
-// box. Without this, loading a wiki entry would tear the box's rows into an
-// ordinary table and break its byte-for-byte Markdown round trip.
-function inCharacterTable(el) {
-  return !!(el.closest && el.closest(".character-table"));
+// The editor's bespoke blocks are stored as raw HTML that *contains* a table:
+// an `<aside class="character-table">` (the wiki info box) and an
+// `<aside class="timeline">` (the vertical event list), each wrapping a
+// `<table>` with their own `ct-*` / `tl-*` rows and cells. Once a generic table
+// node exists it matches `<table>`/`<tr>`/`<th>`/`<td>` too — including these
+// blocks' — so every generic rule steps aside when the element lives inside one.
+// Without this, loading a document would tear the block's rows into an ordinary
+// table and break its byte-for-byte Markdown round trip.
+function inRawTableBlock(el) {
+  return !!(el.closest && el.closest(".character-table, .timeline"));
 }
 
 // `getAttrs` returning false rejects the rule; returning null keeps the default
 // attributes. One helper keeps every table rule consistent.
-function unlessCharacterTable() {
-  return (el) => (inCharacterTable(el) ? false : null);
+function unlessRawTableBlock() {
+  return (el) => (inRawTableBlock(el) ? false : null);
 }
 
 // Generic tables (GFM pipe tables). Column resizing is off on purpose: it stores
@@ -31,25 +33,25 @@ function unlessCharacterTable() {
 export function makeTableExtensions() {
   const TableNode = Table.extend({
     parseHTML() {
-      return [{ tag: "table", getAttrs: unlessCharacterTable() }];
+      return [{ tag: "table", getAttrs: unlessRawTableBlock() }];
     },
   }).configure({ resizable: false });
 
   const Row = TableRow.extend({
     parseHTML() {
-      return [{ tag: "tr", getAttrs: unlessCharacterTable() }];
+      return [{ tag: "tr", getAttrs: unlessRawTableBlock() }];
     },
   });
 
   const Header = TableHeader.extend({
     parseHTML() {
-      return [{ tag: "th", getAttrs: unlessCharacterTable() }];
+      return [{ tag: "th", getAttrs: unlessRawTableBlock() }];
     },
   });
 
   const Cell = TableCell.extend({
     parseHTML() {
-      return [{ tag: "td", getAttrs: unlessCharacterTable() }];
+      return [{ tag: "td", getAttrs: unlessRawTableBlock() }];
     },
   });
 

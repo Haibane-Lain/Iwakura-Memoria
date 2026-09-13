@@ -682,6 +682,7 @@ a {
 
 .main-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   transition: opacity 0.12s;
 }
@@ -1631,6 +1632,157 @@ a {
 .ct-wrap:hover .ct-resize,
 .ct-wrap.resizing .ct-resize {
   opacity: 1;
+}
+
+/* ---------------- timelines (vertical event list) ---------------- */
+
+/* Unlike the character table's right-hand float, a timeline sits in the normal
+   text flow at the full column width. The wrapper carries the hover chips; the
+   aside is the block's own frame. */
+.tl-wrap {
+  position: relative;
+  margin: 1em 0;
+  max-width: 100%;
+}
+
+.timeline {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.92em;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+.tl-rows {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tl-rows th,
+.tl-rows td {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.tl-rows tr:first-child th,
+.tl-rows tr:first-child td {
+  border-top: none;
+}
+
+.tl-rows tr.tl-title th {
+  padding: 9px 12px;
+  font-size: 1.08em;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tl-rows tr.tl-section th {
+  text-align: center;
+  font-size: 0.82em;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--surface-3);
+}
+
+/* The vertical line runs down the date/description boundary, with a dot level
+   with each event. */
+.tl-rows tr.tl-event td.tl-date {
+  position: relative;
+  width: 30%;
+  min-width: 88px;
+  padding-right: 22px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--accent);
+  border-right: 2px solid var(--border);
+}
+
+.tl-rows tr.tl-event td.tl-date::after {
+  content: "";
+  position: absolute;
+  top: 13px;
+  right: -6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+.tl-rows tr.tl-event td.tl-body {
+  position: relative;
+  padding-left: 22px;
+}
+
+/* Hint text for an untouched date/description. An empty ProseMirror textblock
+   carries a trailing <br>, so ":empty" alone is not enough; the hint is
+   absolutely positioned so it never adds a line of its own. */
+.tl-rows td.tl-date:empty::before,
+.tl-rows td.tl-date:has(> br.ProseMirror-trailingBreak:only-child)::before {
+  content: "Date";
+  position: absolute;
+  top: 8px;
+  right: 22px;
+  font-weight: 400;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.tl-rows td.tl-body:empty::before,
+.tl-rows td.tl-body:has(> br.ProseMirror-trailingBreak:only-child)::before {
+  content: "Describe the event";
+  position: absolute;
+  top: 8px;
+  left: 22px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.tl-chips {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.tl-wrap:hover .tl-chips,
+.tl-wrap:focus-within .tl-chips {
+  opacity: 1;
+}
+
+.tl-chip {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tl-chip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.tl-chip.danger:hover {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
 }
 
 .ProseMirror p.is-editor-empty::before {
@@ -3469,34 +3621,67 @@ a {
     box-shadow: var(--shadow);
   }
 
-  .workspace.lain-open .lain-panel {
-    position: fixed;
-    right: 0;
-    top: 52px;
-    bottom: 0;
-    width: min(340px, 92vw);
-    z-index: 60;
-    box-shadow: var(--shadow);
+  .lain-rail {
+    flex-basis: 180px;
   }
 }
 
 /* ---------- Lain (AI assistant) panel ---------- */
 
-.workspace.lain-open {
-  grid-template-columns: 280px 1fr 340px;
-}
-
 .lain-panel {
   display: none;
   flex-direction: column;
+  flex: 0 0 auto;
   background: var(--bg-alt);
-  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
+  height: var(--lain-h, 320px);
 }
 
-.workspace.lain-open .lain-panel {
+.main.lain-open .lain-panel {
   display: flex;
+}
+
+/* Drag the top edge to resize the panel. */
+.lain-resize {
+  flex: 0 0 auto;
+  height: 6px;
+  cursor: row-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.lain-resize:hover,
+.lain-resize:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+.lain-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+
+.lain-rail {
+  flex: 0 0 260px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.lain-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .lain-head {
@@ -3556,6 +3741,314 @@ a {
   background: var(--surface);
   color: var(--text);
   font-size: 12.5px;
+}
+
+.lain-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+
+.lain-mode-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.lain-mode {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.lain-mode-btn {
+  padding: 4px 12px;
+  font-size: 12.5px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.lain-mode-btn + .lain-mode-btn {
+  border-left: 1px solid var(--border);
+}
+
+.lain-mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.lain-mode-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.lain-mode-hint {
+  margin: 0 12px 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: var(--surface-2);
+}
+
+/* Simple mode: the user picks the entries Lain may use. */
+.lain-ctx {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+/* An author `display` beats the UA `[hidden] { display:none }` rule, so the
+   toggle needs its own. */
+.lain-ctx[hidden] {
+  display: none;
+}
+
+.lain-ctx-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.lain-ctx-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.lain-ctx-count {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.lain-ctx-filter {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.lain-ctx-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.lain-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.lain-ctx-item:hover {
+  background: var(--surface-2);
+}
+
+.lain-ctx-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lain-ctx-path {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.lain-ctx-empty {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.lain-ctx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.lain-ctx-chips:empty {
+  display: none;
+}
+
+.lain-ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.lain-ctx-x {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.lain-ctx-x:hover {
+  color: var(--danger);
+}
+
+/* Long jobs: chunked extraction / timeline builds. */
+.lain-jobs {
+  border-top: 1px solid var(--border);
+  padding: 6px 12px;
+}
+
+.lain-jobs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.lain-job-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.lain-job-form[hidden],
+.lain-job-run[hidden] {
+  display: none;
+}
+
+.lain-job-kind,
+.lain-job-instruction {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.lain-job-instruction {
+  min-height: 52px;
+}
+
+.lain-job-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.lain-job-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.lain-job-run {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.lain-job-run.error {
+  color: var(--danger);
+}
+
+.lain-job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.lain-job-empty {
+  font-size: 12px;
+  color: var(--text-faint);
+  padding: 4px 0;
+}
+
+.lain-job {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 6px 8px;
+}
+
+.lain-job-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.lain-job-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lain-job-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+}
+
+.lain-job-status.status-running {
+  color: var(--accent);
+}
+
+.lain-job-status.status-failed {
+  color: var(--danger);
+}
+
+.lain-job-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin: 2px 0 4px;
+}
+
+.lain-job-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.lain-job-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+.lain-job-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .lain-scope {
@@ -3659,6 +4152,7 @@ a {
 
 .lain-chat {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 10px 12px;
   display: flex;

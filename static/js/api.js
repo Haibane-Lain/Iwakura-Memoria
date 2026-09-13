@@ -290,8 +290,45 @@ export const api = {
         api.get(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}`),
       rename: (pid, sessionId, title) =>
         api.patch(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}`, { title }),
+      setAccess: (pid, sessionId, access) =>
+        api.patch(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}`, { access }),
+      setMode: (pid, sessionId, mode) =>
+        api.patch(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}`, { mode }),
+      setEntries: (pid, sessionId, selectedEntries) =>
+        api.patch(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}`, { selectedEntries }),
       remove: (pid, sessionId) =>
         api.del(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}`),
+    },
+    jobs: {
+      list: (pid, sessionId) =>
+        api.get(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/jobs`),
+      get: (pid, sessionId, jobId) =>
+        api.get(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/jobs/${encodePath(jobId)}`),
+      create: (pid, sessionId, payload) =>
+        api.post(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/jobs`, payload),
+      remove: (pid, sessionId, jobId) =>
+        api.del(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/jobs/${encodePath(jobId)}`),
+      pause: (pid, sessionId, jobId) =>
+        api.post(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/jobs/${encodePath(jobId)}/pause`),
+      apply: (pid, sessionId, jobId) =>
+        api.post(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/jobs/${encodePath(jobId)}/apply`),
+      stream: async (pid, sessionId, jobId, signal) => {
+        const res = await fetch(
+          `/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/jobs/${encodePath(jobId)}/stream`,
+          { method: "POST", signal }
+        );
+        if (!res.ok) {
+          let detail = `${res.status} ${res.statusText}`;
+          try {
+            const data = await res.json();
+            if (data.detail) detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+          } catch {
+            /* ignore */
+          }
+          throw new Error(detail);
+        }
+        return res.body;
+      },
     },
   },
 
