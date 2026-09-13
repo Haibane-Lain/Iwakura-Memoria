@@ -7,9 +7,10 @@ extracts back to the ``data/`` layout. Backups live next to the data dir
 
 Transient junk is skipped: staged ``.reorder-tmp`` renumbers, atomic-write
 ``*.tmp`` leftovers, the ``.trash`` recycle bin, the ``.snapshots`` version
-history, and hidden files. Comment bodies (``.comments``) are content, so they
-are the one hidden tree that *is* backed up. Old backups beyond
-``_BACKUP_KEEP`` are pruned automatically after each new one.
+history, and hidden files. Comment bodies (``.comments``) are content, and the
+root-level ``.zoom-rebased`` / ``.migration-done`` markers are durable state, so
+those hidden entries *are* backed up. Old backups beyond ``_BACKUP_KEEP`` are
+pruned automatically after each new one.
 """
 from __future__ import annotations
 
@@ -43,9 +44,22 @@ def _iter_backup_paths() -> list[Path]:
     )
 
 
+# Data-root hidden files that are durable state, not transient junk, so a
+# restore gets them back: the review-note sidecar, the one-time zoom-rebase
+# marker (otherwise a restore onto a fresh machine halves every stored zoom
+# again), and the legacy-data migration marker (otherwise startup can prefer a
+# stale code-adjacent `data/` folder over the restored one).
+_KEEP_HIDDEN_ROOT = {
+    config.COMMENTS_DIRNAME,
+    config.ZOOM_MARKER_FILENAME,
+    config._MIGRATION_MARKER,
+}
+
+
 def _skip_entry(path: Path) -> bool:
-    # Comment bodies are not transient junk: keep them so a restore gets the
-    # review notes back with the documents they annotate.
+    if path.parent == config.DATA_DIR and path.name in _KEEP_HIDDEN_ROOT:
+        return False
+    # The comment sidecar is a tree, so keep its descendants too.
     if config.COMMENTS_DIRNAME in path.parts:
         return False
     return (

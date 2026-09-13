@@ -12,6 +12,7 @@ Within a folder, documents are ordered by a numeric ``NN-`` filename prefix.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -147,6 +148,39 @@ def _save_lock_for(doc_path: Path) -> threading.Lock:
         if lock is None:
             lock = _save_locks[key] = threading.Lock()
         return lock
+
+
+def _doc_paths_under(path: Path) -> list[Path]:
+    """Every document file beneath *path* (or *path* itself when it is a file)."""
+    if path.is_file():
+        return [path]
+    try:
+        return list(path.rglob("*.md"))
+    except OSError:
+        return []
+
+
+@contextlib.contextmanager
+def _locks_for(paths):
+    """Hold the per-file save locks for every document in *paths*.
+
+    Structural moves (reorder, rename, move, delete) rename files out from
+    under open editors, so they must not run while an autosave holds a document
+    open. Acquiring the locks in sorted resolved-path order gives every
+    multi-lock holder the same order, so two structural operations can never
+    deadlock each other.
+    """
+    keys = sorted({str(p.resolve()) for p in paths})
+    locks = [_save_lock_for(Path(key)) for key in keys]
+    acquired: list[threading.Lock] = []
+    try:
+        for lock in locks:
+            lock.acquire()
+            acquired.append(lock)
+        yield
+    finally:
+        for lock in reversed(acquired):
+            lock.release()
 
 
 class DocumentError(ValueError):
@@ -613,7 +647,7 @@ def _migrate_folder_order(project_id: str) -> None:
 # key there can be dropped by a stale writer — which would let the rebase run
 # a second time and halve every document again.
 ZOOM_SCALE = 2
-ZOOM_MARKER = ".zoom-rebased"
+ZOOM_MARKER = config.ZOOM_MARKER_FILENAME
 
 
 def _rebased_zoom(value: Any) -> int | None:
@@ -1080,7 +1114,8 @@ def _move_folder_impl(
 
     before = _project_doc_map(project_folder)
     old_folder_id = _entry_id(path, project_folder)
-    path.rename(new_path)
+    with _locks_for(_doc_paths_under(path)):
+        path.rename(new_path)
     moved_id = _entry_id(new_path, project_folder)
     entries = _ordered_entry_ids(target_dir, project_folder)
     entries.remove(moved_id)
@@ -1115,7 +1150,8 @@ def rename_folder(project_id: str, folder_id: str, new_name: str) -> str:
         raise DocumentError(f"Folder '{new_name}' already exists")
     before = _project_doc_map(project_folder)
     old_folder_id = _entry_id(path, project_folder)
-    path.rename(new_path)
+    with _locks_for(_doc_paths_under(path)):
+        path.rename(new_path)
     # The folder's children (and their ids) moved with it.
     new_folder_id = _entry_id(new_path, project_folder)
     id_map: dict[str, str] = {}
@@ -1137,13 +1173,14 @@ def delete_folder(project_id: str, folder_id: str) -> dict[str, Any]:
         raise DocumentError("Cannot delete the project root")
     if path.parent == project_folder and path.name.lower() == config.WIKI_DIRNAME:
         raise DocumentError("Cannot delete the wiki root")
-    entry = trash_service.move_to_trash(
-        project_id,
-        path,
-        name=_display_name(path.name),
-        kind="folder",
-        original_id=folder_id,
-    )
+    with _locks_for(_doc_paths_under(path)):
+        entry = trash_service.move_to_trash(
+            project_id,
+            path,
+            name=_display_name(path.name),
+            kind="folder",
+            original_id=folder_id,
+        )
     _invalidate_word_stats(project_id)
     return entry
 
@@ -1203,9 +1240,12 @@ def save_document(
 ) -> dict[str, Any]:
     folder = _project_folder(project_id)
     path = _doc_path(folder, doc_id)
-    if not path.exists():
-        raise FileNotFoundError(f"Document '{doc_id}' not found")
     with _save_lock_for(path):
+        # Re-check under the lock: a structural move (reorder/rename) may have
+        # vacated this exact path since the caller's request began. Writing
+        # anyway would recreate the old file as a duplicate.
+        if not path.exists():
+            raise FileNotFoundError(f"Document '{doc_id}' not found")
         raw = path.read_text(encoding="utf-8")
 
         fm_match = _FRONTMATTER_RE.match(raw)
@@ -1252,63 +1292,66 @@ def update_style(
     """
     folder = _project_folder(project_id)
     path = _doc_path(folder, doc_id)
-    if not path.exists():
-        raise FileNotFoundError(f"Document '{doc_id}' not found")
-    raw = path.read_text(encoding="utf-8")
-    meta, body = parse_frontmatter(raw)
+    # Read-modify-write of the frontmatter must serialize against autosaves of
+    # the same file, or the newer body is clobbered by the body read here.
+    with _save_lock_for(path):
+        if not path.exists():
+            raise FileNotFoundError(f"Document '{doc_id}' not found")
+        raw = path.read_text(encoding="utf-8")
+        meta, body = parse_frontmatter(raw)
 
-    if target == "section":
-        section_name = (section or "").strip()
-        if not section_name:
-            raise ValueError("A section name is required")
-        styles: dict[str, Any] = {}
-        raw_styles = meta.get("styles")
-        if isinstance(raw_styles, dict):
-            # Legacy unquoted YAML mapping (``styles: {"Appearance": {...}}``).
-            styles = raw_styles
-        elif isinstance(raw_styles, str) and raw_styles.strip():
-            try:
-                parsed = json.loads(raw_styles)
-            except json.JSONDecodeError:
-                parsed = None
-            if isinstance(parsed, dict):
-                styles = parsed
-        entry = dict(styles.get(section_name, {}))
-        if clear:
-            styles.pop(section_name, None)
-        else:
-            if font:
-                entry["font"] = str(font)
-            if size is not None:
-                entry["size"] = int(size)
-            if align:
-                entry["align"] = str(align)
-            if entry:
-                styles[section_name] = entry
-            else:
+        if target == "section":
+            section_name = (section or "").strip()
+            if not section_name:
+                raise ValueError("A section name is required")
+            styles: dict[str, Any] = {}
+            raw_styles = meta.get("styles")
+            if isinstance(raw_styles, dict):
+                # Legacy unquoted YAML mapping (``styles: {"Appearance": {...}}``).
+                styles = raw_styles
+            elif isinstance(raw_styles, str) and raw_styles.strip():
+                try:
+                    parsed = json.loads(raw_styles)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    styles = parsed
+            entry = dict(styles.get(section_name, {}))
+            if clear:
                 styles.pop(section_name, None)
-        headings = _headings(body)
-        for key in [k for k in styles if k not in headings]:
-            styles.pop(key, None)
-        if styles:
-            meta["styles"] = json.dumps(styles, ensure_ascii=False)
+            else:
+                if font:
+                    entry["font"] = str(font)
+                if size is not None:
+                    entry["size"] = int(size)
+                if align:
+                    entry["align"] = str(align)
+                if entry:
+                    styles[section_name] = entry
+                else:
+                    styles.pop(section_name, None)
+            headings = _headings(body)
+            for key in [k for k in styles if k not in headings]:
+                styles.pop(key, None)
+            if styles:
+                meta["styles"] = json.dumps(styles, ensure_ascii=False)
+            else:
+                meta.pop("styles", None)
         else:
-            meta.pop("styles", None)
-    else:
-        if clear:
-            for key in ("font", "size", "align", "zoom"):
-                meta.pop(key, None)
-        else:
-            if font:
-                meta["font"] = str(font)
-            if size is not None:
-                meta["size"] = int(size)
-            if align:
-                meta["align"] = str(align)
-            if zoom is not None:
-                meta["zoom"] = int(zoom)
+            if clear:
+                for key in ("font", "size", "align", "zoom"):
+                    meta.pop(key, None)
+            else:
+                if font:
+                    meta["font"] = str(font)
+                if size is not None:
+                    meta["size"] = int(size)
+                if align:
+                    meta["align"] = str(align)
+                if zoom is not None:
+                    meta["zoom"] = int(zoom)
 
-    config._write_atomic(path, build_frontmatter(meta) + body)
+        config._write_atomic(path, build_frontmatter(meta) + body)
     return get_document(project_id, doc_id, mode)
 
 
@@ -1317,13 +1360,15 @@ def rename_document(
 ) -> dict[str, Any]:
     folder = _project_folder(project_id)
     path = _doc_path(folder, doc_id)
-    if not path.exists():
-        raise FileNotFoundError(f"Document '{doc_id}' not found")
-    raw = path.read_text(encoding="utf-8")
-    meta, body = parse_frontmatter(raw)
-    old_title = str(meta.get("title", "") or "")
-    meta["title"] = new_title.strip() or meta.get("title", "Untitled")
-    config._write_atomic(path, build_frontmatter(meta) + body)
+    # Serialize the frontmatter rewrite against an in-flight autosave.
+    with _save_lock_for(path):
+        if not path.exists():
+            raise FileNotFoundError(f"Document '{doc_id}' not found")
+        raw = path.read_text(encoding="utf-8")
+        meta, body = parse_frontmatter(raw)
+        old_title = str(meta.get("title", "") or "")
+        meta["title"] = new_title.strip() or meta.get("title", "Untitled")
+        config._write_atomic(path, build_frontmatter(meta) + body)
     new_title = str(meta.get("title", "") or "")
     if old_title and old_title != new_title:
         rewrite_wikilink_titles(project_id, old_title, new_title)
@@ -1341,13 +1386,14 @@ def delete_document(project_id: str, doc_id: str) -> dict[str, Any]:
     except OSError:
         meta = {}
     title = str(meta.get("title") or _default_meta(doc_id)["title"])
-    entry = trash_service.move_to_trash(
-        project_id,
-        path,
-        name=title,
-        kind="document",
-        original_id=doc_id,
-    )
+    with _locks_for([path]):
+        entry = trash_service.move_to_trash(
+            project_id,
+            path,
+            name=title,
+            kind="document",
+            original_id=doc_id,
+        )
     _invalidate_word_stats(project_id)
     return entry
 
@@ -1395,13 +1441,20 @@ def _renumber(
     if len(targets) != len(staged):
         raise DocumentError("Numbering collision while reordering")
 
+    # Hold every affected document's save lock across the whole move (folders
+    # bring their descendants with them), so a concurrent autosave cannot
+    # recreate a vacated path while it is being renumbered.
+    lock_paths: list[Path] = []
+    for old, _ in staged:
+        lock_paths.extend(_doc_paths_under(old))
     temp_dir = directory / config.REORDER_TMP_DIRNAME
     temp_dir.mkdir(exist_ok=True)
     try:
-        for old, _ in staged:
-            shutil.move(str(old), str(temp_dir / old.name))
-        for old, new in staged:
-            shutil.move(str(temp_dir / old.name), str(new))
+        with _locks_for(lock_paths):
+            for old, _ in staged:
+                shutil.move(str(old), str(temp_dir / old.name))
+            for old, new in staged:
+                shutil.move(str(temp_dir / old.name), str(new))
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -1475,7 +1528,8 @@ def _move_document_impl(
 
     before = _project_doc_map(project_folder)
     moved = _ensure_unique(target_dir, target_dir / path.name)
-    shutil.move(str(path), str(moved))
+    with _locks_for([path]):
+        shutil.move(str(path), str(moved))
 
     moved_id = _entry_id(moved, project_folder)
     entries = _ordered_entry_ids(target_dir, project_folder)

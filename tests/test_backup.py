@@ -1,6 +1,7 @@
 """Whole-library backups: zip creation, retention, listing, and deletion."""
 from __future__ import annotations
 
+import shutil
 import zipfile
 from datetime import datetime
 
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services import backup as backup_service
+from app.services import documents as documents_service
 
 
 class _FakeDatetime:
@@ -45,6 +47,9 @@ def test_create_backup_zips_data_and_skips_junk(data_dir, make_project):
     (data_dir / "settings.json").write_text('{"theme": "paper"}', encoding="utf-8")
     (data_dir / "proj" / ".hidden.md").write_text("x", encoding="utf-8")
     (data_dir / "proj" / "junk.tmp").write_text("x", encoding="utf-8")
+    # Durable hidden markers at the data root must travel with the backup.
+    (data_dir / ".zoom-rebased").write_text("rebased\n", encoding="utf-8")
+    (data_dir / ".migration-done").write_text("migrated\n", encoding="utf-8")
 
     res = backup_service.create_backup()
 
@@ -55,8 +60,30 @@ def test_create_backup_zips_data_and_skips_junk(data_dir, make_project):
     assert "data/proj/project.json" in names
     assert "data/proj/01-a.md" in names
     assert "data/settings.json" in names
+    assert "data/.zoom-rebased" in names
+    assert "data/.migration-done" in names
     assert not any("hidden" in n for n in names)
     assert not any(n.endswith(".tmp") for n in names)
+
+
+def test_restore_keeps_the_zoom_marker_and_values(data_dir, make_project):
+    """A backup restored onto a fresh machine must not re-run the zoom rebase."""
+    project = make_project("proj")
+    doc = project / "01-a.md"
+    doc.write_text("---\ntitle: A\nzoom: 50\n---\n\nBody\n", encoding="utf-8")
+    (data_dir / ".zoom-rebased").write_text("rebased\n", encoding="utf-8")
+
+    res = backup_service.create_backup()
+
+    shutil.rmtree(data_dir)
+    data_dir.mkdir()
+    with zipfile.ZipFile(backup_service.backups_dir() / res["name"]) as zf:
+        zf.extractall(data_dir.parent)
+
+    assert (data_dir / ".zoom-rebased").exists()
+    assert documents_service.rebase_zoom_scale() == 0
+    meta, _ = documents_service.parse_frontmatter(doc.read_text(encoding="utf-8"))
+    assert meta["zoom"] == 50
 
 
 def _names():

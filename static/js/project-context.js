@@ -77,6 +77,10 @@ function makePane(name) {
     saving: false,
     timer: null,
     savePromise: null,
+    // In-flight drain loop (see editor-workspace.js): while it runs, the pane
+    // keeps flushing until the editor is clean again, so edits made during a
+    // save are never dropped.
+    saveLoop: null,
   };
 }
 
