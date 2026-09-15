@@ -17,6 +17,7 @@ import {
   panes,
   paneList,
   activePane,
+  paneForDoc,
   editorPool,
   docTabs,
   allDocs,
@@ -46,7 +47,8 @@ import {
 } from "./editor-prefs.js";
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import { DEFAULT_WIKI_ZOOM, DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
-import { keepScrollTop } from "./scroll-keep.js";
+import { keepScrollTop, alignTop } from "./scroll-keep.js";
+import { UNTITLED, renameTarget } from "./entry-naming.js";
 import { TEXT_COLORS } from "./text-colors.js";
 import {
   el,
@@ -755,6 +757,97 @@ async function renameProject(e) {
   }
 }
 
+// A freshly created entry the user is naming in the tree. While set, the row is
+// pinned flush to the top of the scroller on every render (the "freeze") and
+// rendered as an inline field instead of a plain title.
+let namingDocId = null;
+let namingDraft = "";
+// The first render after creation focuses the field and selects the placeholder;
+// later renders only restore the caret, so typing is never re-selected.
+let namingFocusPending = false;
+
+// Put one row's top edge flush with the scroller's top. Re-applied after every
+// render while an entry is being named, which is what holds the sidebar still.
+function pinRowToTop(scrollEl, docId) {
+  const row = [...scrollEl.querySelectorAll(".tree-item")].find((r) => r.dataset.docid === docId);
+  if (!row) return;
+  scrollEl.scrollTop = alignTop(
+    row.getBoundingClientRect(),
+    scrollEl.getBoundingClientRect(),
+    scrollEl.scrollTop
+  );
+}
+
+// Start naming a freshly created entry: the next render pins its row and puts
+// the caret in the field, with the placeholder selected so typing replaces it.
+function beginNaming(doc) {
+  namingDocId = doc.id;
+  namingDraft = doc.title || UNTITLED;
+  namingFocusPending = true;
+}
+
+function stopNaming() {
+  namingDocId = null;
+  namingFocusPending = false;
+}
+
+function cancelName() {
+  if (!namingDocId) return;
+  stopNaming();
+  renderSidebar({ keepScroll: true });
+}
+
+// Save the typed name. A blank or unchanged draft just closes the field.
+async function commitName(docId) {
+  if (docId !== namingDocId) return;
+  const next = renameTarget(namingDraft, docTitleAny(docId) || UNTITLED);
+  if (!next) {
+    cancelName();
+    return;
+  }
+  stopNaming();
+  try {
+    await renameDocFromTree(docId, next);
+  } catch (err) {
+    // Keep the typed name so the user can retry instead of losing it.
+    namingDocId = docId;
+    namingDraft = next;
+    namingFocusPending = true;
+    renderSidebar({ keepScroll: true });
+    toast(err.message, "error");
+  }
+}
+
+// The inline name field a new entry starts in. Enter commits, Esc keeps the
+// placeholder, and clicking away commits too — unless the blur is only a
+// re-render dropping the node, in which case the draft must survive.
+function namingInput(doc) {
+  return el("input", {
+    class: "tree-name-input",
+    value: namingDraft,
+    placeholder: UNTITLED,
+    spellcheck: "false",
+    oninput: (e) => {
+      namingDraft = e.target.value;
+    },
+    onclick: (e) => e.stopPropagation(),
+    onmousedown: (e) => e.stopPropagation(),
+    onkeydown: (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitName(doc.id);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelName();
+      }
+    },
+    onblur: (e) => {
+      if (e.target.isConnected) commitName(doc.id);
+    },
+  });
+}
+
 function renderTree(sidebarEl, { keepScroll = false } = {}) {
   const wiki = isWikiScope();
   const tree = activeTree() || { folders: [], documents: [] };
@@ -770,6 +863,12 @@ function renderTree(sidebarEl, { keepScroll = false } = {}) {
   const prevInput = pinEl.querySelector(".tree-search-input");
   const hadFocus = !!prevInput && document.activeElement === prevInput;
   const caret = hadFocus ? [prevInput.selectionStart, prevInput.selectionEnd] : null;
+
+  // Same idea for the inline name field of an entry being created: remember its
+  // caret so a re-render does not drop it mid-name.
+  const prevName = scrollEl.querySelector(".tree-name-input");
+  const nameHadFocus = !!prevName && document.activeElement === prevName;
+  const nameCaret = nameHadFocus ? [prevName.selectionStart, prevName.selectionEnd] : null;
 
   // The filter is scope-agnostic; only the tree and the box's wording differ.
   const { tree: shown, openIds, count } = filterTree(tree, treeQuery());
@@ -815,7 +914,21 @@ function renderTree(sidebarEl, { keepScroll = false } = {}) {
       next.setSelectionRange(caret[0], caret[1]);
     }
   }
-  keepScrollTop(scrollEl, () => scrollEl.replaceChildren(frag), keepScroll);
+  keepScrollTop(scrollEl, () => scrollEl.replaceChildren(frag), keepScroll && !namingDocId);
+  if (!namingDocId) return;
+  // Pin the entry being named to the top, then keep the caret in its field
+  // across the re-render (selecting the placeholder only on the first pass).
+  pinRowToTop(scrollEl, namingDocId);
+  const field = scrollEl.querySelector(".tree-name-input");
+  if (!field) return;
+  if (namingFocusPending) {
+    namingFocusPending = false;
+    field.focus();
+    field.select();
+  } else if (nameHadFocus && nameCaret) {
+    field.focus();
+    field.setSelectionRange(nameCaret[0], nameCaret[1]);
+  }
 }
 
 function emptyTreeHint(wiki) {
@@ -982,13 +1095,16 @@ function renderFolderRow(folder, parentId) {
 function docItem(doc, folderId) {
   const isPrimary = state.currentDocId === doc.id;
   const isSecondary = state.split && panes.secondary.docId === doc.id && !isPrimary;
+  // Dragging a row that is currently an inline name field would fight the text
+  // selection, so the new entry cannot be dragged until it is named.
+  const naming = doc.id === namingDocId;
   const node = el(
     "div",
     {
       class: `tree-item ${isPrimary ? "active" : ""}${isSecondary ? " split-active" : ""}`,
       dataset: { docid: doc.id, folder: folderId, kind: doc.kind },
       title: prettyPath(doc),
-      draggable: "true",
+      draggable: naming ? "false" : "true",
       onclick: (e) => {
         if (e.target.closest(".grip")) return;
         openDocument(doc.id);
@@ -1004,11 +1120,11 @@ function docItem(doc, folderId) {
     },
     [
       el("span", { class: "grip" }, doc.kind === "chapter" ? "≣" : "◦"),
-      el("span", { class: "name" }, doc.title),
+      naming ? namingInput(doc) : el("span", { class: "name" }, doc.title),
       el("span", { class: "words" }, formatNumber(doc.words)),
     ]
   );
-  setupDocDrag(node);
+  if (!naming) setupDocDrag(node);
   return node;
 }
 
@@ -1430,27 +1546,23 @@ async function newDocument(kind, folder) {
   }
   _creating = true;
   try {
-    const title = await promptDialog({
-      title: kind === "chapter" ? "New chapter" : "New note",
-      label: "Title",
-      placeholder: kind === "chapter" ? "Chapter title" : "Note title",
-      confirmText: "Create",
-    });
-    if (title === null) return;
-    if (!title.trim()) {
-      toast("A title is required", "error");
-      return;
-    }
     const doc = await api.docs.create(state.project.id, {
-      title: title.trim(),
+      title: UNTITLED,
       kind,
       folder: folder || null,
     });
     await flushSave();
-    // A live filter would hide the chapter/note we just made; show the full tree.
+    // A live filter (or a collapsed folder) would hide the chapter/note we just
+    // made; show the full tree and reveal its folder before naming it.
     state.writeQuery = "";
+    if (folder) state.expanded.add(folder);
+    beginNaming(doc);
     await afterTreeChange();
     await refreshWiki();
+    // afterTreeChange re-points the open document by title, which with a shared
+    // "Untitled" placeholder can land on a different entry. We know exactly
+    // which one we made, so open that.
+    state.currentDocId = null;
     await openDocument(doc.id);
   } catch (err) {
     toast(err.message, "error");
@@ -1519,32 +1631,27 @@ async function pickTemplate() {
 }
 
 async function newWikiEntry(folder) {
-  const title = await promptDialog({
-    title: "New wiki entry",
-    label: "Title",
-    placeholder: "Entry title",
-    confirmText: "Next",
-  });
-  if (title === null) return;
-  if (!title.trim()) {
-    toast("A title is required", "error");
-    return;
-  }
+  // The template is a content choice, so it is still picked up front; the name
+  // is typed into the new tree row instead.
   const tpl = await pickTemplate();
   if (tpl === undefined) return;
   try {
     const doc = await api.docs.create(state.project.id, {
-      title: title.trim(),
+      title: UNTITLED,
       kind: "note",
       folder: folder || "worldbuilding",
       content: tpl ? buildTemplateContent(tpl) : "",
       docType: tpl ? tpl.type : "note",
     });
     await flushSave();
-    // A live filter would hide the entry we just made; show the full tree.
+    // A live filter (or a collapsed folder) would hide the entry we just made.
     state.wikiQuery = "";
+    if (folder && folder !== "worldbuilding") state.wikiExpanded.add(folder);
+    beginNaming(doc);
     await afterTreeChange();
     await refreshWiki();
+    // See newDocument: the title-based remap is ambiguous with "Untitled".
+    state.currentDocId = null;
     openDocument(doc.id);
   } catch (err) {
     toast(err.message, "error");
@@ -1815,17 +1922,27 @@ async function deleteCurrentDoc() {
   }
 }
 
+// Rename a document and refresh everything that shows its title: the tree, the
+// tabs, and the open editor's header. Throws so callers can keep a typed name.
+async function renameDocFromTree(docId, newTitle) {
+  await api.docs.rename(state.project.id, docId, newTitle);
+  await refreshTree();
+  // Renaming can rewrite wikilinks inside other documents, so drop the warm
+  // editors for everything except the open one (whose body is unchanged).
+  invalidateEditorCache(true);
+  persistTabs();
+  // A rename only changes a row's text, so the list must not move with it.
+  renderSidebar({ keepScroll: true });
+  renderDocTabs();
+  const pane = paneForDoc(docId);
+  const input = pane && pane.root && pane.root.querySelector(".doc-title-input");
+  if (input) input.value = newTitle;
+}
+
 async function renameCurrentDoc(newTitle) {
   if (!newTitle || !state.currentDocId) return;
   try {
-    await api.docs.rename(state.project.id, state.currentDocId, newTitle);
-    await refreshTree();
-    // Renaming can rewrite wikilinks inside other documents, so drop the warm
-    // editors for everything except the open one (whose body is unchanged).
-    invalidateEditorCache(true);
-    persistTabs();
-    renderSidebar();
-    renderDocTabs();
+    await renameDocFromTree(state.currentDocId, newTitle);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -3284,6 +3401,8 @@ function renderSidebar({ keepScroll = false } = {}) {
 async function init(params) {
   // A fresh project route starts with no warm editors from a previous project.
   resetEditorPool();
+  // ...and no half-named entry carried over from the project just left.
+  stopNaming();
   // Tabs belong to the project just left; restoreTabs() refills from storage
   // once the new tree is known.
   docTabs.restore({ tabs: [], active: null, recent: [] });

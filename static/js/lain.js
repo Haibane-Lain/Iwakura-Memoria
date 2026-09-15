@@ -260,18 +260,34 @@ function listEntries() {
   ];
 }
 
+// One background turn. The streaming endpoint has no client timeout (the plain
+// POST is capped at 15s), and a review only needs the final `done` payload —
+// the token/tool events are ignored.
+async function chatTurn(payload) {
+  const body = await api.ai.chatStream(ctx.projectId(), payload);
+  let resp = null;
+  let error = null;
+  await readSSE(body, (ev) => {
+    if (ev.type === "done") resp = ev.data;
+    else if (ev.type === "error") error = new Error(ev.data.message);
+  });
+  if (error) throw error;
+  if (!resp) throw new Error("Lain's review ended before it finished.");
+  return resp;
+}
+
 // Run a critique over the picked entries, in the background: no panel, no
-// streaming, no per-note confirmation. It gets its own session so it can never
-// collide with — or change the mode/access of — the conversation the user has
-// open, and so the review stays a self-contained record. The applied actions are
-// handed to the shell, which anchors the comments and reloads the panes.
+// visible chat, no per-note confirmation. It gets its own session so it can
+// never collide with — or change the mode/access of — the conversation the user
+// has open, and so the review stays a self-contained record. The applied actions
+// are handed to the shell, which anchors the comments and reloads the panes.
 async function runCritique(ids, { label } = {}) {
   const entries = [...new Set((ids || []).filter(Boolean))];
   if (!entries.length) return { comments: 0, actions: [], settled: true };
   const created = await api.ai.sessions.create(ctx.projectId());
   const sessionId = created.sessionId;
   const result = await runCritiquePass({
-    chat: (payload) => api.ai.chat(ctx.projectId(), payload),
+    chat: chatTurn,
     confirm: (decision) => api.ai.confirm(ctx.projectId(), sessionId, decision),
     payload: {
       sessionId,

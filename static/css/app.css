@@ -664,6 +664,19 @@ a {
   color: var(--text-faint);
 }
 
+/* The inline name field a freshly created entry starts in (see project.js). */
+.tree-item .tree-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 5px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
 .tree-item .grip {
   cursor: grab;
   color: var(--text-faint);

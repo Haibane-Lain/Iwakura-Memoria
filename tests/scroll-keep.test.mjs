@@ -9,7 +9,7 @@
 // offset while it is being re-rendered.
 import assert from "node:assert/strict";
 
-import { keepScrollTop } from "../static/js/scroll-keep.js";
+import { keepScrollTop, alignTop } from "../static/js/scroll-keep.js";
 
 /**
  * A container that behaves like Chromium's: re-rendering it nudges the offset.
@@ -77,5 +77,19 @@ function container({ top = 543, nudge = 21 } = {}) {
   keepScrollTop(list, () => list.replaceChildren(), true);
   assert.equal(list.scrollTop, 0);
 }
+
+// --- alignTop (pin a new entry's row to the scroller's top edge) -----------
+// The row's top sits 400px below the container's top in the viewport, so the
+// offset that brings it flush is the current offset plus that gap.
+assert.equal(alignTop({ top: 640 }, { top: 240 }, 100), 500, "row below: offset grows by the gap");
+
+// A row scrolled past the top pulls the offset back.
+assert.equal(alignTop({ top: 100 }, { top: 240 }, 500), 360, "row above: offset shrinks");
+
+// Already flush: nothing changes.
+assert.equal(alignTop({ top: 240 }, { top: 240 }, 123), 123, "already flush stays put");
+
+// Clamped at the top rather than going negative.
+assert.equal(alignTop({ top: 0 }, { top: 240 }, 0), 0, "never negative");
 
 console.log("scroll-keep: ok");

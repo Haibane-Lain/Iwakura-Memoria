@@ -105,7 +105,7 @@ function installFetch(routes) {
     const method = (opts.method || "GET").toUpperCase();
     calls.push(`${method} ${href}`);
     for (const [pattern, handler] of routes) {
-      if (pattern.test(href)) return jsonResponse(await handler(href, method));
+      if (pattern.test(href)) return jsonResponse(await handler(href, method, opts));
     }
     unmatched.push(`${method} ${href}`);
     return jsonResponse({}, 404);
@@ -157,6 +157,9 @@ const PROJECT = {
   documents: 0,
 };
 const EMPTY_TREE = { folders: [], documents: [] };
+// The write tree is mutable so the create-a-chapter flow below can add to it.
+let writeTree = EMPTY_TREE;
+let renamedTitle = null;
 // Used by the repetition dialog (it asks for scope "all"); the shell boot
 // itself only fetches the write and wiki trees, so this never affects the
 // empty-write-tab assertions below.
@@ -250,9 +253,38 @@ const STATS = {
 };
 const PROJECT_ROUTES = [
   [/\/api\/settings$/, () => SETTINGS],
-  [/\/api\/projects\/demo\/tree\?scope=write$/, () => EMPTY_TREE],
+  [/\/api\/projects\/demo\/tree\?scope=write$/, () => writeTree],
   [/\/api\/projects\/demo\/tree\?scope=wiki$/, () => EMPTY_TREE],
   [/\/api\/projects\/demo\/tree\?scope=all$/, () => SAMPLE_TREE],
+  // Creating a chapter appends it to the write tree; the inline rename then
+  // PATCHes the new document.
+  [
+    /\/api\/projects\/demo\/documents$/,
+    (href, method) => {
+      if (method === "POST") {
+        writeTree = {
+          folders: [],
+          documents: [{ id: "01-untitled", title: "Untitled", kind: "chapter", words: 0 }],
+        };
+        return writeTree.documents[0];
+      }
+      return writeTree;
+    },
+  ],
+  [
+    /\/api\/projects\/demo\/documents\/[^/]+$/,
+    (href, method, opts) => {
+      const body = opts && opts.body ? JSON.parse(opts.body) : {};
+      if (method === "PATCH" && body.title) {
+        renamedTitle = body.title;
+        writeTree = {
+          ...writeTree,
+          documents: writeTree.documents.map((d) => ({ ...d, title: body.title })),
+        };
+      }
+      return { id: "01-untitled", title: body.title || "Untitled", kind: "chapter", content: "", words: 0 };
+    },
+  ],
   [/\/api\/projects\/demo\/dictionary$/, () => ({ words: [] })],
   [/\/api\/projects\/demo\/wiki$/, () => EMPTY_WIKI],
   [/\/api\/projects\/demo\/stats$/, () => STATS],
@@ -466,6 +498,28 @@ await check("the project shell boots against a mocked API", async () => {
   const historyDialog = await waitFor(() => doc.querySelector(".snapshot-modal"));
   assert.match(historyDialog.textContent, /Document history/);
   assert.match(historyDialog.textContent, /Open a document to see its history/);
+
+  // Creating a chapter no longer asks for a title up front: the entry appears
+  // as "Untitled" with its row as a focused inline name field, and typing a
+  // name + Enter renames it in place.
+  const addChapter = doc.querySelector('.mini-add[title="New chapter"]');
+  assert.ok(addChapter, "the + Chapter button renders");
+  addChapter.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => calls.includes("POST /api/projects/demo/documents"));
+  const field = await waitFor(() => doc.querySelector(".tree-item .tree-name-input"));
+  assert.equal(field.value, "Untitled", "the new entry starts unnamed");
+  // The opening flow re-renders the sidebar again; wait for the field to hold
+  // focus, then grab the live node just before typing.
+  await waitFor(() => doc.activeElement?.classList.contains("tree-name-input"));
+  const live = doc.querySelector(".tree-name-input");
+  live.value = "Prologue";
+  live.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  live.dispatchEvent(
+    new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+  );
+  await waitFor(() => renamedTitle === "Prologue");
+  await waitFor(() => doc.querySelector(".tree-item .name")?.textContent === "Prologue");
+  assert.ok(!doc.querySelector(".tree-name-input"), "the field closes once the name is saved");
 
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   assert.equal(capture.errors.length, 0, `a tab threw: ${capture.errors.map(String).join("; ")}`);

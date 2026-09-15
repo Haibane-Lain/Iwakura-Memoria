@@ -93,14 +93,15 @@ def test_opening_a_document_keeps_the_sidebar_scroll_position():
     """
     js = PROJECT_JS.read_text(encoding="utf-8")
 
-    assert re.search(r'import \{ keepScrollTop \} from "\./scroll-keep\.js"', js), (
-        "project.js must import keepScrollTop from ./scroll-keep.js"
+    assert re.search(r'import \{ keepScrollTop, alignTop \} from "\./scroll-keep\.js"', js), (
+        "project.js must import keepScrollTop and alignTop from ./scroll-keep.js"
     )
     assert re.search(r"function renderTree\(sidebarEl, \{ keepScroll = false \} = \{\}\)", js), (
         "renderTree must accept the keepScroll option"
     )
     assert re.search(
-        r"keepScrollTop\(scrollEl, \(\) => scrollEl\.replaceChildren\(frag\), keepScroll\)", js
+        r"keepScrollTop\(scrollEl, \(\) => scrollEl\.replaceChildren\(frag\), keepScroll && !namingDocId\)",
+        js,
     ), "renderTree must replace its children through keepScrollTop"
     assert not re.search(r"(?m)^\s*scrollEl\.replaceChildren\(frag\);", js), (
         "renderTree must not replace its children directly"
@@ -117,6 +118,47 @@ def test_opening_a_document_keeps_the_sidebar_scroll_position():
     )
     assert re.search(r"renderSidebar\(\{ keepScroll: true \}\)", workspace), (
         "openDocument is the caller that pins the list"
+    )
+
+
+def test_a_new_entry_is_named_inline_and_pinned_to_the_top():
+    """Creating a chapter/note/entry puts its row flush with the top of the
+    sidebar and holds it there until the name is typed.
+
+    jsdom has no layout engine, so the freeze is pinned at the source: while
+    ``namingDocId`` is set, renderTree scrolls the row with ``alignTop`` after
+    every render and skips the usual keep-the-old-offset behaviour.
+    """
+    js = PROJECT_JS.read_text(encoding="utf-8")
+
+    assert re.search(r"let namingDocId = null", js), (
+        "project.js must track the entry being named"
+    )
+    assert re.search(r"function pinRowToTop\(scrollEl, docId\)", js), (
+        "the row must be pinned by a helper"
+    )
+    assert re.search(r"scrollEl\.scrollTop = alignTop\(", js), (
+        "the pin must use alignTop"
+    )
+    assert re.search(r"pinRowToTop\(scrollEl, namingDocId\)", js), (
+        "renderTree must re-pin the row on every render while naming"
+    )
+    assert re.search(r"keepScroll && !namingDocId", js), (
+        "a naming render pins instead of keeping the old offset"
+    )
+    assert re.search(r'class: "tree-name-input"', js), (
+        "the row must render an inline name field"
+    )
+    assert js.count("beginNaming(doc);") == 2, (
+        "both + Chapter/Note and + Entry must start the inline name"
+    )
+    assert re.search(r"title: UNTITLED", js), (
+        "new entries are created with the placeholder title"
+    )
+
+    decls = _block(".tree-item .tree-name-input")
+    assert re.search(r"border\s*:\s*1px\s+solid", decls), (
+        "the name field must read as an editable field"
     )
 
 
