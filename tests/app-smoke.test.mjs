@@ -512,6 +512,11 @@ await check("the project shell boots against a mocked API", async () => {
   // focus, then grab the live node just before typing.
   await waitFor(() => doc.activeElement?.classList.contains("tree-name-input"));
   const live = doc.querySelector(".tree-name-input");
+  // A blur with the placeholder untouched must NOT throw the field away. The
+  // editor's focus() used to fire exactly this blur (focus steal -> blur ->
+  // cancel), which left nothing on the row to type into.
+  live.dispatchEvent(new dom.window.Event("blur"));
+  assert.ok(doc.querySelector(".tree-name-input"), "an unchanged blur keeps the name field");
   live.value = "Prologue";
   live.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
   live.dispatchEvent(

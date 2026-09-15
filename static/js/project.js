@@ -797,14 +797,12 @@ function cancelName() {
   renderSidebar({ keepScroll: true });
 }
 
-// Save the typed name. A blank or unchanged draft just closes the field.
+// Save the typed name. A blank or unchanged draft keeps the field (the entry is
+// still unnamed); only a real change renames.
 async function commitName(docId) {
   if (docId !== namingDocId) return;
   const next = renameTarget(namingDraft, docTitleAny(docId) || UNTITLED);
-  if (!next) {
-    cancelName();
-    return;
-  }
+  if (!next) return;
   stopNaming();
   try {
     await renameDocFromTree(docId, next);
@@ -816,6 +814,18 @@ async function commitName(docId) {
     renderSidebar({ keepScroll: true });
     toast(err.message, "error");
   }
+}
+
+// The editor claims focus when it mounts (renderEditorView ends with
+// active.ctrl.focus()), so the new entry's name field is focused again after
+// the open: the keyboard must land in the name, not the document.
+function focusNamingField() {
+  if (!namingDocId) return;
+  const field = document.querySelector(".sidebar-scroll .tree-name-input");
+  if (!field) return;
+  field.focus();
+  if (namingDraft === UNTITLED) field.select();
+  else field.setSelectionRange(field.value.length, field.value.length);
 }
 
 // The inline name field a new entry starts in. Enter commits, Esc keeps the
@@ -1107,6 +1117,8 @@ function docItem(doc, folderId) {
       draggable: naming ? "false" : "true",
       onclick: (e) => {
         if (e.target.closest(".grip")) return;
+        // Navigating to another entry ends an unfinished inline name.
+        if (namingDocId && doc.id !== namingDocId) stopNaming();
         openDocument(doc.id);
       },
       oncontextmenu: (e) => {
@@ -1564,6 +1576,7 @@ async function newDocument(kind, folder) {
     // which one we made, so open that.
     state.currentDocId = null;
     await openDocument(doc.id);
+    focusNamingField();
   } catch (err) {
     toast(err.message, "error");
   } finally {
@@ -1652,7 +1665,8 @@ async function newWikiEntry(folder) {
     await refreshWiki();
     // See newDocument: the title-based remap is ambiguous with "Untitled".
     state.currentDocId = null;
-    openDocument(doc.id);
+    await openDocument(doc.id);
+    focusNamingField();
   } catch (err) {
     toast(err.message, "error");
   }
