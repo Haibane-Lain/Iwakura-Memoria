@@ -27,3 +27,17 @@ export function keepScrollTop(container, render, keep = true) {
   render();
   if (keep && container.scrollTop !== before) container.scrollTop = before;
 }
+
+/**
+ * The offset that puts `rowRect`'s top edge flush with `containerRect`'s top
+ * edge. Pure, so the "pin the new entry to the top" maths can be tested without
+ * a layout engine.
+ *
+ * @param {{top: number}} rowRect the row's bounding rect
+ * @param {{top: number}} containerRect the scroll container's bounding rect
+ * @param {number} scrollTop the container's current offset
+ * @returns {number}
+ */
+export function alignTop(rowRect, containerRect, scrollTop = 0) {
+  return Math.max(0, scrollTop + (rowRect.top - containerRect.top));
+}
