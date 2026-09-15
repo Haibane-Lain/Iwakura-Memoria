@@ -108,7 +108,7 @@ export function renderCritiqueDialog({ entries = [], currentDocId = null } = {})
       el(
         "p",
         { class: "critique-hint" },
-        "Pick the entries for Lain to review. It will propose comments on exact quotes; you confirm each note before it is anchored."
+        "Pick the entries for Lain to review. It focuses on grammar, sentence structure and flow, and anchors a comment to each quote it flags — your prose is never changed."
       ),
       searchEl,
       el("div", { class: "critique-tools" }, [

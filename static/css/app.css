@@ -918,6 +918,16 @@ a {
   color: var(--accent);
 }
 
+/* A background job (the critique pass) owns the button until it finishes. */
+.tool-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tool-btn.busy {
+  color: var(--accent);
+}
+
 .tool-btn.grammar-on {
   color: var(--ok, #27ae60);
 }

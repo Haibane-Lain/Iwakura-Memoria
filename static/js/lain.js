@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { el, toast, promptDialog, confirmDialog, escapeHtml, formatNumber } from "./ui.js";
 import { sanitizeChatHTML } from "./sanitize.js";
+import { CRITIQUE_PROMPT, runCritiquePass } from "./critique-run.js";
 
 const SUGGESTIONS = [
   "Review the current entry for inconsistencies",
@@ -10,13 +11,7 @@ const SUGGESTIONS = [
 ];
 
 // The prompt the ribbon's Critique button seeds. It asks for anchored comments
-// (each confirmed by the user) rather than prose edits.
-const CRITIQUE_PROMPT =
-  "Act as a developmental editor. Review the selected entries and attach comments with the " +
-  "add_comment tool: for each problem, quote a short, exact, contiguous span of the entry's " +
-  "plain text (copied verbatim, without formatting markers) and give a concise note. Aim for " +
-  "3–8 comments per entry, most important first, and do not rewrite or edit the prose. When you " +
-  "are done, summarize the main issues briefly.";
+// (applied automatically) rather than prose edits. See critique-run.js.
 
 // Bottom panel geometry. The drag handle sets the panel height; the value is
 // clamped and remembered so a reopened panel keeps its size.
@@ -265,22 +260,40 @@ function listEntries() {
   ];
 }
 
-// Run a critique over the picked entries. Simple mode injects exactly those
-// entries (and no browsing); Plan access still permits the annotate tool, so
-// Lain proposes comments without touching the prose.
-async function startCritique(ids) {
-  if (!Array.isArray(ids) || !ids.length || busy || pending) return;
-  await ensureSession();
-  if (!session || !session.sessionId) return;
-  session.mode = "simple";
-  session.access = "plan";
-  session.selectedEntries = [...new Set(ids)];
-  renderToggles();
-  renderContextChips();
-  renderContextList();
-  open();
-  inputEl.value = CRITIQUE_PROMPT;
-  await sendMessage();
+// Run a critique over the picked entries, in the background: no panel, no
+// streaming, no per-note confirmation. It gets its own session so it can never
+// collide with — or change the mode/access of — the conversation the user has
+// open, and so the review stays a self-contained record. The applied actions are
+// handed to the shell, which anchors the comments and reloads the panes.
+async function runCritique(ids, { label } = {}) {
+  const entries = [...new Set((ids || []).filter(Boolean))];
+  if (!entries.length) return { comments: 0, actions: [], settled: true };
+  const created = await api.ai.sessions.create(ctx.projectId());
+  const sessionId = created.sessionId;
+  const result = await runCritiquePass({
+    chat: (payload) => api.ai.chat(ctx.projectId(), payload),
+    confirm: (decision) => api.ai.confirm(ctx.projectId(), sessionId, decision),
+    payload: {
+      sessionId,
+      message: CRITIQUE_PROMPT,
+      // The fresh session's default scope, so a picked entry is always in reach.
+      folders: ["", "worldbuilding"],
+      currentDocId: ctx.currentDocId(),
+      access: "plan",
+      mode: "simple",
+      selectedEntries: entries,
+    },
+  });
+  // The server titles a session from its (long) first message; give it a
+  // readable name instead. Cosmetic — never fail the run over it.
+  try {
+    const fallback = `${entries.length} entr${entries.length === 1 ? "y" : "ies"}`;
+    await api.ai.sessions.rename(ctx.projectId(), sessionId, `Critique — ${label || fallback}`);
+  } catch {
+    /* the auto-generated title stands */
+  }
+  if (result.actions.length && ctx.onActions) ctx.onActions(result.actions);
+  return result;
 }
 
 /* ---------------- long jobs ---------------- */
@@ -1426,5 +1439,5 @@ export function mount(hostEl, context) {
       applyPanelHeight(Number.isFinite(raw) ? raw : storedPanelHeight(), false);
     });
   }
-  return { toggle, open, close, isOpen, refresh, refreshScope, listEntries, startCritique };
+  return { toggle, open, close, isOpen, refresh, refreshScope, listEntries, runCritique };
 }

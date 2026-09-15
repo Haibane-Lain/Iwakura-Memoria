@@ -1306,11 +1306,20 @@ async function performFolderMove(folderId, targetFolder, index) {
   }
 }
 
-// The ribbon's Critique button: pick entries, then hand the pass to Lain. The
-// selection UI lives in critique-dialog.js; the run lives in lain.js.
-async function openCritique() {
+// Review → Critique: review the entry on screen in one click. With nothing open
+// there is nothing to review, so fall back to the picker.
+async function critiqueCurrentEntry() {
+  if (state.currentDocId) {
+    await runCritique([state.currentDocId], { label: docTitleAny(state.currentDocId) });
+    return;
+  }
+  await openCritiquePicker();
+}
+
+// Review → Entries…: pick one or more entries, then run the same background
+// pass. The selection UI lives in critique-dialog.js; the run lives in lain.js.
+async function openCritiquePicker() {
   if (!lainCtrl) return;
-  lainCtrl.open();
   await lainCtrl.refreshScope();
   const entries = lainCtrl.listEntries ? lainCtrl.listEntries() : [];
   if (!entries.length) {
@@ -1319,7 +1328,49 @@ async function openCritique() {
   }
   const ids = await renderCritiqueDialog({ entries, currentDocId: state.currentDocId });
   if (!ids || !ids.length) return;
-  await lainCtrl.startCritique(ids);
+  const label = ids.length === 1 ? docTitleAny(ids[0]) : `${ids.length} entries`;
+  await runCritique(ids, { label });
+}
+
+let critiqueBusy = false;
+
+// Dim the Review buttons (and relabel Critique) for the length of a background
+// run, so a second click cannot start an overlapping pass.
+function setCritiqueBusy(on) {
+  critiqueBusy = on;
+  for (const { def, btn } of toolbarButtons) {
+    if (def.cmd !== "critique" && def.cmd !== "critiqueEntries") continue;
+    btn.disabled = on;
+    btn.classList.toggle("busy", on);
+  }
+  const btn = toolbarButtons.find((b) => b.def.cmd === "critique");
+  const text = btn && btn.btn.querySelector(".tool-btn-text");
+  if (text) text.textContent = on ? "Reviewing…" : "Critique";
+}
+
+// The background critique. It never opens the Lain panel; the shell hears about
+// the applied notes through `onActions` (which reloads the affected panes so the
+// new highlights appear). Flush first: Lain reads the entry from disk.
+async function runCritique(ids, opts = {}) {
+  if (!lainCtrl || critiqueBusy || !ids || !ids.length) return;
+  setCritiqueBusy(true);
+  try {
+    await flushSave();
+    const result = await lainCtrl.runCritique(ids, opts);
+    if (result.comments) {
+      const title = ids.length === 1 ? docTitleAny(ids[0]) : null;
+      const where = title ? ` to “${title}”` : "";
+      toast(`Lain added ${result.comments} comment${result.comments === 1 ? "" : "s"}${where}.`);
+    } else if (!result.settled) {
+      toast("Lain's review didn't finish — try again.", "error");
+    } else {
+      toast("Lain found nothing to comment on.", "info");
+    }
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    setCritiqueBusy(false);
+  }
 }
 
 async function onLainActions(actions) {
@@ -1885,7 +1936,8 @@ const RIBBON = [
     label: "Review",
     rows: [[
       { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" },
-      { cmd: "critique", label: "✎", text: "Critique", title: "Ask Lain to review one or more entries and propose comments" },
+      { cmd: "critique", label: "✎", text: "Critique", title: "Lain reviews this entry for grammar, sentence structure and flow" },
+      { cmd: "critiqueEntries", label: "✎", text: "Entries…", title: "Pick one or more entries for Lain to review" },
       { cmd: "commentMarks", label: "▤", text: "Marks", title: "Show or hide comment highlights" },
     ]],
   },
@@ -2160,7 +2212,11 @@ function toolbarCommand(cmd, button) {
     return;
   }
   if (cmd === "critique") {
-    openCritique();
+    critiqueCurrentEntry();
+    return;
+  }
+  if (cmd === "critiqueEntries") {
+    openCritiquePicker();
     return;
   }
   if (cmd === "commentMarks") {

@@ -88,14 +88,18 @@ Legend for hooks: where the work would plug into the current code.
     command in `client/comments.js` / `static/js/comments-panel.js`.
 
 - [x] **Lain critique pass** `P3` `M` — shipped: the **Review → Critique**
-  button opens a multi-entry picker (`static/js/critique-dialog.js`, current
-  document pre-checked), then runs a Simple-mode pass over exactly those
-  entries. Lain proposes anchored notes with the new `add_comment` tool
-  (`app/ai/tools.py`), which is confirm-gated like every planned action; each
-  note shows a quote + body in the confirmation card. An **annotate** tool
-  class makes `add_comment` available in Plan access (read + annotate) without
-  permitting prose edits. Accepting writes the note to the comments sidecar and
-  wraps the quote in the usual `<span data-cid>` marker
+  button reviews the entry on screen in one click; **Review → Entries…** opens
+  the multi-entry picker (`static/js/critique-dialog.js`, current document
+  pre-checked) and runs the same pass over those entries. Neither opens the Lain
+  panel: `runCritique` (`static/js/lain.js`, loop in
+  `static/js/critique-run.js`) uses a dedicated session and the non-streaming
+  `POST /ai/chat`, then auto-accepts every proposal with `confirm_all`, so Lain
+  proposes anchored notes with the `add_comment` tool (`app/ai/tools.py`)
+  without a confirmation card per note. The brief is a line edit — grammar,
+  sentence structure and flow — and the **annotate** tool class makes
+  `add_comment` available in Plan access (read + annotate) without permitting
+  prose edits. Accepting writes the note to the comments sidecar and wraps the
+  quote in the usual `<span data-cid>` marker
   (`comments_service.wrap_quote`). Reversible via the comments panel's
   **Clear AI notes** (author filter) and the pre-change document snapshot.
 - [x] **Hide/display comment highlights** `P2` `S` — shipped: the

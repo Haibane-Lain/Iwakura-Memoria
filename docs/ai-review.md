@@ -150,25 +150,44 @@ unchanged.
 ## Critique pass (`add_comment`) — added after this review
 
 A review pass that lets Lain attach comments to exact quotes, without editing
-prose. Three deliberate choices worth remembering:
+prose. The pass runs in the background (no Lain panel) and applies its notes
+automatically. Deliberate choices worth remembering:
 
-- **Annotate is not a prose write.** `add_comment` is confirm-gated like every
-  planned action, but it is *always* advertised: `ANNOTATE_TOOLS` is exposed in
-  Plan access too, and `dispatch` refuses it in neither Plan nor Simple+Plan
-  (it is checked against `ENTRY_WRITE_TOOLS`, so Simple may only annotate a
-  picked entry). `WRITE_TOOLS` deliberately excludes it, so the Plan refusal
-  still blocks `edit_entry`/`rename_entry`/… The system prompt's `Access is
-  PLAN` lines describe this as "read and annotate". The Plan/Write contract is
-  therefore now: **Plan = read + annotate, Write = edit prose**.
+- **The review is prose craft, not story.** `CRITIQUE_PROMPT`
+  (`static/js/critique-run.js`) asks for a line edit — grammar, sentence
+  structure, rhythm, clarity, word choice, flow — and tells Lain to stay off
+  plot, characters and story ideas. The app's grammar checker already covers
+  spelling and basic grammar, so the brief points Lain at what a checker cannot
+  see. The prompt's first line is short because the server titles a session from
+  the first 40 characters of its first message.
+- **Background and one-click.** The Review ribbon's **Critique** reviews the
+  entry on screen; **Entries…** opens the multi-entry picker and runs the same
+  pass. Neither opens the Lain panel. `runCritique` creates a *dedicated*
+  session, so a pass can never collide with (or flip the Mode/Access of) the
+  conversation the user has open, and hands the applied actions to the shell via
+  `ctx.onActions` so the panes reload and the new highlights appear. The shell
+  flushes the editor first, since the review reads the entry from disk.
+- **`confirm_all`, not per-note confirmation.** `add_comment` stays
+  confirm-gated server-side, but the background runner resolves it with
+  `confirm_all` (which also applies the notes the model deferred in the same
+  reply), so the user gets one click and a toast instead of a card per note.
+  `Clear AI notes` remains the undo. The server-side contract is unchanged:
+  `dispatch` still plans the call and `agent.confirm` still executes it.
+- **Annotate is not a prose write.** `ANNOTATE_TOOLS` is exposed in Plan access
+  too, and `dispatch` refuses it in neither Plan nor Simple+Plan (it is checked
+  against `ENTRY_WRITE_TOOLS`, so Simple may only annotate a picked entry).
+  `WRITE_TOOLS` deliberately excludes it, so the Plan refusal still blocks
+  `edit_entry`/`rename_entry`/… The Plan/Write contract is therefore: **Plan =
+  read + annotate, Write = edit prose**.
 - **The marker is server-authored for this path.** `comments_service` gained
   `find_anchor_span`/`wrap_quote`, the server-side twins of the editor's
-  `setComment`. Execution re-reads and re-validates the quote (the confirm can
-  arrive minutes later), creates the sidecar note under the author `"Lain"`,
-  wraps the first *unanchored* occurrence, and saves through the normal
-  `save_document` path with `before_reason=REASON_AI`, so the change is a
-  restorable snapshot. A failed save deletes the just-created note rather than
-  leaving a bodyless anchor. Quotes must be contiguous plain text; a quote that
-  spans Markdown markers is reported as a tool error instead of guessed at.
+  `setComment`. Execution re-reads and re-validates the quote, creates the
+  sidecar note under the author `"Lain"`, wraps the first *unanchored*
+  occurrence, and saves through the normal `save_document` path with
+  `before_reason=REASON_AI`, so the change is a restorable snapshot. A failed
+  save deletes the just-created note rather than leaving a bodyless anchor.
+  Quotes must be contiguous plain text; a quote that spans Markdown markers is
+  reported as a tool error instead of guessed at.
 - **Reversible in bulk.** `clear_doc(..., author=…)` and the `author` query on
   the comments route back the panel's **Clear AI notes** button; the client
   strips the matching markers with `removeComments`.
