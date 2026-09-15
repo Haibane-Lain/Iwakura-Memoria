@@ -304,9 +304,7 @@ def clear_doc(
         # it satisfies each filter that was supplied.
         if resolved_only and not comment.get("resolved"):
             return False
-        if wanted_author is not None and not matches_author(comment):
-            return False
-        return True
+        return wanted_author is None or matches_author(comment)
 
     remaining = [c for c in comments if not doomed(c)]
     removed = len(comments) - len(remaining)
