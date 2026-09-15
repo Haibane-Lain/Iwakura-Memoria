@@ -21,10 +21,13 @@ export async function triggerDownload(resp) {
 }
 
 const REQUEST_TIMEOUT_MS = 15000;
+// Applying a confirmed batch (`confirm_all`) writes every proposed note or edit
+// in a single request, so it can legitimately run well past the normal cap.
+const AI_ACTION_TIMEOUT_MS = 120000;
 
-async function request(method, url, body) {
+async function request(method, url, body, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const opts = { method, headers: {}, signal: controller.signal };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
@@ -36,7 +39,7 @@ async function request(method, url, body) {
   } catch (err) {
     if (err.name === "AbortError") {
       throw new Error(
-        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s: ${method} ${url}`,
+        `Request timed out after ${timeoutMs / 1000}s: ${method} ${url}`,
         { cause: err }
       );
     }
@@ -62,7 +65,7 @@ async function request(method, url, body) {
 
 export const api = {
   get: (url) => request("GET", url),
-  post: (url, body) => request("POST", url, body),
+  post: (url, body, timeoutMs) => request("POST", url, body, timeoutMs),
   put: (url, body) => request("PUT", url, body),
   patch: (url, body) => request("PATCH", url, body),
   del: (url) => request("DELETE", url),
@@ -258,7 +261,11 @@ export const api = {
       return res.body;
     },
     confirm: (pid, sessionId, decision) =>
-      api.post(`/api/projects/${encodePath(pid)}/ai/confirm`, { sessionId, decision }),
+      api.post(
+        `/api/projects/${encodePath(pid)}/ai/confirm`,
+        { sessionId, decision },
+        AI_ACTION_TIMEOUT_MS
+      ),
     compress: (pid, sessionId, keepMessages) =>
       api.post(`/api/projects/${encodePath(pid)}/ai/sessions/${encodePath(sessionId)}/compress`, { keepMessages }),
     attach: (pid, sessionId, file) => {
