@@ -27,6 +27,7 @@ class SettingsPatch(BaseModel):
     grammarEnabled: bool | None = None
     focusMode: bool | None = None
     typewriterMode: bool | None = None
+    commentHighlights: bool | None = None
     ai: dict | None = None
 
 

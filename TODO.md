@@ -87,11 +87,21 @@ Legend for hooks: where the work would plug into the current code.
   - Hooks: a `suggestion` field in `app/services/comments.py`; the accept
     command in `client/comments.js` / `static/js/comments-panel.js`.
 
-- [ ] **Lain critique pass** `P3` `M`
-  - Let Lain review a scene and propose comments (quotes + notes) that the
-    editor anchors; keep it opt-in and reversible.
-  - Hooks: a structured critique prompt over `app/ai/agent.py`; anchoring in
-    `static/js/comments-panel.js`.
+- [x] **Lain critique pass** `P3` `M` — shipped: the **Review → Critique**
+  button opens a multi-entry picker (`static/js/critique-dialog.js`, current
+  document pre-checked), then runs a Simple-mode pass over exactly those
+  entries. Lain proposes anchored notes with the new `add_comment` tool
+  (`app/ai/tools.py`), which is confirm-gated like every planned action; each
+  note shows a quote + body in the confirmation card. An **annotate** tool
+  class makes `add_comment` available in Plan access (read + annotate) without
+  permitting prose edits. Accepting writes the note to the comments sidecar and
+  wraps the quote in the usual `<span data-cid>` marker
+  (`comments_service.wrap_quote`). Reversible via the comments panel's
+  **Clear AI notes** (author filter) and the pre-change document snapshot.
+- [x] **Hide/display comment highlights** `P2` `S` — shipped: the
+  **Review → Marks** ribbon button toggles `commentHighlights` (persisted in
+  `settings.json`), applying `#app.comments-hidden` so the anchor paint is
+  suppressed while the decorations (and panel reveal) stay live.
 
 - [ ] **Cross-document comment index** `P3` `M`
   - The panel is per-document; add a project-wide review queue gathering open

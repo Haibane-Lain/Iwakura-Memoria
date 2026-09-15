@@ -6,6 +6,7 @@ import { renderLookupDialog } from "./lookup-dialog.js";
 import { renderLinkDialog } from "./link-dialog.js";
 import { renderSnapshotsDialog } from "./snapshots-dialog.js";
 import { renderSearchDialog } from "./search-dialog.js";
+import { renderCritiqueDialog } from "./critique-dialog.js";
 import * as router from "./router.js";
 import * as theme from "./themes.js";
 import * as lain from "./lain.js";
@@ -70,6 +71,7 @@ const {
   renderDocTabs,
   applyDictionaryWords,
   invalidateEditorCache,
+  rekeyEditorScroll,
   dropTab,
   dropEditorFor,
   resetEditorPool,
@@ -678,6 +680,22 @@ function toggleTypewriterMode() {
   api.settings.update({ typewriterMode: state.settings.typewriterMode }).catch(() => {});
 }
 
+// Comment highlights are painted by ProseMirror decorations; hiding them is a
+// class on `#app`, so the anchors stay in the document (panel reveal still
+// selects the text) and only the underline/background is suppressed.
+function applyCommentHighlights() {
+  const on = state.settings.commentHighlights !== false;
+  const root = document.getElementById("app");
+  if (root) root.classList.toggle("comments-hidden", !on);
+}
+
+function toggleCommentHighlights() {
+  state.settings.commentHighlights = state.settings.commentHighlights === false;
+  applyCommentHighlights();
+  refreshToolbar();
+  api.settings.update({ commentHighlights: state.settings.commentHighlights }).catch(() => {});
+}
+
 /* ---------------- sidebar ---------------- */
 
 function sidebar() {
@@ -1243,6 +1261,7 @@ async function afterTreeChange() {
   // the open document's warm editor keyed to its new id (and every tab too).
   if (prevId && state.currentDocId && state.currentDocId !== prevId) {
     editorPool.rekey(prevId, state.currentDocId);
+    rekeyEditorScroll(prevId, state.currentDocId);
   }
   reconcileTabs(oldTabs);
   renderSidebar();
@@ -1284,6 +1303,22 @@ async function performFolderMove(folderId, targetFolder, index) {
   } catch (err) {
     toast(err.message, "error");
   }
+}
+
+// The ribbon's Critique button: pick entries, then hand the pass to Lain. The
+// selection UI lives in critique-dialog.js; the run lives in lain.js.
+async function openCritique() {
+  if (!lainCtrl) return;
+  lainCtrl.open();
+  await lainCtrl.refreshScope();
+  const entries = lainCtrl.listEntries ? lainCtrl.listEntries() : [];
+  if (!entries.length) {
+    toast("Lain can't see any entries — check the folders in 'Lain can access'.", "info");
+    return;
+  }
+  const ids = await renderCritiqueDialog({ entries, currentDocId: state.currentDocId });
+  if (!ids || !ids.length) return;
+  await lainCtrl.startCritique(ids);
 }
 
 async function onLainActions(actions) {
@@ -1826,9 +1861,17 @@ const RIBBON = [
   {
     label: "Tools",
     rows: [
-      [grammarToggle, repetitionBtn, { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" }],
+      [grammarToggle, repetitionBtn],
       [searchBtn, historyBtn, splitToggle],
     ],
+  },
+  {
+    label: "Review",
+    rows: [[
+      { cmd: "revise", label: "Revise", title: "Review open comments one at a time (hides grammar underlines)" },
+      { cmd: "critique", label: "✎", text: "Critique", title: "Ask Lain to review one or more entries and propose comments" },
+      { cmd: "commentMarks", label: "▤", text: "Marks", title: "Show or hide comment highlights" },
+    ]],
   },
   {
     label: "Style",
@@ -2100,6 +2143,14 @@ function toolbarCommand(cmd, button) {
     toggleRevisionMode();
     return;
   }
+  if (cmd === "critique") {
+    openCritique();
+    return;
+  }
+  if (cmd === "commentMarks") {
+    toggleCommentHighlights();
+    return;
+  }
   if (cmd === "lookup") {
     openLookup();
     return;
@@ -2174,6 +2225,7 @@ function refreshToolbar() {
     else if (cmd === "color") active = editor.isActive("textColor");
     else if (cmd === "link") active = editor.isActive("link");
     else if (cmd === "revise") active = !!activePane().revisionMode;
+    else if (cmd === "commentMarks") active = state.settings.commentHighlights !== false;
     else if (cmd === "blockquote") active = editor.isActive("blockquote");
     else if (cmd === "bulletList") active = editor.isActive("bulletList");
     else if (cmd === "orderedList") active = editor.isActive("orderedList");
@@ -3184,6 +3236,7 @@ async function init(params) {
       grammarEnabled: settings.grammarEnabled !== false,
       focusMode: settings.focusMode === true,
       typewriterMode: settings.typewriterMode === true,
+      commentHighlights: settings.commentHighlights !== false,
     };
   } catch (err) {
     console.warn("settings unavailable", err);
@@ -3191,6 +3244,7 @@ async function init(params) {
   applyEditorPrefs();
   applyFocusMode();
   applyTypewriterMode();
+  applyCommentHighlights();
 
   try {
     state.project = await api.projects.get(params.id);

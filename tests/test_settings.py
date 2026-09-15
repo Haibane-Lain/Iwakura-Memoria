@@ -51,3 +51,14 @@ def test_focus_and_typewriter_toggles_persist(client):
     stored = client.get("/api/settings", headers=HOST).json()
     assert stored["focusMode"] is True
     assert stored["typewriterMode"] is True
+
+
+def test_comment_highlights_toggle_persists(client):
+    """The Review → Marks toggle must survive a round-trip like grammar."""
+    assert client.get("/api/settings", headers=HOST).json()["commentHighlights"] is True
+
+    written = client.put("/api/settings", json={"commentHighlights": False}, headers=HOST)
+    assert written.status_code == 200
+    assert written.json()["commentHighlights"] is False
+
+    assert client.get("/api/settings", headers=HOST).json()["commentHighlights"] is False

@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from app.ai import attachments as attachments_service
+from app.services import comments as comments_service
 from app.services import documents as documents_service
 from app.services import snapshots as snapshots_service
 
@@ -22,12 +23,20 @@ CONFIRM_TOOLS = {
     "move_folder",
     "delete_entry",
     "delete_folder",
+    "add_comment",
 }
 
-# Tools that only observe the project. In Plan access Lain gets these and
-# nothing else; every other tool can change files and is refused.
+# Tools that only observe the project. In Plan access Lain gets these plus the
+# annotate tools; every other tool can change prose and is refused.
 READ_TOOLS = {"list_tree", "read_entry", "read_attachment"}
-WRITE_TOOLS = set(CONFIRM_TOOLS) | {"create_entry", "create_folder"}
+
+# Annotation attaches a review comment to a quoted span. It writes a
+# ``data-cid`` marker into the document, but never the prose itself, so it is
+# allowed in Plan access (read + annotate) as well as Write.
+ANNOTATE_TOOLS = {"add_comment"}
+
+# Prose/structure changes; refused in Plan access.
+WRITE_TOOLS = (set(CONFIRM_TOOLS) | {"create_entry", "create_folder"}) - ANNOTATE_TOOLS
 
 # Simple mode never browses. It works from the entries the user picked, so it
 # gets no read tools, the entry-scoped writes are limited to those picks, and
@@ -40,7 +49,7 @@ SIMPLE_WRITE_TOOLS = {
     "move_entry",
     "delete_entry",
 }
-ENTRY_WRITE_TOOLS = {"edit_entry", "rename_entry", "move_entry", "delete_entry"}
+ENTRY_WRITE_TOOLS = {"edit_entry", "rename_entry", "move_entry", "delete_entry", "add_comment"}
 
 READ_CONTENT_CAP = 8_000
 DIFF_LINE_CAP = 60
@@ -109,6 +118,8 @@ def _tool_label(name: str, args: dict[str, Any]) -> str:
         return f"create_folder '{args.get('name', '?')}'"
     if name == "edit_entry":
         return f"edit_entry '{_display_path(str(entry_id))}'" if entry_id else "edit_entry"
+    if name == "add_comment":
+        return f"add_comment '{_display_path(str(entry_id))}'" if entry_id else "add_comment"
     if name == "rename_entry":
         return f"rename_entry '{str(args.get('newTitle', '?'))}'"
     if name == "move_entry":
@@ -387,6 +398,46 @@ def _plan_edit_entry(project_id: str, args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _short_quote(text: str, limit: int = 60) -> str:
+    clean = " ".join(str(text or "").split())
+    return clean if len(clean) <= limit else clean[: limit - 1] + "…"
+
+
+def _plan_add_comment(project_id: str, args: dict[str, Any]) -> dict[str, Any]:
+    entry_id = str(args.get("entryId") or "")
+    if not entry_id:
+        raise ToolError("An entry id is required to add a comment")
+    try:
+        doc = documents_service.get_document(project_id, entry_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    quote = str(args.get("quote") or "").strip()
+    if not quote:
+        raise ToolError("A quote from the entry is required to anchor the comment")
+    if len(quote) > comments_service._MAX_QUOTE:
+        raise ToolError(f"Keep the quote under {comments_service._MAX_QUOTE} characters")
+    body = str(args.get("body") or "").strip()
+    if not body:
+        raise ToolError("A comment needs some text")
+    if len(body) > comments_service._MAX_BODY:
+        raise ToolError(f"Keep the comment under {comments_service._MAX_BODY} characters")
+    if comments_service.find_anchor_span(doc.get("content", ""), quote) is None:
+        raise ToolError(
+            f'That exact text is not present (or is already commented) in "{doc["title"]}". '
+            "Quote a short, contiguous span of the entry's plain text."
+        )
+    return {
+        "tool": "add_comment",
+        "summary": f'Comment on "{doc["title"]}": “{_short_quote(quote)}”',
+        "details": {
+            "entryId": entry_id,
+            "title": doc["title"],
+            "quote": quote,
+            "body": body,
+        },
+    }
+
+
 def _plan_rename_entry(project_id: str, args: dict[str, Any]) -> dict[str, Any]:
     entry_id = str(args["entryId"])
     try:
@@ -540,6 +591,51 @@ def _exec_edit_entry(project_id: str, args: dict[str, Any]) -> tuple[str, dict[s
     )
     action = {"tool": "edit_entry", "summary": f"Edited \"{doc['title']}\" ({doc.get('words', 0)} words)", "id": entry_id, "ok": True}
     return result_text, action
+
+
+def _exec_add_comment(project_id: str, args: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    entry_id = str(args.get("entryId") or "")
+    quote = str(args.get("quote") or "").strip()
+    body = str(args.get("body") or "").strip()
+    try:
+        doc = documents_service.get_document(project_id, entry_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    content = doc.get("content", "")
+    # Re-validate against the current body: the user may have edited since the
+    # plan was shown, and the confirm can arrive minutes later.
+    if comments_service.find_anchor_span(content, quote) is None:
+        raise ToolError(
+            f'Could not anchor the comment — that exact text is no longer in "{doc["title"]}".'
+        )
+    try:
+        record = comments_service.create(
+            project_id, entry_id, body, quote=quote, author="Lain"
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    wrapped = comments_service.wrap_quote(content, quote, record["id"])
+    if wrapped is None:
+        comments_service.delete(project_id, entry_id, record["id"])
+        raise ToolError("Could not anchor the comment to the quoted text")
+    try:
+        documents_service.save_document(
+            project_id,
+            entry_id,
+            wrapped,
+            snapshot=False,
+            before_reason=snapshots_service.REASON_AI,
+        )
+    except Exception as exc:  # noqa: BLE001 — never leave a bodyless anchor behind
+        comments_service.delete(project_id, entry_id, record["id"])
+        raise ToolError(f"Could not save the anchored comment: {exc}") from exc
+    action = {
+        "tool": "add_comment",
+        "summary": f'Commented on "{doc["title"]}": “{_short_quote(quote)}”',
+        "id": entry_id,
+        "ok": True,
+    }
+    return f'Attached a comment to [{entry_id}] "{doc["title"]}".', action
 
 
 def _exec_rename_entry(project_id: str, args: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
@@ -696,6 +792,20 @@ _SCHEMAS: list[dict[str, Any]] = [
         ["entryId", "content"],
     ),
     _schema(
+        "add_comment",
+        "Attach a review comment to an exact span of an entry's text. 'quote' must be a short, "
+        "contiguous run of the entry's plain text copied verbatim (no Markdown markers), and 'body' "
+        "is the note. Multiple calls in one reply are encouraged for a critique pass. The app will "
+        "show each proposed note and ask the user to confirm before it is anchored; this never edits "
+        "the prose, so it is available in Plan access too.",
+        {
+            "entryId": {"type": "string", "description": "Entry id the quote comes from"},
+            "quote": {"type": "string", "description": "Exact, contiguous plain-text span to comment on"},
+            "body": {"type": "string", "description": "The review note"},
+        },
+        ["entryId", "quote", "body"],
+    ),
+    _schema(
         "rename_entry",
         "Change an entry's display title. The app will ask the user to confirm.",
         {"entryId": {"type": "string"}, "newTitle": {"type": "string"}},
@@ -734,6 +844,7 @@ TOOLS: dict[str, dict[str, Any]] = {
     "create_entry": {"confirm": False, "fn": _create_entry},
     "create_folder": {"confirm": False, "fn": _create_folder},
     "edit_entry": {"confirm": True, "plan": _plan_edit_entry, "fn": _exec_edit_entry},
+    "add_comment": {"confirm": True, "plan": _plan_add_comment, "fn": _exec_add_comment},
     "rename_entry": {"confirm": True, "plan": _plan_rename_entry, "fn": _exec_rename_entry},
     "move_entry": {"confirm": True, "plan": _plan_move_entry, "fn": _exec_move_entry},
     "move_folder": {"confirm": True, "plan": _plan_move_folder, "fn": _exec_move_folder},
@@ -747,23 +858,26 @@ def schemas(mode: str = "advanced", access: str = "write") -> list[dict[str, Any
 
     ``mode`` is simple/advanced and ``access`` is plan/write:
 
-    - advanced + plan  → read tools only
+    - advanced + plan  → read tools + annotate (add_comment)
     - advanced + write → every tool
-    - simple + plan    → no tools (chat over the picked entries)
-    - simple + write   → write tools only (no browsing)
+    - simple + plan    → annotate only (chat over the picked entries)
+    - simple + write   → write tools + annotate (no browsing)
     """
     if mode == "simple":
-        allowed = set() if access == "plan" else SIMPLE_WRITE_TOOLS
+        allowed = (
+            ANNOTATE_TOOLS if access == "plan" else (SIMPLE_WRITE_TOOLS | ANNOTATE_TOOLS)
+        )
         return [
             schema
             for schema in _SCHEMAS
             if schema["function"]["name"] in allowed
         ]
     if access == "plan":
+        allowed = READ_TOOLS | ANNOTATE_TOOLS
         return [
             schema
             for schema in _SCHEMAS
-            if schema["function"]["name"] in READ_TOOLS
+            if schema["function"]["name"] in allowed
         ]
     return _SCHEMAS
 
@@ -789,7 +903,8 @@ def dispatch(
     if entry is None:
         raise ToolError(f"Unknown tool '{name}'")
     if mode == "simple":
-        if access == "plan":
+        # Plan access still permits annotations (they don't touch the prose).
+        if access == "plan" and name not in ANNOTATE_TOOLS:
             raise ToolError(
                 "Lain is in Simple mode with Plan access and can't change files — "
                 "switch Access to Write to apply changes."
@@ -799,7 +914,7 @@ def dispatch(
                 "Simple mode can't browse the project — pick the entries Lain "
                 "should use, or switch Mode to Advanced."
             )
-        if name not in SIMPLE_WRITE_TOOLS:
+        if name not in SIMPLE_WRITE_TOOLS and name not in ANNOTATE_TOOLS:
             raise ToolError(
                 "Simple mode can only change the entries you selected, so folder "
                 "moves and deletes are Advanced-only."
@@ -836,7 +951,7 @@ def dispatch(
 
 
 def _validate_plan_scope(scope: list[str] | None, name: str, details: dict[str, Any]) -> None:
-    if name in ("edit_entry", "rename_entry", "move_entry", "delete_entry"):
+    if name in ("edit_entry", "rename_entry", "move_entry", "delete_entry", "add_comment"):
         _require_scope(scope, details["entryId"])
     if name in ("move_entry", "move_folder"):
         _require_scope(scope, details["to"] or "")

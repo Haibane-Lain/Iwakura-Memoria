@@ -26,6 +26,10 @@ import { zoomFactor } from "./zoom.js";
 import { defaultZoomForScope as resolveDefaultZoom } from "./editor-prefs.js";
 import { prettyPath } from "./doc-tree.js";
 import { commentsPanel } from "./comments-panel.js";
+import { createScrollMemory } from "./editor-scroll.js";
+
+// Per-document scroll offsets, kept across tab switches (see editor-scroll.js).
+const scrollMemory = createScrollMemory();
 
 /* ---------------- tab persistence ---------------- */
 
@@ -144,6 +148,12 @@ export function parkEditor() {
   for (const pane of [panes.primary, panes.secondary]) {
     clearTimeout(pane.timer);
     pane.timer = null;
+    // Capture the scroll before the pane chrome (and its scroller) is rebuilt.
+    // Key by the host's document: by now `pane.docId` may already point at the
+    // document being opened. `isConnected` skips a stale, detached host.
+    if (pane.hostDocId && pane.host && pane.host.isConnected) {
+      scrollMemory.remember(pane.hostDocId, pane.host.scrollTop);
+    }
     const ctrl = pane.ctrl;
     if (!ctrl) continue;
     try {
@@ -198,8 +208,19 @@ export function resetEditorPool() {
     pane.ctrl = null;
     pane.docId = null;
     pane.dirty = false;
+    // Drop the old host references too, so a later parkEditor can never
+    // re-remember a stale project's scroll after the table was cleared.
+    pane.host = null;
+    pane.hostDocId = null;
   }
   editorPool.destroyAll();
+  // A fresh project route starts with no remembered scroll positions.
+  scrollMemory.clear();
+}
+
+// Carry a remembered scroll offset to a document's new id after a move/rename.
+export function rekeyEditorScroll(oldId, newId) {
+  scrollMemory.rekey(oldId, newId);
 }
 
 /* ---------------- document tabs ---------------- */
@@ -218,8 +239,12 @@ export function reconcileTabs(oldTabs) {
   for (const { id, title } of oldTabs) {
     if (present.has(id)) continue;
     const byTitle = title ? docs.find((d) => d.title === title) : null;
-    if (byTitle) docTabs.rekey(id, byTitle.id);
-    else docTabs.forget(id);
+    if (byTitle) {
+      docTabs.rekey(id, byTitle.id);
+      scrollMemory.rekey(id, byTitle.id);
+    } else {
+      docTabs.forget(id);
+    }
   }
   persistTabs();
 }
@@ -567,6 +592,10 @@ function renderPane(pane, doc) {
   });
   pane.root = root;
   pane.host = host;
+  // Which document this host (and its scroller) was built for. parkEditor()
+  // runs *after* a switch has already pointed `pane.docId` at the next
+  // document, so it must key the scroll by the host's document, not docId.
+  pane.hostDocId = doc ? doc.id : null;
   pane.mount = mount;
   pane.panel = backlinks;
   pane.commentsPanel = comments;
@@ -785,6 +814,7 @@ export async function renderEditorView() {
       ]),
     ]);
     active.host = emptyHost;
+    active.hostDocId = null;
     active.ctrl = null;
     container.append(emptyHost);
   }
@@ -844,6 +874,13 @@ export async function renderEditorView() {
       updateContentsBox(active.ctrl.getMarkdown(), docTitleAny(active.docId));
     }
     active.ctrl.focus();
+  }
+  // Last, so the zoom/font pass and `focus()` cannot move the caret and reset
+  // the scroller we just attached: put every pane back where it was parked.
+  for (const { pane } of rendered) {
+    if (!pane.host) continue;
+    const top = scrollMemory.recall(pane.hostDocId || pane.docId);
+    if (top > 0) pane.host.scrollTop = top;
   }
 }
 

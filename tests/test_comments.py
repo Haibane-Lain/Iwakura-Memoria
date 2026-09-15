@@ -89,6 +89,39 @@ def test_clear_resolved_only(data_dir, make_project):
     assert comments_service.list_doc("proj", "doc") == []
 
 
+def test_clear_by_author(data_dir, make_project):
+    make_project("proj")
+    mine = comments_service.create("proj", "doc", "mine", author="you")
+    comments_service.create("proj", "doc", "theirs", author="Lain")
+
+    assert comments_service.clear_doc("proj", "doc", author="lain") == 1
+    remaining = comments_service.list_doc("proj", "doc")
+    assert [c["id"] for c in remaining] == [mine["id"]]
+
+
+# --- anchoring helpers ------------------------------------------------------
+
+
+def test_find_anchor_span_skips_existing_anchors():
+    content = 'A <span data-cid="c_0123456789ab">bravo</span> and bravo again.'
+    # The first "bravo" is inside an anchor, so the second one is chosen.
+    span = comments_service.find_anchor_span(content, "bravo")
+    assert span is not None
+    start, end = span
+    assert content[start:end] == "bravo"
+    assert start > content.index("</span>")
+    assert comments_service.find_anchor_span(content, "missing") is None
+
+
+def test_wrap_quote_inserts_the_marker():
+    content = "Alpha bravo charlie."
+    wrapped = comments_service.wrap_quote(content, "bravo", "c_0123456789ab")
+    assert wrapped == 'Alpha <span data-cid="c_0123456789ab">bravo</span> charlie.'
+    # Round trip: the freshly wrapped quote is now considered anchored.
+    assert comments_service.find_anchor_span(wrapped, "bravo") is None
+    assert comments_service.wrap_quote(content, "nope", "c_0123456789ab") is None
+
+
 # --- rekey / lifecycle ------------------------------------------------------
 
 

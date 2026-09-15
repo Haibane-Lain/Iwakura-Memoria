@@ -57,6 +57,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # typewriter mode keeps the caret near the vertical middle of the editor.
     "focusMode": False,
     "typewriterMode": False,
+    # Comment anchor highlights (the accent underline/background on commented
+    # text). Hiding them is a reading aid; the comments themselves stay put.
+    "commentHighlights": True,
     "ai": {},
 }
 

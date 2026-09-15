@@ -176,8 +176,11 @@ def system_prompt(
         if access == "plan":
             lines.append(
                 "Access is PLAN: read and answer from the provided material only, and do not try "
-                "to change anything. When you spot a change worth making, describe it and tell the "
-                "user to switch Access to Write to apply it."
+                "to edit the prose. You MAY attach review notes with add_comment when the user asks "
+                "for a critique — quote a short span of the provided text verbatim and keep the note "
+                "concise; the user confirms each note before it is anchored. When you spot a prose "
+                "change worth making, describe it and tell the user to switch Access to Write to "
+                "apply it."
             )
         else:
             lines.append(
@@ -187,10 +190,12 @@ def system_prompt(
             )
     elif access == "plan":
         lines.append(
-            "Access is PLAN: you may only read. You cannot create, edit, rename, move, or delete "
-            "entries or folders right now. When you spot changes worth making, do not attempt them "
-            "— lay out the exact plan as text instead: which entries, which sections, the proposed "
-            "content, and why. Then tell the user to switch Access to Write to apply it."
+            "Access is PLAN: you may read and annotate, but you cannot edit the prose. Use "
+            "add_comment to attach a review note to an exact, verbatim quote from an entry; the "
+            "user confirms each note before it is anchored. You cannot create, edit, rename, move, "
+            "or delete entries or folders right now. When you spot a prose change worth making, do "
+            "not attempt it — lay out the exact plan as text instead: which entries, which sections, "
+            "the proposed content, and why. Then tell the user to switch Access to Write to apply it."
         )
     if attachments and mode == "simple":
         names = ", ".join(a["name"] for a in attachments)

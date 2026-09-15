@@ -109,6 +109,48 @@ def _public(comment: dict[str, Any]) -> dict[str, Any]:
     return {key: comment.get(key) for key in PUBLIC_KEYS if key in comment}
 
 
+# A comment anchor already in the Markdown, as the editor writes it. Used so a
+# new comment never nests inside an existing one.
+_ANCHOR_SPAN_RE = re.compile(r'<span\s+data-cid="[^"]*">.*?</span>', re.DOTALL)
+
+
+def find_anchor_span(content: str, quote: str) -> tuple[int, int] | None:
+    """First occurrence of ``quote`` that is not already inside a comment anchor.
+
+    Returns ``(start, end)`` character offsets, or ``None`` when the quote is
+    empty or only appears inside an existing ``data-cid`` span. The tool layer
+    uses this to validate a proposed comment before it is planned.
+    """
+    text = str(content or "")
+    needle = str(quote or "")
+    if not needle:
+        return None
+    occupied = [(m.start(), m.end()) for m in _ANCHOR_SPAN_RE.finditer(text)]
+    start = text.find(needle)
+    while start != -1:
+        end = start + len(needle)
+        if not any(start < o_end and end > o_start for o_start, o_end in occupied):
+            return (start, end)
+        start = text.find(needle, start + 1)
+    return None
+
+
+def wrap_quote(content: str, quote: str, cid: str) -> str | None:
+    """Wrap the first unanchored occurrence of ``quote`` in a ``data-cid`` marker.
+
+    Returns the new Markdown, or ``None`` when the quote is not present outside
+    an existing anchor (the caller reports that as a tool error). This is the
+    server-side twin of the editor's ``setComment`` command, so a Lain-authored
+    note round-trips through the same ``<span data-cid>`` form.
+    """
+    span = find_anchor_span(content, quote)
+    if span is None:
+        return None
+    start, end = span
+    text = str(content or "")
+    return f'{text[:start]}<span data-cid="{cid}">{text[start:end]}</span>{text[end:]}'
+
+
 def _read_doc(project_id: str, doc_id: str) -> list[dict[str, Any]]:
     """Every comment for one document, in creation order. Corrupt data is skipped."""
     path = _doc_file(project_id, doc_id)
@@ -237,18 +279,39 @@ def delete_many(project_id: str, doc_id: str, ids: list[str]) -> int:
     return removed
 
 
-def clear_doc(project_id: str, doc_id: str, *, resolved_only: bool = False) -> int:
-    """Delete every comment for a document (or only the resolved ones)."""
+def clear_doc(
+    project_id: str,
+    doc_id: str,
+    *,
+    resolved_only: bool = False,
+    author: str | None = None,
+) -> int:
+    """Delete comments for a document, optionally filtered.
+
+    ``resolved_only`` keeps the open notes; ``author`` (case-insensitive) keeps
+    everyone else's. Both filters combine, so "clear Lain's resolved notes" is
+    expressible.
+    """
     _require_project(project_id)
     comments = _read_doc(project_id, doc_id)
-    if resolved_only:
-        remaining = [c for c in comments if not c.get("resolved")]
-        removed = len(comments) - len(remaining)
-        if removed:
-            _write_doc(project_id, doc_id, remaining)
-        return removed
-    removed = len(comments)
-    _write_doc(project_id, doc_id, [])
+    wanted_author = str(author).strip().lower() if author else None
+
+    def matches_author(comment: dict[str, Any]) -> bool:
+        return str(comment.get("author") or "").strip().lower() == wanted_author
+
+    def doomed(comment: dict[str, Any]) -> bool:
+        # No filter removes everything. Otherwise a comment is removed only when
+        # it satisfies each filter that was supplied.
+        if resolved_only and not comment.get("resolved"):
+            return False
+        if wanted_author is not None and not matches_author(comment):
+            return False
+        return True
+
+    remaining = [c for c in comments if not doomed(c)]
+    removed = len(comments) - len(remaining)
+    if removed:
+        _write_doc(project_id, doc_id, remaining)
     return removed
 
 

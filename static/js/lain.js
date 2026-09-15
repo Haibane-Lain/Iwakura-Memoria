@@ -9,6 +9,15 @@ const SUGGESTIONS = [
   "Summarize what we've covered so far",
 ];
 
+// The prompt the ribbon's Critique button seeds. It asks for anchored comments
+// (each confirmed by the user) rather than prose edits.
+const CRITIQUE_PROMPT =
+  "Act as a developmental editor. Review the selected entries and attach comments with the " +
+  "add_comment tool: for each problem, quote a short, exact, contiguous span of the entry's " +
+  "plain text (copied verbatim, without formatting markers) and give a concise note. Aim for " +
+  "3–8 comments per entry, most important first, and do not rewrite or edit the prose. When you " +
+  "are done, summarize the main issues briefly.";
+
 // Bottom panel geometry. The drag handle sets the panel height; the value is
 // clamped and remembered so a reopened panel keeps its size.
 const PANEL_DEFAULT_H = 320;
@@ -245,6 +254,33 @@ function renderContextChips() {
   if (contextCountEl) {
     contextCountEl.textContent = selected.length ? `${selected.length} selected` : "none selected";
   }
+}
+
+// Every entry Lain could review, as {id, title, folder, group}. The critique
+// dialog lists these; the group only labels the source tab.
+function listEntries() {
+  return [
+    ...entryCache.write.map((e) => ({ ...e, group: "Write" })),
+    ...entryCache.wiki.map((e) => ({ ...e, group: "Wiki" })),
+  ];
+}
+
+// Run a critique over the picked entries. Simple mode injects exactly those
+// entries (and no browsing); Plan access still permits the annotate tool, so
+// Lain proposes comments without touching the prose.
+async function startCritique(ids) {
+  if (!Array.isArray(ids) || !ids.length || busy || pending) return;
+  await ensureSession();
+  if (!session || !session.sessionId) return;
+  session.mode = "simple";
+  session.access = "plan";
+  session.selectedEntries = [...new Set(ids)];
+  renderToggles();
+  renderContextChips();
+  renderContextList();
+  open();
+  inputEl.value = CRITIQUE_PROMPT;
+  await sendMessage();
 }
 
 /* ---------------- long jobs ---------------- */
@@ -697,6 +733,12 @@ function pendingCard(p) {
       ...(details.diff || []).map((d) =>
         el("div", { class: `lain-diff-${d.type}` }, d.text === "" ? " " : d.text)
       ),
+    ]);
+  } else if (p.tool === "add_comment") {
+    body = el("div", { class: "lain-confirm-detail" }, [
+      details.title ? el("div", { class: "lain-confirm-sub" }, escapeHtml(details.title)) : null,
+      el("div", { class: "lain-comment-quote" }, `“${escapeHtml(details.quote || "")}”`),
+      el("div", {}, escapeHtml(details.body || "")),
     ]);
   } else if (p.tool === "move_entry" || p.tool === "move_folder") {
     const label = details.name || details.title || "";
@@ -1384,5 +1426,5 @@ export function mount(hostEl, context) {
       applyPanelHeight(Number.isFinite(raw) ? raw : storedPanelHeight(), false);
     });
   }
-  return { toggle, open, close, isOpen, refresh, refreshScope };
+  return { toggle, open, close, isOpen, refresh, refreshScope, listEntries, startCritique };
 }

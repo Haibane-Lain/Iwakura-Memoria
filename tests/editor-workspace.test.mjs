@@ -343,6 +343,30 @@ await check("revision mode opens the comments panel and closes it again", async 
   dom.window.close();
 });
 
+await check("each document keeps its scroll offset across tab switches", async () => {
+  const dom = makeDom();
+  installFetch();
+  const { ctx, workspace } = await freshWorkspace();
+  const slot = {};
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  ctx.panes.primary.host.scrollTop = 321;
+
+  await workspace.openDocument("b.md");
+  assert.equal(ctx.panes.primary.host.scrollTop, 0, "a different document opens at the top");
+
+  await workspace.openDocument("a.md");
+  assert.equal(ctx.panes.primary.host.scrollTop, 321, "returning to a.md restores its scroll");
+
+  // A fresh project route clears the table, so the next open starts at the top.
+  workspace.resetEditorPool();
+  await workspace.openDocument("b.md");
+  await workspace.openDocument("a.md");
+  assert.equal(ctx.panes.primary.host.scrollTop, 0, "a new project starts at the top");
+  dom.window.close();
+});
+
 if (failures) {
   console.error(`editor-workspace: ${failures} check(s) failed`);
   process.exit(1);

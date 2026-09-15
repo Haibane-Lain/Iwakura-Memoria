@@ -22,6 +22,7 @@ WRITE_TOOL_NAMES = {
     "delete_folder",
 }
 READ_TOOL_NAMES = {"list_tree", "read_entry", "read_attachment"}
+ANNOTATE_TOOL_NAMES = {"add_comment"}
 
 
 def _schema_names(mode, access):
@@ -31,21 +32,24 @@ def _schema_names(mode, access):
 # --- schema matrix ----------------------------------------------------------
 
 
-def test_advanced_plan_advertises_read_tools_only():
-    assert _schema_names("advanced", "plan") == READ_TOOL_NAMES
+def test_advanced_plan_advertises_read_and_annotate_tools():
+    assert _schema_names("advanced", "plan") == READ_TOOL_NAMES | ANNOTATE_TOOL_NAMES
 
 
 def test_advanced_write_advertises_everything():
-    assert _schema_names("advanced", "write") == READ_TOOL_NAMES | WRITE_TOOL_NAMES
+    assert (
+        _schema_names("advanced", "write")
+        == READ_TOOL_NAMES | WRITE_TOOL_NAMES | ANNOTATE_TOOL_NAMES
+    )
 
 
-def test_simple_plan_advertises_nothing():
-    assert _schema_names("simple", "plan") == set()
+def test_simple_plan_advertises_annotate_only():
+    assert _schema_names("simple", "plan") == ANNOTATE_TOOL_NAMES
 
 
-def test_simple_write_advertises_write_tools_only():
+def test_simple_write_advertises_write_tools_and_annotate():
     names = _schema_names("simple", "write")
-    assert names == tools.SIMPLE_WRITE_TOOLS
+    assert names == tools.SIMPLE_WRITE_TOOLS | ANNOTATE_TOOL_NAMES
     assert not (names & READ_TOOL_NAMES)
     # Folder moves/deletes need a picked entry to authorize them.
     assert "move_folder" not in names
@@ -101,6 +105,79 @@ def test_simple_allows_creating_in_accessible_folders(make_project):
         mode="simple", access="write", selected_entries=[],
     )
     assert created and action["tool"] == "create_entry"
+
+
+# --- add_comment (annotate, allowed in Plan) --------------------------------
+
+
+def test_add_comment_is_allowed_in_advanced_plan(make_project):
+    from app.services import documents as documents_service
+
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Scene", content="Alpha bravo charlie.")
+    plan = tools.dispatch(
+        "add_comment",
+        {"entryId": doc["id"], "quote": "bravo", "body": "Tighten this"},
+        "proj",
+        [""],
+        mode="advanced",
+        access="plan",
+    )
+    assert isinstance(plan, tools.PendingAction)
+    assert plan.payload["tool"] == "add_comment"
+    assert plan.payload["details"]["quote"] == "bravo"
+
+
+def test_add_comment_in_simple_plan_requires_a_selection(make_project):
+    from app.services import documents as documents_service
+
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Scene", content="Alpha bravo charlie.")
+    args = {"entryId": doc["id"], "quote": "bravo", "body": "Tighten this"}
+    with pytest.raises(tools.ToolError):
+        tools.dispatch(
+            "add_comment", args, "proj", [""],
+            mode="simple", access="plan", selected_entries=[],
+        )
+    plan = tools.dispatch(
+        "add_comment", args, "proj", [""],
+        mode="simple", access="plan", selected_entries=[doc["id"]],
+    )
+    assert isinstance(plan, tools.PendingAction)
+
+
+def test_add_comment_confirm_creates_body_and_marker(make_project):
+    from app.services import comments as comments_service
+    from app.services import documents as documents_service
+
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Scene", content="Alpha bravo charlie.")
+    _result, action = tools.dispatch(
+        "add_comment",
+        {"entryId": doc["id"], "quote": "bravo", "body": "Tighten this"},
+        "proj",
+        [""],
+        confirmed=True,
+    )
+    assert action["tool"] == "add_comment"
+    note = comments_service.list_doc("proj", doc["id"])[0]
+    assert note["author"] == "Lain"
+    body = documents_service.get_document("proj", doc["id"])["content"]
+    assert f'<span data-cid="{note["id"]}">bravo</span>' in body
+
+
+def test_add_comment_rejects_a_missing_quote(make_project):
+    from app.services import documents as documents_service
+
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Scene", content="Alpha bravo charlie.")
+    with pytest.raises(tools.ToolError):
+        tools.dispatch(
+            "add_comment",
+            {"entryId": doc["id"], "quote": "not here", "body": "x"},
+            "proj",
+            [""],
+        )
 
 
 # --- session state ----------------------------------------------------------

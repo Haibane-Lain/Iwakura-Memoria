@@ -92,8 +92,13 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   if (pathname === "/api/projects/p/comments" && method === "DELETE") {
     const resolvedOnly = parsed.searchParams.get("resolvedOnly") === "true";
+    const author = (parsed.searchParams.get("author") || "").toLowerCase();
     const before = store.length;
-    store = resolvedOnly ? store.filter((c) => !c.resolved) : [];
+    store = store.filter((c) => {
+      if (resolvedOnly && c.resolved) return false;
+      if (author && String(c.author || "").toLowerCase() === author) return false;
+      return true;
+    });
     return jsonResponse({ ok: true, removed: before - store.length });
   }
   return jsonResponse({}, 404);
@@ -248,6 +253,20 @@ await check("clear resolved removes the backend rows and the markers", async () 
   await waitFor(() => store.length === 1);
   assert.equal(store[0].id, "c_bbbb");
   assert.deepEqual(ctrl.calls.removeComments, ["c_aaaa"]);
+});
+
+await check("clear AI notes removes only Lain's comments and their markers", async () => {
+  store = [
+    { id: "c_ai00000001", docId: "01-scene", body: "ai", author: "Lain", resolved: false },
+    { id: "c_you0000001", docId: "01-scene", body: "mine", author: "you", resolved: false },
+  ];
+  await panel._reload();
+  button(panel, "Clear AI notes").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  const confirm = await waitFor(() => document.querySelector(".modal-backdrop .icon-btn.danger"));
+  confirm.dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => store.length === 1);
+  assert.equal(store[0].id, "c_you0000001");
+  assert.ok(ctrl.calls.removeComments.includes("c_ai00000001"));
 });
 
 await check("revision mode steps through open comments and advances on resolve", async () => {

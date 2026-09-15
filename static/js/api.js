@@ -216,9 +216,9 @@ export const api = {
       api.del(
         `/api/projects/${encodePath(pid)}/comments/${encodePath(commentId)}?docId=${encodeURIComponent(docId)}`
       ),
-    clear: (pid, docId, resolvedOnly = false) =>
+    clear: (pid, docId, { resolvedOnly = false, author = "" } = {}) =>
       api.del(
-        `/api/projects/${encodePath(pid)}/comments?docId=${encodeURIComponent(docId)}${resolvedOnly ? "&resolvedOnly=true" : ""}`
+        `/api/projects/${encodePath(pid)}/comments?docId=${encodeURIComponent(docId)}${resolvedOnly ? "&resolvedOnly=true" : ""}${author ? `&author=${encodeURIComponent(author)}` : ""}`
       ),
   },
 

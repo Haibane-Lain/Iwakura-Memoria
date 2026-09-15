@@ -144,3 +144,35 @@ unchanged.
   shipped alongside LanguageTool (see `A4`).
 - The PyInstaller server must bundle `static/dist/editor.bundle.js` (build the
   frontend before packaging) and the uvicorn hidden imports (`A1`).
+
+---
+
+## Critique pass (`add_comment`) — added after this review
+
+A review pass that lets Lain attach comments to exact quotes, without editing
+prose. Three deliberate choices worth remembering:
+
+- **Annotate is not a prose write.** `add_comment` is confirm-gated like every
+  planned action, but it is *always* advertised: `ANNOTATE_TOOLS` is exposed in
+  Plan access too, and `dispatch` refuses it in neither Plan nor Simple+Plan
+  (it is checked against `ENTRY_WRITE_TOOLS`, so Simple may only annotate a
+  picked entry). `WRITE_TOOLS` deliberately excludes it, so the Plan refusal
+  still blocks `edit_entry`/`rename_entry`/… The system prompt's `Access is
+  PLAN` lines describe this as "read and annotate". The Plan/Write contract is
+  therefore now: **Plan = read + annotate, Write = edit prose**.
+- **The marker is server-authored for this path.** `comments_service` gained
+  `find_anchor_span`/`wrap_quote`, the server-side twins of the editor's
+  `setComment`. Execution re-reads and re-validates the quote (the confirm can
+  arrive minutes later), creates the sidecar note under the author `"Lain"`,
+  wraps the first *unanchored* occurrence, and saves through the normal
+  `save_document` path with `before_reason=REASON_AI`, so the change is a
+  restorable snapshot. A failed save deletes the just-created note rather than
+  leaving a bodyless anchor. Quotes must be contiguous plain text; a quote that
+  spans Markdown markers is reported as a tool error instead of guessed at.
+- **Reversible in bulk.** `clear_doc(..., author=…)` and the `author` query on
+  the comments route back the panel's **Clear AI notes** button; the client
+  strips the matching markers with `removeComments`.
+
+The prefix-cache rule from above still holds: the new capability is described
+in the *variable* (mode/access) section of the system prompt, after the fixed
+block, so the shared prefix is unchanged.

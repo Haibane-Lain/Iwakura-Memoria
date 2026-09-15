@@ -92,9 +92,16 @@ def delete_comment(project_id: str, comment_id: str, docId: str):
 
 
 @router.delete("/{project_id}/comments")
-def clear_comments(project_id: str, docId: str, resolvedOnly: bool = False):
+def clear_comments(
+    project_id: str,
+    docId: str,
+    resolvedOnly: bool = False,
+    author: str | None = None,
+):
     try:
-        removed = comments_service.clear_doc(project_id, docId, resolved_only=resolvedOnly)
+        removed = comments_service.clear_doc(
+            project_id, docId, resolved_only=resolvedOnly, author=author
+        )
     except (FileNotFoundError, ValueError) as exc:
         raise _http_error(exc) from exc
     return {"ok": True, "removed": removed}

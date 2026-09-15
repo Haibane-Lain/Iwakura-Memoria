@@ -249,12 +249,38 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     });
     if (!ok) return;
     try {
-      await api.comments.clear(projectId, docId(), true);
+      await api.comments.clear(projectId, docId(), { resolvedOnly: true });
     } catch (err) {
       toast(err.message, "error");
       return;
     }
     if (ctrl()) ctrl().removeComments(resolved);
+    await reload();
+  }
+
+  function aiCommentIds() {
+    return items
+      .filter((c) => String(c.author || "").toLowerCase() === "lain")
+      .map((c) => c.id);
+  }
+
+  async function clearAiNotes() {
+    const ids = aiCommentIds();
+    if (!ids.length) return;
+    const ok = await confirmDialog({
+      title: "Remove Lain's comments?",
+      message: `Delete ${ids.length} comment${ids.length === 1 ? "" : "s"} proposed by Lain? The anchored text stays.`,
+      confirmText: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.comments.clear(projectId, docId(), { author: "Lain" });
+    } catch (err) {
+      toast(err.message, "error");
+      return;
+    }
+    if (ctrl()) ctrl().removeComments(ids);
     await reload();
   }
 
@@ -346,9 +372,17 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     const anchored = anchoredMap();
     const openCount = items.filter((c) => !c.resolved).length;
     const hasResolved = items.some((c) => c.resolved);
+    const hasAi = items.some((c) => String(c.author || "").toLowerCase() === "lain");
     const head = el("div", { class: "panel-head" }, [
       el("span", { class: "panel-title" }, items.length ? `Comments · ${openCount} open` : "Comments"),
       el("span", { class: "panel-head-spacer" }),
+      hasAi
+        ? el("button", {
+            class: "mini-btn",
+            title: "Delete the comments Lain proposed (the anchored text stays)",
+            onclick: clearAiNotes,
+          }, "Clear AI notes")
+        : null,
       hasResolved
         ? el("button", { class: "mini-btn", onclick: clearResolved }, "Clear resolved")
         : null,
