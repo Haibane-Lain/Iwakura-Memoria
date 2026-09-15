@@ -25,19 +25,32 @@ function quoteExcerpt(text, max = 110) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-// The first exact occurrence of `quote` in any textblock, as a document range.
-// Used when the captured selection has drifted (the user edited while the
-// composer was open).
-function findQuote(doc, quote) {
+// True when [from, to) intersects any of `ranges` ({from, to}).
+function overlaps(from, to, ranges) {
+  return (ranges || []).some((r) => from < r.to && to > r.from);
+}
+
+// The first exact occurrence of `quote` in any textblock that does not already
+// sit inside a comment anchor, as a document range. Used when the captured
+// selection has drifted (the user edited while the composer was open) and to
+// keep a new note from landing on top of an existing one.
+function findQuote(doc, quote, occupied = []) {
   if (!quote) return null;
   let found = null;
   doc.descendants((node, pos) => {
     if (found || !node.isTextblock) return found == null;
-    const index = node.textContent.indexOf(quote);
-    if (index >= 0) {
-      found = { from: pos + 1 + index, to: pos + 1 + index + quote.length };
+    const text = node.textContent;
+    let index = text.indexOf(quote);
+    while (index >= 0) {
+      const from = pos + 1 + index;
+      const to = from + quote.length;
+      if (!overlaps(from, to, occupied)) {
+        found = { from, to };
+        return false;
+      }
+      index = text.indexOf(quote, index + 1);
     }
-    return found == null;
+    return true;
   });
   return found;
 }
@@ -100,18 +113,22 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
 
   function wrapMarker(cid, selection) {
     const controller = ctrl();
-    if (!controller) return;
+    if (!controller) return false;
     const editor = controller.editor;
     const doc = editor.state.doc;
+    // Anchors already in the document; only used to pick a free occurrence when
+    // the captured selection has drifted.
+    const occupied = controller.getCommentRanges().map((r) => ({ from: r.from, to: r.to }));
     const { from, to, quote } = selection;
-    const valid = from >= 0 && to <= doc.content.size && doc.textBetween(from, to, " ") === quote;
-    const target = valid ? { from, to } : findQuote(doc, quote);
-    if (!target) {
-      toast("The commented text changed; the note has no anchor", "error");
-      return;
-    }
+    const matches = from >= 0 && to <= doc.content.size && doc.textBetween(from, to, " ") === quote;
+    const target = matches ? { from, to } : findQuote(doc, quote, occupied);
+    if (!target) return false;
     editor.chain().focus().setTextSelection(target).run();
+    // The mark command skips text already inside an anchor, so verify the anchor
+    // actually landed (a selection entirely inside existing anchors marks
+    // nothing) before the caller keeps the note.
     controller.setComment(cid);
+    return controller.getCommentRanges().some((r) => r.cid === cid);
   }
 
   async function submitComposer() {
@@ -138,7 +155,17 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     busy = false;
     composing = null;
     draft = "";
-    wrapMarker(record.id, selection);
+    const anchored = wrapMarker(record.id, selection);
+    if (!anchored) {
+      // Never leave a body with no marker behind: the server-side annotate path
+      // deletes a note it could not anchor, and the panel should do the same.
+      try {
+        await api.comments.remove(projectId, record.id, id);
+      } catch {
+        /* the note stays; the user can delete it from the list */
+      }
+      toast("That text is missing or already part of a comment — the note wasn't anchored.", "error");
+    }
     await reload();
   }
 
@@ -291,6 +318,50 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     notify();
   }
 
+  // Re-link a note whose anchor was lost (the text moved or the document was
+  // rewritten externally) by finding its stored quote again.
+  function locate(comment) {
+    const controller = ctrl();
+    if (!controller) return null;
+    const occupied = controller.getCommentRanges().map((r) => ({ from: r.from, to: r.to }));
+    return findQuote(controller.editor.state.doc, comment.quote || "", occupied);
+  }
+
+  function reanchor(comment) {
+    const controller = ctrl();
+    const target = locate(comment);
+    if (!controller || !target) {
+      toast("That text is gone or already inside another comment.", "info");
+      return;
+    }
+    controller.editor.chain().focus().setTextSelection(target).run();
+    controller.setComment(comment.id);
+    render();
+    notify();
+  }
+
+  async function reanchorAll() {
+    let restored = 0;
+    for (const comment of items) {
+      const controller = ctrl();
+      if (!controller) break;
+      if (controller.getCommentRanges().some((r) => r.cid === comment.id)) continue;
+      const target = locate(comment);
+      if (!target) continue;
+      controller.editor.chain().focus().setTextSelection(target).run();
+      controller.setComment(comment.id);
+      restored += 1;
+    }
+    render();
+    notify();
+    toast(
+      restored
+        ? `Re-anchored ${restored} comment${restored === 1 ? "" : "s"}.`
+        : "Nothing to re-anchor — those quotes are gone or already commented.",
+      "info"
+    );
+  }
+
   function reveal(comment) {
     pane.activeCommentId = comment.id;
     if (ctrl()) ctrl().revealComment(comment.id);
@@ -349,7 +420,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     const meta = [
       comment.author || "you",
       formatTime(comment.updatedAt || comment.createdAt),
-      range ? "" : "anchor removed",
+      range ? "" : "text changed — anchor lost",
     ].filter(Boolean).join(" · ");
     return el("div", {
       class: classes.join(" "),
@@ -363,6 +434,9 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
       el("div", { class: "comment-actions" }, [
         el("button", { class: "mini-btn", onclick: () => toggleResolved(comment) }, comment.resolved ? "Reopen" : "Resolve"),
         el("button", { class: "mini-btn", onclick: () => { editingId = comment.id; render(); } }, "Edit"),
+        !range
+          ? el("button", { class: "mini-btn", onclick: () => reanchor(comment) }, "Re-anchor")
+          : null,
         el("button", { class: "mini-btn danger", onclick: () => removeComment(comment) }, "Delete"),
       ]),
     ]);
@@ -373,9 +447,17 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     const openCount = items.filter((c) => !c.resolved).length;
     const hasResolved = items.some((c) => c.resolved);
     const hasAi = items.some((c) => String(c.author || "").toLowerCase() === "lain");
+    const detached = items.filter((c) => !anchored.get(c.id));
     const head = el("div", { class: "panel-head" }, [
       el("span", { class: "panel-title" }, items.length ? `Comments · ${openCount} open` : "Comments"),
       el("span", { class: "panel-head-spacer" }),
+      detached.length
+        ? el("button", {
+            class: "mini-btn",
+            title: "Re-link notes whose quoted text is still in the document",
+            onclick: reanchorAll,
+          }, "Re-anchor all")
+        : null,
       hasAi
         ? el("button", {
             class: "mini-btn",

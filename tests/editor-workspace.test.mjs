@@ -367,6 +367,51 @@ await check("each document keeps its scroll offset across tab switches", async (
   dom.window.close();
 });
 
+await check("flushSave skips a document the assistant just rewrote", async () => {
+  const dom = makeDom();
+  const { saved } = installFetch();
+  const { ctx, workspace } = await freshWorkspace();
+  const slot = {};
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  slot.opts.onChange("Alpha edited");
+  assert.equal(ctx.panes.primary.dirty, true);
+
+  // Saving the editor's older text over the assistant's write is what erased
+  // the critique anchors, so an affected document must be left alone.
+  await workspace.flushSave(new Set(["a.md"]));
+  assert.deepEqual(saved, [], "the affected pane was not written");
+  assert.equal(ctx.panes.primary.dirty, true, "and it keeps its unsaved edits");
+
+  await workspace.flushSave();
+  assert.deepEqual(saved, [{ id: "a.md", content: "Alpha edited" }]);
+  dom.window.close();
+});
+
+await check("dropping a rewritten document's editor rebuilds it from disk", async () => {
+  const dom = makeDom();
+  installFetch();
+  const { ctx, workspace } = await freshWorkspace();
+  const slot = {};
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  const stale = ctx.panes.primary.ctrl;
+  DOCS["a.md"].content = 'Alpha <span data-cid="c_x">body</span>';
+
+  const onScreen = workspace.dropEditorsFor(new Set(["a.md"]));
+  assert.equal(onScreen, true, "the pane showed the affected document");
+  assert.equal(ctx.panes.primary.ctrl, null, "the pane is detached from the stale editor");
+  assert.ok(!ctx.editorPool.has("a.md"), "the warm editor is dropped");
+  assert.notEqual(stale, null);
+
+  await workspace.renderEditorView();
+  assert.equal(ctx.panes.primary.ctrl.getMarkdown(), 'Alpha <span data-cid="c_x">body</span>');
+  DOCS["a.md"].content = "Alpha body";
+  dom.window.close();
+});
+
 if (failures) {
   console.error(`editor-workspace: ${failures} check(s) failed`);
   process.exit(1);

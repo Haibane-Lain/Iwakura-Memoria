@@ -41,6 +41,7 @@ import {
   collectCommentRanges,
   makeCommentsExtension,
   removeCommentMarks,
+  setCommentPreserving,
 } from "./comments.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
@@ -1141,7 +1142,7 @@ window.LainEditor = {
         applyCommentsMeta(editor, meta);
       },
       setComment(cid) {
-        if (cid) editor.chain().focus().setMark("comment", { cid }).run();
+        if (cid) setCommentPreserving(editor, cid);
       },
       removeComment(cid) {
         removeCommentMarks(editor, [cid]);

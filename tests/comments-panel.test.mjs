@@ -130,7 +130,53 @@ function makeCtrl(rangesRef) {
     calls,
     editor: { state: { doc }, chain: () => chain },
     getCommentRanges: () => rangesRef.value,
-    setComment: (cid) => calls.setComment.push(cid),
+    setComment: (cid) => {
+      calls.setComment.push(cid);
+      // The real controller reports the new anchor immediately; mirror that so
+      // the panel can verify the mark landed.
+      rangesRef.value = [...rangesRef.value, { cid, from: 7, to: 12, text: "bravo" }];
+    },
+    removeComment: (cid) => calls.removeComment.push(cid),
+    removeComments: (cids) => calls.removeComments.push(...cids),
+    revealComment: (cid) => {
+      calls.reveal.push(cid);
+      return true;
+    },
+  };
+}
+
+// A richer fake for the anchor logic: a one-block document whose text can be
+// sliced, plus a live range list that setComment appends to (so the panel can
+// verify an anchor landed, the way the real controller reports ranges).
+function makeRichCtrl(text, rangesRef) {
+  const calls = { setComment: [], removeComment: [], removeComments: [], reveal: [] };
+  const block = { isTextblock: true, textContent: text };
+  const richDoc = {
+    content: { size: text.length + 2 },
+    textBetween: (from, to) => text.slice(from - 1, to - 1),
+    descendants: (fn) => {
+      fn(block, 0);
+    },
+  };
+  const chain = {
+    focus() {
+      return chain;
+    },
+    setTextSelection() {
+      return chain;
+    },
+    run() {
+      return chain;
+    },
+  };
+  return {
+    calls,
+    editor: { state: { doc: richDoc }, chain: () => chain },
+    getCommentRanges: () => rangesRef.value,
+    setComment: (cid) => {
+      calls.setComment.push(cid);
+      rangesRef.value = [...rangesRef.value, { cid, from: 1, to: 2, text: "x" }];
+    },
     removeComment: (cid) => calls.removeComment.push(cid),
     removeComments: (cids) => calls.removeComments.push(...cids),
     revealComment: (cid) => {
@@ -291,6 +337,87 @@ await check("revision mode steps through open comments and advances on resolve",
 
   panel.stopReview();
   assert.ok(!panel.querySelector(".review-bar"));
+});
+
+await check("a comment over an anchored span keeps the existing anchor", async () => {
+  store = [];
+  const ref = { value: [{ cid: "c_aaa", from: 3, to: 6, text: "one" }] };
+  const rich = makeRichCtrl("A one two three.", ref);
+  pane.ctrl = rich;
+
+  panel.beginComment({ from: 1, to: 17, quote: "A one two three." });
+  const box = panel.querySelector(".comment-composer");
+  box.value = "Overlapping";
+  box.dispatchEvent(new w.Event("input", { bubbles: true }));
+  button(panel, "Comment").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+
+  await waitFor(() => rich.calls.setComment.length === 1);
+  await waitFor(() => panel.textContent.includes("Overlapping"));
+  const record = store.find((c) => c.body === "Overlapping");
+  assert.ok(record, "the note is kept");
+  assert.deepEqual(rich.calls.setComment, [record.id]);
+  pane.ctrl = ctrl;
+});
+
+await check("a note that cannot be anchored is deleted, not left dangling", async () => {
+  store = [];
+  const ref = { value: [] };
+  const rich = makeRichCtrl("alpha beta", ref);
+  pane.ctrl = rich;
+
+  // The captured selection no longer matches the document and the quote is gone.
+  panel.beginComment({ from: 1, to: 5, quote: "missing text" });
+  const box = panel.querySelector(".comment-composer");
+  box.value = "Orphan risk";
+  box.dispatchEvent(new w.Event("input", { bubbles: true }));
+  button(panel, "Comment").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+
+  await waitFor(() => store.length === 0);
+  assert.equal(rich.calls.setComment.length, 0, "no anchor was attempted");
+  assert.equal(store.length, 0, "the unanchored note was removed");
+  assert.ok(!panel.textContent.includes("Orphan risk"));
+  pane.ctrl = ctrl;
+});
+
+await check("Re-anchor re-links a note whose quote is still present", async () => {
+  store = [
+    { id: "c_ai0000001", docId: "01-scene", body: "ai", author: "Lain", quote: "bravo", resolved: false },
+  ];
+  const ref = { value: [] };
+  const rich = makeRichCtrl("alpha bravo charlie", ref);
+  pane.ctrl = rich;
+  await panel._reload();
+
+  const item = panel.querySelector(".comment-item.detached");
+  assert.ok(item, "the note starts detached");
+  assert.match(item.textContent, /anchor lost/);
+  button(item, "Re-anchor").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+
+  await waitFor(() => rich.calls.setComment.includes("c_ai0000001"));
+  await waitFor(() => !panel.querySelector(".comment-item.detached"));
+  pane.ctrl = ctrl;
+});
+
+await check("Re-anchor all re-links every recoverable note", async () => {
+  store = [
+    { id: "c_ai000000a", docId: "01-scene", body: "a", author: "Lain", quote: "alpha", resolved: false },
+    { id: "c_ai000000b", docId: "01-scene", body: "b", author: "Lain", quote: "bravo", resolved: false },
+    { id: "c_ai000000c", docId: "01-scene", body: "c", author: "Lain", quote: "gone", resolved: false },
+  ];
+  const ref = { value: [] };
+  const rich = makeRichCtrl("alpha bravo charlie", ref);
+  pane.ctrl = rich;
+  await panel._reload();
+
+  button(panel, "Re-anchor all").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => rich.calls.setComment.length === 2);
+  assert.deepEqual(
+    [...rich.calls.setComment].sort(),
+    ["c_ai000000a", "c_ai000000b"],
+    "only the quotes still in the document are re-linked"
+  );
+  assert.ok(panel.querySelector(".comment-item.detached"), "the lost quote stays detached");
+  pane.ctrl = ctrl;
 });
 
 if (failures) {

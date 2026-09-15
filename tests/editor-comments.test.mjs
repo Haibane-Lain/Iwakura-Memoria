@@ -134,6 +134,28 @@ await check("removing several anchors at once keeps the plain text", () => {
   s.close();
 });
 
+await check("commenting over an existing anchor keeps the inner anchor", () => {
+  const s = open('A <span data-cid="c_aaa">one</span> two three.');
+  // Select the whole paragraph, which contains the c_aaa anchor.
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 17 }).run();
+  s.ctrl.setComment("c_bbb");
+  const md = s.ctrl.getMarkdown();
+  assert.match(md, /<span data-cid="c_aaa">one<\/span>/, "the inner anchor survives");
+  const cids = [...s.ctrl.getCommentRanges().map((r) => r.cid)].sort();
+  assert.deepEqual(cids, ["c_aaa", "c_bbb"], "both comments are still anchored");
+  s.close();
+});
+
+await check("a comment over an already-anchored span is a no-op", () => {
+  const s = open('<span data-cid="c_aaa">one two</span>');
+  const before = s.ctrl.getMarkdown();
+  s.ctrl.editor.chain().setTextSelection({ from: 1, to: 8 }).run();
+  s.ctrl.setComment("c_bbb");
+  assert.equal(s.ctrl.getMarkdown(), before, "nothing was clobbered");
+  assert.deepEqual([...s.ctrl.getCommentRanges().map((r) => r.cid)], ["c_aaa"]);
+  s.close();
+});
+
 await check("a comment inside a character-table cell survives", () => {
   const box = [
     '<aside class="character-table">',

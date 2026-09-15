@@ -149,3 +149,47 @@ export function removeCommentMarks(editor, cids) {
   });
   if (changed) editor.view.dispatch(tr);
 }
+
+// The sub-ranges of [from, to) whose text is not already inside a comment
+// anchor. A same-type mark excludes its siblings, so a plain `setMark` over
+// already-annotated text silently deletes the existing anchor; the caller uses
+// these spans to mark only the free text and leave every existing note linked.
+export function freeCommentSpans(doc, from, to) {
+  const occupied = [];
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText) return true;
+    if (node.marks.some((m) => m.type.name === "comment")) {
+      occupied.push([pos, pos + node.nodeSize]);
+    }
+    return true;
+  });
+  occupied.sort((a, b) => a[0] - b[0]);
+  const spans = [];
+  let cursor = from;
+  for (const [start, end] of occupied) {
+    if (end <= cursor) continue;
+    if (start > cursor) spans.push([cursor, Math.min(start, to)]);
+    cursor = Math.max(cursor, end);
+    if (cursor >= to) break;
+  }
+  if (cursor < to) spans.push([cursor, to]);
+  return spans;
+}
+
+// Apply a comment mark to the selection without clobbering existing anchors.
+// Returns false when the selection is empty or every character is already part
+// of a comment (the caller then reports that no anchor was made).
+export function setCommentPreserving(editor, cid) {
+  if (!editor || editor.isDestroyed || !cid) return false;
+  const markType = editor.schema.marks.comment;
+  if (!markType) return false;
+  editor.commands.focus();
+  const { from, to } = editor.state.selection;
+  if (from >= to) return false;
+  const spans = freeCommentSpans(editor.state.doc, from, to);
+  if (!spans.length) return false;
+  const tr = editor.state.tr;
+  for (const [start, end] of spans) tr.addMark(start, end, markType.create({ cid }));
+  editor.view.dispatch(tr);
+  return true;
+}

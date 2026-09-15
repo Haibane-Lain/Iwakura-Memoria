@@ -199,6 +199,29 @@ export function invalidateEditorCache(keepActive = false) {
   if (!keepActive) state.editorCtrl = null;
 }
 
+// Drop the warm editors for specific documents — used when something wrote to
+// disk behind the cache's back (an AI edit, a project-wide replace). Unlike
+// `invalidateEditorCache`, this targets just those documents, so an unrelated
+// pane keeps its undo history. Any pane still pointed at one is detached (its
+// autosave timer stopped) so a stale editor can never save over the new text.
+// Returns true when a document on screen was affected, so the caller knows to
+// re-render.
+export function dropEditorsFor(docIds) {
+  const changed = docIds instanceof Set ? docIds : new Set(docIds || []);
+  if (!changed.size) return false;
+  for (const id of changed) {
+    const pane = paneForDoc(id);
+    if (pane) {
+      clearTimeout(pane.timer);
+      pane.timer = null;
+      pane.ctrl = null;
+      if (state.activePane === pane.name) state.editorCtrl = null;
+    }
+    editorPool.destroy(id);
+  }
+  return paneList().some((p) => p.docId && changed.has(p.docId));
+}
+
 // A fresh project route starts with no warm editors.
 export function resetEditorPool() {
   state.editorCtrl = null;
@@ -1198,8 +1221,16 @@ async function flushPane(pane) {
   }
 }
 
-export async function flushSave() {
-  await Promise.all(paneList().map(flushPane));
+// Flush every pane's unsaved edits. `except` (a doc id collection) skips panes
+// whose document was just rewritten on disk by someone else — saving the
+// editor's older text over that write is exactly what we must avoid.
+export async function flushSave(except = null) {
+  const skip = except ? new Set(except) : null;
+  await Promise.all(
+    paneList()
+      .filter((pane) => !(skip && pane.docId && skip.has(pane.docId)))
+      .map(flushPane)
+  );
 }
 
 export function updateTreeWords(docId, words) {
@@ -1342,20 +1373,9 @@ export async function afterSnapshotRestore(docId) {
 export async function refreshAfterReplace(docIds) {
   const changed = new Set(docIds || []);
   if (!changed.size) return;
-  for (const id of changed) {
-    const pane = paneForDoc(id);
-    if (pane) {
-      clearTimeout(pane.timer);
-      pane.timer = null;
-      pane.ctrl = null;
-      if (state.activePane === pane.name) state.editorCtrl = null;
-    }
-    editorPool.destroy(id);
-  }
+  const onScreen = dropEditorsFor(changed);
   await shell.refreshTree();
   await shell.refreshWiki();
   shell.updateTopbar();
-  if (paneList().some((p) => p.docId && changed.has(p.docId))) {
-    await renderEditorView();
-  }
+  if (onScreen) await renderEditorView();
 }

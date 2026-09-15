@@ -71,6 +71,7 @@ const {
   renderDocTabs,
   applyDictionaryWords,
   invalidateEditorCache,
+  dropEditorsFor,
   rekeyEditorScroll,
   dropTab,
   dropEditorFor,
@@ -1335,23 +1336,38 @@ async function onLainActions(actions) {
   }
   reconcileTabs(oldTabs);
   const current = state.currentDocId;
+  // Every action reports the id of the document it changed.
+  const affected = new Set(actions.map((a) => a.id).filter(Boolean));
   const touched = actions.some((a) => a.id && (a.id === current || (current || "").startsWith(a.id + "/")));
   renderSidebar();
   if (lainCtrl) lainCtrl.refreshScope();
-  // AI writes can rewrite any document's body. Save local edits first, then
-  // drop the warm editors: the open document is rebuilt from disk when the
-  // assistant touched it, and other warm editors are dropped either way.
-  if (current && touched) await flushSave();
-  invalidateEditorCache(!touched);
-  if (!current || !touched) return;
-  try {
-    const doc = await api.docs.get(state.project.id, current);
-    await renderEditorTab(doc, { wiki: isWikiScope() });
-  } catch {
-    state.currentDocId = null;
-    const f = firstDoc();
-    if (f) openDocument(f.id);
-    else renderEditorTab(null, { wiki: isWikiScope() });
+  // AI writes go straight to disk. Flush every *other* pane's local edits, but
+  // never a document the assistant just rewrote — saving the editor's older
+  // text over it is what silently erased the critique's anchors.
+  await flushSave(affected);
+  // Drop the affected documents' warm editors even when they are not the
+  // current one, so a visible stale editor cannot save over the write either.
+  const onScreen = dropEditorsFor(affected);
+  if (touched) {
+    // The current document changed (or may have been re-keyed); rebuild it (and
+    // everything else) from disk on the structural path.
+    invalidateEditorCache(false);
+  }
+  if (!current) return;
+  if (touched) {
+    try {
+      const doc = await api.docs.get(state.project.id, current);
+      await renderEditorTab(doc, { wiki: isWikiScope() });
+    } catch {
+      state.currentDocId = null;
+      const f = firstDoc();
+      if (f) openDocument(f.id);
+      else renderEditorTab(null, { wiki: isWikiScope() });
+    }
+  } else if (onScreen) {
+    // A non-current pane was showing a document the assistant rewrote; its
+    // editor was dropped, so rebuild the view from disk.
+    await renderEditorView();
   }
 }
 
