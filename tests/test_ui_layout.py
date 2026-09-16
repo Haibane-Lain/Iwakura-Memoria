@@ -152,8 +152,11 @@ def test_a_new_entry_is_named_inline_and_pinned_to_the_top():
     assert js.count("beginNaming(doc);") == 2, (
         "both + Chapter/Note and + Entry must start the inline name"
     )
-    assert js.count("focusNamingField();") == 2, (
-        "both create paths must focus the name field after the document opens"
+    assert js.count("claimNamingFocus();") == 2, (
+        "both create paths must claim the name field after the document opens"
+    )
+    assert re.search(r"setTimeout\(focusNamingField, 0\)", js), (
+        "the claim must run again after Tiptap's own delayed autofocus"
     )
     assert re.search(r"if \(!next\) return;", js), (
         "an unchanged blur must keep the name field instead of cancelling it"

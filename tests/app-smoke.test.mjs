@@ -502,14 +502,60 @@ await check("the project shell boots against a mocked API", async () => {
   // Creating a chapter no longer asks for a title up front: the entry appears
   // as "Untitled" with its row as a focused inline name field, and typing a
   // name + Enter renames it in place.
+  //
+  // Tiptap's Editor focuses itself on a 0ms timer after creation (its
+  // constructor calls `commands.focus(autofocus)` however `autofocus` is set).
+  // That is what used to pull the keyboard out of the name field and into the
+  // document, so the fake editor below reproduces it and the focus assertion
+  // has to survive it.
+  dom.window.LainEditor = {
+    create(opts) {
+      const ctrl = {
+        editor: {
+          view: { dom: doc.createElement("div") },
+          on() {},
+          isActive: () => false,
+          state: { selection: { empty: true, $from: { pos: 0 } }, doc: { descendants: () => {} } },
+          chain: () => ({ focus() { return this; }, run() {}, setTextSelection() { return this; }, scrollIntoView() { return this; } }),
+        },
+        getMarkdown: () => ctrl._md,
+        getText: () => String(ctrl._md || ""),
+        setDictionaryWords() {},
+        setSectionStyles() {},
+        setGrammarEnabled() {},
+        setTypewriterMode() {},
+        setOnAddToDictionary() {},
+        setOnWordMenu() {},
+        setOnLookupWord() {},
+        getCommentRanges: () => [],
+        setComments() {},
+        setComment() {},
+        removeComment() {},
+        removeComments() {},
+        revealComment() { return false; },
+        activate() {},
+        deactivate() {},
+        destroy() {},
+        insertImage() {},
+        focus() {},
+      };
+      ctrl._md = opts.content || "";
+      const sink = doc.createElement("input");
+      opts.element.append(sink);
+      dom.window.setTimeout(() => sink.focus(), 0);
+      return ctrl;
+    },
+  };
   const addChapter = doc.querySelector('.mini-add[title="New chapter"]');
   assert.ok(addChapter, "the + Chapter button renders");
   addChapter.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await waitFor(() => calls.includes("POST /api/projects/demo/documents"));
   const field = await waitFor(() => doc.querySelector(".tree-item .tree-name-input"));
   assert.equal(field.value, "Untitled", "the new entry starts unnamed");
-  // The opening flow re-renders the sidebar again; wait for the field to hold
-  // focus, then grab the live node just before typing.
+  // The opening flow re-renders the sidebar and mounts the editor, which
+  // schedules its own focus on a later timer; let that fire before checking who
+  // holds the keyboard.
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 20));
   await waitFor(() => doc.activeElement?.classList.contains("tree-name-input"));
   const live = doc.querySelector(".tree-name-input");
   // A blur with the placeholder untouched must NOT throw the field away. The

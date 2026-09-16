@@ -816,9 +816,7 @@ async function commitName(docId) {
   }
 }
 
-// The editor claims focus when it mounts (renderEditorView ends with
-// active.ctrl.focus()), so the new entry's name field is focused again after
-// the open: the keyboard must land in the name, not the document.
+// Put the keyboard in the new entry's name field.
 function focusNamingField() {
   if (!namingDocId) return;
   const field = document.querySelector(".sidebar-scroll .tree-name-input");
@@ -826,6 +824,17 @@ function focusNamingField() {
   field.focus();
   if (namingDraft === UNTITLED) field.select();
   else field.setSelectionRange(field.value.length, field.value.length);
+}
+
+// Claim the name field after the document opens. Tiptap's constructor focuses
+// its editor on a 0ms timer whatever `autofocus` is (`commands.focus(autofocus)`
+// in the constructor), and that timer is registered while the document is
+// opening — so the deferred calls here, registered later, run after it and the
+// keyboard stays in the name field instead of jumping into the document.
+function claimNamingFocus() {
+  focusNamingField();
+  setTimeout(focusNamingField, 0);
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(focusNamingField);
 }
 
 // The inline name field a new entry starts in. Enter commits, Esc keeps the
@@ -1576,7 +1585,7 @@ async function newDocument(kind, folder) {
     // which one we made, so open that.
     state.currentDocId = null;
     await openDocument(doc.id);
-    focusNamingField();
+    claimNamingFocus();
   } catch (err) {
     toast(err.message, "error");
   } finally {
@@ -1666,7 +1675,7 @@ async function newWikiEntry(folder) {
     // See newDocument: the title-based remap is ambiguous with "Untitled".
     state.currentDocId = null;
     await openDocument(doc.id);
-    focusNamingField();
+    claimNamingFocus();
   } catch (err) {
     toast(err.message, "error");
   }
