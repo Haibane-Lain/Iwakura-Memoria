@@ -1020,6 +1020,28 @@ function renderLevel(node, folderId) {
   return frag;
 }
 
+// Everything a folder offers in the sidebar. Its "⋯" button and a right-click
+// on the row open the same list, so the two entry points cannot drift.
+function folderActions(folder) {
+  if (isWikiScope()) {
+    return [
+      { label: "New entry", action: () => newWikiEntry(folder.id) },
+      { label: "New subfolder", action: () => newFolder(folder.id) },
+      null,
+      { label: "Rename folder", action: () => renameFolder(folder.id) },
+      { label: "Delete folder", action: () => deleteFolder(folder.id) },
+    ];
+  }
+  return [
+    { label: "New chapter", action: () => newDocument("chapter", folder.id) },
+    { label: "New note", action: () => newDocument("note", folder.id) },
+    { label: "New subfolder", action: () => newFolder(folder.id) },
+    null,
+    { label: "Rename folder", action: () => renameFolder(folder.id) },
+    { label: "Delete folder", action: () => deleteFolder(folder.id) },
+  ];
+}
+
 function renderFolderRow(folder, parentId) {
   const wiki = isWikiScope();
   // A search renders matches (and their ancestors) open without touching the
@@ -1044,27 +1066,18 @@ function renderFolderRow(folder, parentId) {
         onclick: (e) => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
-          const items = wiki
-            ? [
-                { label: "New entry", action: () => newWikiEntry(folder.id) },
-                { label: "New subfolder", action: () => newFolder(folder.id) },
-                null,
-                { label: "Rename folder", action: () => renameFolder(folder.id) },
-                { label: "Delete folder", action: () => deleteFolder(folder.id) },
-              ]
-            : [
-                { label: "New chapter", action: () => newDocument("chapter", folder.id) },
-                { label: "New note", action: () => newDocument("note", folder.id) },
-                { label: "New subfolder", action: () => newFolder(folder.id) },
-                null,
-                { label: "Rename folder", action: () => renameFolder(folder.id) },
-                { label: "Delete folder", action: () => deleteFolder(folder.id) },
-              ];
-          showContextMenu(rect.right - 170, rect.bottom + 4, items);
+          showContextMenu(rect.right - 170, rect.bottom + 4, folderActions(folder));
         },
       }, "⋯"),
     ]
   );
+  // Right-clicking anywhere on the row (grip, chevron, name, count) opens the
+  // folder's actions.
+  head.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showContextMenu(e.clientX, e.clientY, folderActions(folder));
+  });
   const children = el("div", {
     class: "tree-folder-children",
     style: { display: expanded ? "" : "none" },
@@ -1190,6 +1203,11 @@ function showContextMenu(x, y, items) {
     }
   }
   document.body.append(menu);
+  // Keep the menu on screen: a row near the bottom of a long tree would
+  // otherwise open it past the viewport edge, where it cannot be reached.
+  const box = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - box.width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - box.height - 4))}px`;
   const onDocClick = (e) => {
     if (!menu.contains(e.target)) closeContextMenu();
   };

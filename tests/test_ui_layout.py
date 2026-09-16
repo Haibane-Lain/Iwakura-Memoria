@@ -183,6 +183,38 @@ def test_a_new_entry_is_named_inline_and_pinned_to_the_top():
     )
 
 
+def test_a_folder_offers_its_actions_on_right_click():
+    """Right-clicking a folder row opens the same menu as its "⋯" button.
+
+    The two entry points must share one list, or they drift: the row's
+    contextmenu handler and the button both go through ``folderActions``.
+    """
+    js = PROJECT_JS.read_text(encoding="utf-8")
+
+    assert re.search(r"function folderActions\(folder\)", js), (
+        "a folder's actions must live in one helper"
+    )
+    assert js.count("folderActions(folder))") == 2, (
+        "the row's contextmenu and the ⋯ button must open the same list"
+    )
+    assert re.search(
+        r'head\.addEventListener\(\s*"contextmenu",[\s\S]{0,200}?showContextMenu\(e\.clientX, e\.clientY',
+        js,
+    ), (
+        "right-clicking the folder row must open its menu at the cursor"
+    )
+    for label in ("New chapter", "New note", "New subfolder", "Delete folder"):
+        assert f'label: "{label}"' in js, f"the folder menu must offer {label!r}"
+
+    # A row near the bottom of a long tree must not open the menu off screen.
+    assert re.search(
+        r"menu\.style\.top = `\$\{Math\.max\(4, Math\.min\(y, window\.innerHeight",
+        js,
+    ), (
+        "showContextMenu must keep the menu inside the viewport"
+    )
+
+
 def test_the_sidebar_search_box_is_pinned_outside_the_scroller():
     """The search box must stay visible however far the tree is scrolled.
 

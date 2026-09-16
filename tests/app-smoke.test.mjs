@@ -160,6 +160,8 @@ const EMPTY_TREE = { folders: [], documents: [] };
 // The write tree is mutable so the create-a-chapter flow below can add to it.
 let writeTree = EMPTY_TREE;
 let renamedTitle = null;
+let createdFolder = null;
+let createdDoc = null;
 // Used by the repetition dialog (it asks for scope "all"); the shell boot
 // itself only fetches the write and wiki trees, so this never affects the
 // empty-write-tab assertions below.
@@ -256,17 +258,38 @@ const PROJECT_ROUTES = [
   [/\/api\/projects\/demo\/tree\?scope=write$/, () => writeTree],
   [/\/api\/projects\/demo\/tree\?scope=wiki$/, () => EMPTY_TREE],
   [/\/api\/projects\/demo\/tree\?scope=all$/, () => SAMPLE_TREE],
-  // Creating a chapter appends it to the write tree; the inline rename then
-  // PATCHes the new document.
+  // Creating a chapter/note appends it to the write tree — inside the target
+  // folder when one is posted — and the inline rename then PATCHes it.
   [
     /\/api\/projects\/demo\/documents$/,
-    (href, method) => {
+    (href, method, opts) => {
       if (method === "POST") {
-        writeTree = {
-          folders: [],
-          documents: [{ id: "01-untitled", title: "Untitled", kind: "chapter", words: 0 }],
-        };
-        return writeTree.documents[0];
+        const body = opts && opts.body ? JSON.parse(opts.body) : {};
+        createdDoc = { kind: body.kind, folder: body.folder || null };
+        const doc = { id: "01-untitled", title: body.title, kind: body.kind, words: 0 };
+        writeTree = body.folder
+          ? {
+              ...writeTree,
+              folders: writeTree.folders.map((f) =>
+                f.id === body.folder ? { ...f, documents: [...f.documents, doc] } : f
+              ),
+            }
+          : { folders: writeTree.folders, documents: [doc] };
+        return doc;
+      }
+      return writeTree;
+    },
+  ],
+  // A folder made from the sidebar's "+ Folder" button or a folder's menu.
+  [
+    /\/api\/projects\/demo\/folders$/,
+    (href, method, opts) => {
+      if (method === "POST") {
+        const body = opts && opts.body ? JSON.parse(opts.body) : {};
+        createdFolder = { name: body.name, parent: body.parent || null };
+        const folder = { id: body.name, name: body.name, folders: [], documents: [] };
+        writeTree = { ...writeTree, folders: [...writeTree.folders, folder] };
+        return folder;
       }
       return writeTree;
     },
@@ -581,6 +604,68 @@ await check("the project shell boots against a mocked API", async () => {
     !doc.querySelector(".sidebar-scroll").classList.contains("naming"),
     "the tree unfreezes once the name is saved"
   );
+
+  // Right-clicking a folder row opens the same actions as its "⋯" button:
+  // create inside it, make a subfolder, rename, delete.
+  const addFolder = doc.querySelector('.mini-add[title="New folder"]');
+  assert.ok(addFolder, "the + Folder button renders");
+  addFolder.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  // Other dialogs from earlier checks are still stacked in this DOM, so find
+  // this one by its title rather than by ".modal".
+  const modalWith = (title) =>
+    [...doc.querySelectorAll(".modal")].find(
+      (m) => m.querySelector("h3")?.textContent === title
+    );
+  const folderModal = await waitFor(() => modalWith("New folder"));
+  folderModal.querySelector("input").value = "Act 1";
+  folderModal
+    .querySelector(".icon-btn.primary")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => createdFolder && createdFolder.name === "Act 1");
+  const rootMenu = () =>
+    doc.querySelector('.tree-folder-head[data-folderid="Act 1"]');
+
+  const openFolderMenu = async () => {
+    rootMenu().dispatchEvent(
+      new dom.window.MouseEvent("contextmenu", { bubbles: true, clientX: 40, clientY: 30 })
+    );
+    return waitFor(() => doc.querySelector(".context-menu"));
+  };
+
+  const menu = await openFolderMenu();
+  const labels = [...menu.querySelectorAll(".context-item")].map((n) => n.textContent);
+  assert.deepEqual(
+    labels,
+    ["New chapter", "New note", "New subfolder", "Rename folder", "Delete folder"],
+    "the folder's right-click menu lists its actions"
+  );
+  doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await waitFor(() => !doc.querySelector(".context-menu"));
+
+  // The "⋯" button opens that same list.
+  rootMenu().querySelector(".folder-menu-btn").dispatchEvent(
+    new dom.window.MouseEvent("click", { bubbles: true })
+  );
+  const fromButton = await waitFor(() => doc.querySelector(".context-menu"));
+  assert.deepEqual(
+    [...fromButton.querySelectorAll(".context-item")].map((n) => n.textContent),
+    labels,
+    "the ⋯ button and the right-click menu offer the same actions"
+  );
+  doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await waitFor(() => !doc.querySelector(".context-menu"));
+
+  // "New chapter" creates the entry *inside* that folder and starts naming it.
+  const menu2 = await openFolderMenu();
+  [...menu2.querySelectorAll(".context-item")]
+    .find((n) => n.textContent === "New chapter")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => createdDoc && createdDoc.folder === "Act 1");
+  assert.equal(createdDoc.kind, "chapter", "the folder menu asked for a chapter");
+  const nested = await waitFor(() =>
+    rootMenu()?.parentElement.querySelector(".tree-name-input")
+  );
+  assert.equal(nested.value, "Untitled", "the chapter starts unnamed inside the folder");
 
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   assert.equal(capture.errors.length, 0, `a tab threw: ${capture.errors.map(String).join("; ")}`);
