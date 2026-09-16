@@ -875,6 +875,10 @@ function renderTree(sidebarEl, { keepScroll = false } = {}) {
   // scroller underneath it.
   const pinEl = sidebarEl.querySelector(".sidebar-pin");
   const scrollEl = sidebarEl.querySelector(".sidebar-scroll");
+  // While a fresh entry is being named the tree is frozen: the row is pinned to
+  // the top (below) and the user must not be able to scroll it away from the
+  // name field. See `.sidebar-scroll.naming` in app.css.
+  scrollEl.classList.toggle("naming", !!namingDocId);
 
   // Typing re-renders the whole sidebar, and renderSidebar() is also reached
   // from autosave and tree mutations. Remember the caret so the box keeps

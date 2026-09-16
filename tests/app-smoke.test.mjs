@@ -552,6 +552,12 @@ await check("the project shell boots against a mocked API", async () => {
   await waitFor(() => calls.includes("POST /api/projects/demo/documents"));
   const field = await waitFor(() => doc.querySelector(".tree-item .tree-name-input"));
   assert.equal(field.value, "Untitled", "the new entry starts unnamed");
+  // The tree is frozen while the name is pending: the row cannot be scrolled
+  // away (app.css `.sidebar-scroll.naming`).
+  assert.ok(
+    doc.querySelector(".sidebar-scroll").classList.contains("naming"),
+    "the tree is frozen while naming"
+  );
   // The opening flow re-renders the sidebar and mounts the editor, which
   // schedules its own focus on a later timer; let that fire before checking who
   // holds the keyboard.
@@ -571,6 +577,10 @@ await check("the project shell boots against a mocked API", async () => {
   await waitFor(() => renamedTitle === "Prologue");
   await waitFor(() => doc.querySelector(".tree-item .name")?.textContent === "Prologue");
   assert.ok(!doc.querySelector(".tree-name-input"), "the field closes once the name is saved");
+  assert.ok(
+    !doc.querySelector(".sidebar-scroll").classList.contains("naming"),
+    "the tree unfreezes once the name is saved"
+  );
 
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   assert.equal(capture.errors.length, 0, `a tab threw: ${capture.errors.map(String).join("; ")}`);

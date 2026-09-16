@@ -399,6 +399,16 @@ a {
   padding: 12px;
 }
 
+/* While a new entry is being named the tree is frozen: its row is pinned to the
+   top and the list cannot be scrolled out from under the name field. The gutter
+   keeps the scrollbar's space so hiding it does not nudge the list sideways.
+   The pin still works — `overflow: hidden` boxes stay programmatically
+   scrollable. See project.js `pinRowToTop`. */
+.sidebar-scroll.naming {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
 .sidebar-scroll.drag-root,
 .sidebar-pin.drag-root {
   outline: 2px dashed var(--accent);

@@ -149,6 +149,17 @@ def test_a_new_entry_is_named_inline_and_pinned_to_the_top():
     assert re.search(r'class: "tree-name-input"', js), (
         "the row must render an inline name field"
     )
+    assert re.search(r'scrollEl\.classList\.toggle\("naming", !!namingDocId\)', js), (
+        "the tree must be frozen while a name is pending"
+    )
+
+    frozen = _block(".sidebar-scroll.naming")
+    assert re.search(r"overflow\s*:\s*hidden", frozen), (
+        "the frozen tree must not be scrollable"
+    )
+    assert re.search(r"scrollbar-gutter\s*:\s*stable", frozen), (
+        "hiding the scrollbar must not shift the list sideways"
+    )
     assert js.count("beginNaming(doc);") == 2, (
         "both + Chapter/Note and + Entry must start the inline name"
     )
