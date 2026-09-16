@@ -15,6 +15,7 @@ import {
   bundleSize,
   describeBundle,
   formatBytes,
+  hasDocx,
   overLimit,
   relativePaths,
 } from "./import-plan.js";
@@ -78,6 +79,15 @@ export async function renderImportDialog({
     el("option", { value: "note" }, "Notes"),
   ]);
 
+  // Word manuscripts usually separate chapters with Heading 1; the option only
+  // appears when a .docx is actually picked, and does nothing when the file has
+  // no Heading 1 at all.
+  const splitCheck = el("input", { type: "checkbox", checked: true });
+  const splitField = el("div", { class: "field checkbox" }, [
+    el("label", {}, [splitCheck, " Split Word documents at Heading 1"]),
+  ]);
+  splitField.style.display = "none";
+
   let folderSelect = null;
   const targetField = projectId
     ? el("div", { class: "field" }, [
@@ -116,6 +126,7 @@ export async function renderImportDialog({
       if (tooBig) summaryEl.textContent += ` — larger than the ${formatBytes(IMPORT_LIMIT_BYTES)} limit`;
     }
     importBtn.disabled = !picked.length || tooBig || (info.documents === 0 && !hasZip);
+    splitField.style.display = hasDocx(paths) ? "" : "none";
     // One loose file becomes one document in the target folder, so naming a
     // folder for it would be a lie (the server drops it).
     const single = info.files === 1 && info.documents === 1 && !info.folders;
@@ -154,6 +165,7 @@ export async function renderImportDialog({
     projectField,
     bundleField,
     el("div", { class: "field" }, [el("label", {}, "Import as"), asSelect]),
+    splitField,
     targetField,
     el("div", { class: "modal-actions" }, [
       statusEl,
@@ -180,6 +192,7 @@ export async function renderImportDialog({
         folder: folderSelect ? folderSelect.value : folder,
         name: bundleNameInput.value.trim(),
         as: asSelect.value,
+        split: splitCheck.checked,
         source: "auto",
       });
       const what = `${summary.documents} document${summary.documents === 1 ? "" : "s"}`;

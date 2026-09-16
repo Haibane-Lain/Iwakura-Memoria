@@ -5,12 +5,13 @@
 
 // What a file pick offers. A folder pick ignores `accept` (Chromium), so this
 // is a filter, not a guarantee — the server drops anything it cannot read.
-export const IMPORT_ACCEPT = ".md,.markdown,.txt,.text,.zip";
+export const IMPORT_ACCEPT = ".md,.markdown,.txt,.text,.docx,.zip";
 
 // Kept in step with app/services/import_docs.py MAX_BUNDLE_BYTES.
 export const IMPORT_LIMIT_BYTES = 25 * 1024 * 1024;
 
-const TEXT_EXT_RE = /\.(md|markdown|txt|text)$/i;
+// Everything the readers can turn into a document.
+const DOC_EXT_RE = /\.(md|markdown|txt|text|docx)$/i;
 
 /** Normalise a picked path to `/`-separated, relative form. */
 export function normalizePath(raw) {
@@ -47,21 +48,28 @@ export function titleFromName(name) {
     .join(" ");
 }
 
-/** The bundle kind, mirroring the server's `detect()`: "markdown" | "text" | "empty" | "unsupported". */
+/** The bundle kind, mirroring the server's `detect()`. */
 export function detectSource(paths) {
   const list = Array.from(paths || []).map(normalizePath).filter(Boolean);
   if (!list.length) return "empty";
   if (list.some((p) => /\.(md|markdown)$/i.test(p))) return "markdown";
+  if (list.some((p) => /\.docx$/i.test(p))) return "docx";
   if (list.some((p) => /\.(txt|text)$/i.test(p))) return "text";
   return "unsupported";
 }
 
 export const SOURCE_LABELS = {
   markdown: "Markdown",
+  docx: "Word document",
   text: "plain text",
   empty: "no files",
   unsupported: "unrecognised files",
 };
+
+/** Whether a pick holds a Word document (the split option only applies then). */
+export function hasDocx(paths) {
+  return Array.from(paths || []).some((p) => /\.docx$/i.test(normalizePath(p)));
+}
 
 /** A default folder/project name for a bundle: its single shared root, else "". */
 export function bundleName(paths) {
@@ -78,7 +86,7 @@ export function bundleName(paths) {
 /** Human summary of a bundle: what will be imported and how big it is. */
 export function describeBundle(paths) {
   const list = Array.from(paths || []).map(normalizePath).filter(Boolean);
-  const docs = list.filter((p) => TEXT_EXT_RE.test(p)).length;
+  const docs = list.filter((p) => DOC_EXT_RE.test(p)).length;
   const folders = new Set();
   for (const path of list) {
     const parts = path.split("/");

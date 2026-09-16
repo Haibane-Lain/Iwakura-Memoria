@@ -662,31 +662,47 @@ class _DocxBuilder(HTMLParser):
             return
 
         if self._para is None:
-            if tt in ("h1", "h2", "h3", "h4", "h5", "h6"):
-                level = int(tt[1])
+            # The block the text belongs to is not always the innermost tag: a
+            # paragraph can *open* with inline markup (`<p><strong>Bold</strong>`),
+            # and the top of the stack is then "strong". Looking down to the
+            # nearest block keeps that text — it used to be dropped entirely.
+            block = self._block_tag()
+            if block in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                level = int(block[1])
                 self._para = self.doc.add_heading("", level=level)
-                self._run = self._para.add_run(data)
-            elif tt == "blockquote":
+                self._run = self._get_run()
+                self._run.add_text(data)
+            elif block == "blockquote":
                 self._para = self.doc.add_paragraph()
                 pf = self._para.paragraph_format
                 pf.left_indent = Inches(0.5)
-                self._run = self._para.add_run(data)
+                self._run = self._get_run()
+                self._run.add_text(data)
                 self._run.font.italic = True
-            elif tt == "p":
+            elif block == "p":
                 self._para = self.doc.add_paragraph()
-                self._run = self._para.add_run(data)
-            elif tt == "li":
+                self._run = self._get_run()
+                self._run.add_text(data)
+            elif block == "li":
                 if self._list_depth > 0 and self._ol_counters and len(self._ol_counters) >= self._list_depth:
                     self._ol_counters[self._list_depth - 1] += 1
                     self._para = self.doc.add_paragraph(style="List Number")
                 else:
                     self._para = self.doc.add_paragraph(style="List Bullet")
-                self._run = self._para.add_run(data)
+                self._run = self._get_run()
+                self._run.add_text(data)
             else:
                 return
         else:
             self._run = self._get_run()
             self._run.add_text(data)
+
+    def _block_tag(self):
+        """The nearest enclosing block-level tag (heading, ``p``, ``li``, ``blockquote``)."""
+        for item in reversed(self._stack):
+            if item["tag"] in ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote"):
+                return item["tag"]
+        return None
 
     def _get_run(self):
         if self._para is None:

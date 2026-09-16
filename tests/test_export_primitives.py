@@ -126,3 +126,20 @@ def test_docx_keeps_inline_mark_text(make_project):
     for word in ("hi", "2", "x", "red"):
         assert word in text
     assert "[ ]" not in text
+
+
+def test_docx_keeps_a_paragraph_that_opens_with_inline_markup(make_project):
+    """A run of markup at the very start of a paragraph used to be dropped.
+
+    The data arrives while the innermost open tag is ``strong``/``em``, not
+    ``p``, so the paragraph has to be created from the nearest *block* tag.
+    Anything opening a paragraph this way (a bold first word, an italic
+    epigraph, a link) lost its opening text in the DOCX.
+    """
+    _project_with(make_project, "**Bold** opening and *italic* opening.\n\n> *Epigraph* first.")
+
+    doc = Document(io.BytesIO(projects_service.export_docx("p1")))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Bold opening" in text
+    assert "italic opening" in text
+    assert "Epigraph first" in text

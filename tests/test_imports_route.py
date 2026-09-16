@@ -109,9 +109,16 @@ def test_no_files_is_rejected(client):
 
 def test_unreadable_files_are_a_400(client):
     make_project(client)
-    resp = post_import(client, "p1", [("notes.docx", b"PK\x03\x04not really")])
+    resp = post_import(client, "p1", [("scan.pdf", b"%PDF-1.4 junk")])
     assert resp.status_code == 400
     assert "imported" in resp.json()["detail"].lower()
+
+
+def test_a_corrupt_word_document_is_a_400(client):
+    make_project(client)
+    resp = post_import(client, "p1", [("notes.docx", b"PK\x03\x04not really a package")])
+    assert resp.status_code == 400
+    assert "word" in resp.json()["detail"].lower()
 
 
 def test_empty_text_files_are_a_400(client):
@@ -134,6 +141,41 @@ def test_a_foreign_origin_is_refused(client):
         headers={"host": "127.0.0.1", "origin": "http://evil.example"},
     )
     assert resp.status_code == 403
+
+
+def make_docx() -> bytes:
+    """A two-chapter Word document, built with python-docx."""
+    from docx import Document
+
+    document = Document()
+    document.add_heading("Chapter One", level=1)
+    document.add_paragraph("First.")
+    document.add_heading("Chapter Two", level=1)
+    document.add_paragraph("Second.")
+    buf = io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+def test_import_reads_a_word_document(client):
+    make_project(client)
+    resp = post_import(client, "p1", [("Manuscript.docx", make_docx())])
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["documents"] == 2
+    assert body["source"] == "docx"
+    titles = [doc["title"] for doc in documents_service.iter_documents("p1")]
+    assert titles == ["Chapter One", "Chapter Two"]
+
+
+def test_the_split_field_turns_word_splitting_off(client):
+    make_project(client)
+    resp = post_import(client, "p1", [("Manuscript.docx", make_docx())], split="0")
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["documents"] == 1
+    docs = documents_service.iter_documents("p1")
+    assert docs[0]["title"] == "Manuscript"
+    assert "# Chapter One" in docs[0]["body"]
 
 
 def test_import_as_notes_is_honoured(client):

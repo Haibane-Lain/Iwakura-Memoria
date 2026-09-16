@@ -1,8 +1,8 @@
 # Import
 
-Bring existing writing into a project. Markdown and plain text are supported
-today; DOCX, EPUB, Obsidian vaults and Scrivener projects slot in behind the
-same machinery (see *Adding a format*).
+Bring existing writing into a project. Markdown, plain text and Word (`.docx`)
+are supported today; EPUB, Obsidian vaults and Scrivener projects slot in
+behind the same machinery (see *Adding a format*).
 
 ## Where it lives
 
@@ -30,6 +30,9 @@ folder, and re-importing the same bundle gives `Act One`, `Act One-2`, …
   picked folder or archive becomes one folder named after it.
 - Tooling junk is skipped: `.obsidian/`, `.git/`, `__MACOSX/`, `node_modules/`,
   `.DS_Store`, hidden crash-staging folders.
+- Word documents are split at **Heading 1** by default, so a manuscript arrives
+  as chapters; the dialog's checkbox turns that off, and a file with no Heading 1
+  is unaffected either way.
 
 ## Safety rails
 
@@ -55,21 +58,63 @@ folder, and re-importing the same bundle gives `Act One`, `Act One-2`, …
 |---|---|---|
 | `.md`, `.markdown` | Body verbatim, frontmatter `title`/`type`/`tags` | Wikilinks are kept as-is; `[[Note]]` already resolves by title. |
 | `.txt`, `.text` | Body verbatim, CRLF normalised | No frontmatter. |
+| `.docx` | Headings, paragraphs, runs, lists, tables, pictures, links | See below. |
 | `.zip` | Unpacked, then handled as the files inside | The zip itself is never stored. |
+
+### Word (`.docx`)
+
+The body is walked as XML (tables and pictures keep their place in the text,
+tracked insertions are kept and deletions skipped, hyperlinks are readable),
+and python-docx is loaded only when a Word document is actually imported.
+
+| Word | Becomes |
+|---|---|
+| `Heading 1`…`Heading 9`, `Title`, `Subtitle`, or an outline level | `#`…`###` — the editor renders three heading levels, so deeper ones arrive as `###` |
+| bold / italic / strikethrough | `**bold**`, `*italic*`, `~~struck~~` |
+| underline, superscript, subscript, highlight | `<u>`, `<sup>`, `<sub>`, `<mark>` (inline HTML the editor keeps) |
+| a monospaced run | `` `code` `` |
+| a hyperlink | `[text](url)` |
+| bulleted / numbered lists (from the numbering definition, or the style name) | `- ` / `1. `, indented per level |
+| a table | a GFM table, first row as the header; `|` in a cell is escaped |
+| a picture | `![alt](assets/…)` — through the image store, so it is validated and deduplicated |
+| a page break | `---` |
+
+Known limits, all deliberate:
+
+- **Headings deeper than three levels** flatten to `###`.
+- **Blockquotes and hyperlinks cannot round-trip through this app's own DOCX
+  export**: it writes a blockquote as an indented italic paragraph and a link as
+  coloured underlined text, and neither carries a marker to read back. A Word
+  document with real styles keeps both.
+- **`.doc`** (the legacy binary format) is refused — save it as `.docx`.
+- **Footnotes, endnotes, headers, footers, comments and text boxes** are skipped.
+- **WMF/EMF pictures** (common in copy-pasted diagrams) are refused by the image
+  store and dropped, like any file that is not a real image.
+- Merged table cells are read as separate cells; a multi-paragraph cell is
+  joined with a space (GFM has no line break inside one).
+
+The `Split Word documents at Heading 1` option defaults to on: each Heading 1
+becomes a document of its own, named after that heading, and anything before the
+first one becomes a document named from the file. With no Heading 1 in the file
+nothing is split, so the default is harmless for a document that has none.
 
 ## Adding a format
 
 `app/services/import_docs.py` keeps readers and the writer apart:
 
-1. A **reader** turns a bundle (a flat list of `(relative_path, bytes)`) into an
-   *outline* — a tree of `{"kind": "folder"|"doc", "title", "docKind", "body",
-   "children", "images"}`. Bodies are Markdown; an image is carried as
-   `{"key", "name", "bytes"}` with the key written into the body as an ordinary
-   Markdown target (`![cover](@@img1@@)`), which the writer swaps for the
-   stored `assets/<name>` path.
-2. **`detect()`** names the bundle kind, and `build_outline()` dispatches to the
-   reader. `SOURCE_LABELS` (mirrored in `static/js/import-plan.js` for the
-   dialog's summary) is the only other place to touch.
+1. A **reader** turns one file into *outline* documents — plain dicts shaped
+   `{"kind": "doc", "title", "docKind", "body", "children", "images"}`. Bodies
+   are Markdown; an image is carried as `{"key", "name", "bytes"}` with the key
+   written into the body as an ordinary Markdown target
+   (`![cover](@@img1@@)`), which the writer swaps for the stored
+   `assets/<name>` path. A reader may return several documents for one file
+   (`.docx` does, when it splits at Heading 1) — see
+   `app/services/import_docx.py` for a worked example.
+2. **`detect()`** names the bundle kind and adds it to `SUPPORTED_SOURCES`;
+   `build_outline()` picks the reader **per file** from its extension, so a
+   bundle mixing Markdown and Word imports both. `SOURCE_LABELS` (mirrored in
+   `static/js/import-plan.js`, which also owns the dialog's accept list and
+   summary) is the only other place to touch.
 
 The writer needs no changes for a new format — it only ever sees an outline.
 Its rules (unique names, images through the asset store, zero-delta history

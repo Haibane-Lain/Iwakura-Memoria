@@ -3,12 +3,14 @@
 import assert from "node:assert/strict";
 
 import {
+  IMPORT_ACCEPT,
   IMPORT_LIMIT_BYTES,
   bundleName,
   bundleSize,
   describeBundle,
   detectSource,
   formatBytes,
+  hasDocx,
   normalizePath,
   overLimit,
   relativePaths,
@@ -48,9 +50,25 @@ check("the source is recognised from the extensions", () => {
   assert.equal(detectSource(["a.md"]), "markdown");
   assert.equal(detectSource(["Vault/note.markdown"]), "markdown");
   assert.equal(detectSource(["a.txt"]), "text");
-  assert.equal(detectSource(["a.docx"]), "unsupported");
+  assert.equal(detectSource(["Manuscript.docx"]), "docx");
+  assert.equal(detectSource(["a.pdf"]), "unsupported");
   // Markdown wins when a bundle holds both kinds.
   assert.equal(detectSource(["a.txt", "b.md"]), "markdown");
+  assert.equal(detectSource(["a.txt", "b.docx"]), "docx");
+});
+
+check("Word documents are counted and flagged", () => {
+  assert.equal(hasDocx(["Manuscript.docx"]), true);
+  assert.equal(hasDocx(["a.md", "b.txt"]), false);
+  assert.equal(hasDocx(["Novel/Ch 1.docx"]), true);
+  assert.equal(describeBundle(["Manuscript.docx"]).documents, 1);
+  assert.equal(describeBundle(["a.md", "b.docx", "c.txt"]).documents, 3);
+});
+
+check("the picker accepts every readable extension", () => {
+  for (const ext of [".md", ".markdown", ".txt", ".text", ".docx", ".zip"]) {
+    assert.ok(IMPORT_ACCEPT.includes(ext), `${ext} must be in the accept list`);
+  }
 });
 
 check("titles come from file names", () => {

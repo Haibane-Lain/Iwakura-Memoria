@@ -43,6 +43,11 @@ def _read_upload(upload: UploadFile, budget: int) -> bytes:
     return b"".join(chunks)
 
 
+def _truthy(raw: str) -> bool:
+    """A checkbox value from the dialog: on unless it says otherwise."""
+    return (raw or "").strip().lower() not in ("", "0", "false", "no", "off")
+
+
 def _paths(raw: str, count: int) -> list[str]:
     """The ``paths`` form field as a list of length *count* (blank when absent)."""
     try:
@@ -65,6 +70,7 @@ def import_bundle(
     source: str = Form("auto"),
     name: str = Form(""),
     import_as: str = Form("chapter", alias="as"),
+    split: str = Form("1"),
 ):
     if not files:
         raise HTTPException(status_code=400, detail="No files were uploaded")
@@ -83,7 +89,7 @@ def import_bundle(
             project_id,
             folder or None,
             bundle,
-            {"source": source or "auto", "as": import_as, "name": name or None},
+            {"source": source or "auto", "as": import_as, "name": name or None, "split": _truthy(split)},
             _mode(),
         )
     except import_service.ImportLimitError as exc:

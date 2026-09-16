@@ -46,8 +46,8 @@ MAX_BUNDLE_BYTES = 25 * 1024 * 1024
 MAX_ENTRIES = 5000
 MAX_IMAGES = 2000
 
-# Extensions that are text we can read as a document body.
-TEXT_EXTS = {".md", ".markdown", ".txt", ".text"}
+# Extensions a bundle entry can be read as a document from.
+DOC_EXTS = {".md", ".markdown", ".txt", ".text", ".docx"}
 
 # Directories that are never part of the writing, wherever they appear.
 SKIP_DIRS = {".obsidian", ".git", "__macosx", ".trash", ".snapshots", ".comments", "node_modules"}
@@ -191,6 +191,8 @@ def detect(files: list[tuple[str, bytes]]) -> str:
     names = [path.lower() for path, _ in files]
     if any(n.endswith((".md", ".markdown")) for n in names):
         return "markdown"
+    if any(n.endswith(".docx") for n in names):
+        return "docx"
     if any(n.endswith((".txt", ".text")) for n in names):
         return "text"
     return "unsupported"
@@ -198,10 +200,15 @@ def detect(files: list[tuple[str, bytes]]) -> str:
 
 SOURCE_LABELS = {
     "markdown": "Markdown",
+    "docx": "Word document",
     "text": "plain text",
     "empty": "empty",
     "unsupported": "unrecognised files",
 }
+
+# Bundle kinds the readers can take. Anything else is refused before a file is
+# unpacked, with a message naming what is supported.
+SUPPORTED_SOURCES = ("markdown", "docx", "text")
 
 
 # --------------------------------------------------------------------------
@@ -264,14 +271,13 @@ def build_outline(
     source = options.get("source") or "auto"
     if source in ("auto", "", None):
         source = detect(files)
-    if source == "empty" or source == "unsupported":
+    if source not in SUPPORTED_SOURCES:
         raise ImportDocsError(
-            "Nothing in that selection can be imported yet — expected Markdown or plain-text files"
+            "Nothing in that selection can be imported — expected Markdown, plain-text or Word (.docx) files"
         )
-    if source not in ("markdown", "text"):
-        raise ImportDocsError(f"Importing {SOURCE_LABELS.get(source, source)} is not supported yet")
 
     fallback_kind = "chapter" if str(options.get("as", "chapter")).lower() == "chapter" else "note"
+    split = options.get("split", True) is not False
 
     root = _folder(str(options.get("name") or "Imported"))
     folders: dict[str, dict[str, Any]] = {"": root}
@@ -281,10 +287,8 @@ def build_outline(
         parts = path.split("/")
         name = parts[-1]
         ext = Path(name).suffix.lower()
-        if ext not in TEXT_EXTS:
+        if ext not in DOC_EXTS:
             continue  # a stray image, pdf or project file: not a document
-        # Frontmatter is a Markdown idea; a .txt body is read as-is.
-        read = _read_markdown if ext in (".md", ".markdown") else _read_text
         current = root
         for depth, segment in enumerate(parts[:-1]):
             key = "/".join(parts[: depth + 1])
@@ -294,13 +298,38 @@ def build_outline(
                 folders[key] = nxt
                 current["children"].append(nxt)
             current = nxt
-        node = read(path, raw, fallback_kind)
-        current["children"].append(node)
-        flat.append(node)
+        for node in _read_file(path, raw, ext, fallback_kind, split):
+            current["children"].append(node)
+            flat.append(node)
 
     if not flat:
         raise ImportDocsError("No importable documents were found in that selection")
     return root, flat
+
+
+def _read_file(
+    path: str, raw: bytes, ext: str, fallback_kind: str, split: bool
+) -> list[dict[str, Any]]:
+    """One bundle file as outline documents (a DOCX may become several).
+
+    The reader is chosen per file, not per bundle, so a folder holding both
+    Markdown and Word documents imports both.
+    """
+    if ext in (".md", ".markdown"):
+        # Frontmatter is a Markdown idea; a .txt body is read as-is.
+        return [_read_markdown(path, raw, fallback_kind)]
+    if ext in (".txt", ".text"):
+        return [_read_text(path, raw, fallback_kind)]
+    # Imported here so python-docx is loaded only when a .docx is imported.
+    from app.services.import_docx import read_docx
+
+    return read_docx(
+        path,
+        raw,
+        split=split,
+        fallback_kind=fallback_kind,
+        title=_title_from_name(path.split("/")[-1]),
+    )
 
 
 # --------------------------------------------------------------------------

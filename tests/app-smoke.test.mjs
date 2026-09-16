@@ -410,6 +410,22 @@ await check("the project shell boots against a mocked API", async () => {
   const targetSelect = [...importModal.querySelectorAll("select")].pop();
   assert.equal(targetSelect.querySelector("option").textContent, "Project root");
   assert.match(targetSelect.textContent, /Act 1/, "the tree's folders are offered as targets");
+
+  // A picked Word document is recognised, and only then is the split option
+  // (which has no meaning for Markdown) shown.
+  const splitRow = [...importModal.querySelectorAll(".field")].find((f) =>
+    /Heading 1/.test(f.textContent)
+  );
+  assert.ok(splitRow, "the split option is built");
+  assert.equal(splitRow.style.display, "none", "it stays hidden until a .docx is picked");
+  const picker = importModal.querySelector('input[type="file"]');
+  const docx = new dom.window.File([new Uint8Array([1, 2, 3])], "Manuscript.docx");
+  Object.defineProperty(picker, "files", { value: [docx], configurable: true });
+  picker.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert.equal(splitRow.style.display, "", "picking a .docx reveals the split option");
+  assert.match(importModal.querySelector(".import-summary").textContent, /Word document/);
+  assert.equal(importModal.querySelector(".icon-btn.primary").disabled, false, "a picked document enables Import");
+
   [...importModal.querySelectorAll(".icon-btn")]
     .find((btn) => btn.textContent === "Cancel")
     .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));

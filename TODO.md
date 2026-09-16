@@ -150,15 +150,16 @@ Legend for hooks: where the work would plug into the current code.
 ## Tier 3 — data safety & portability
 
 - [ ] **Import** `P2` `L`
-  - Markdown / plain text / zip import is in (Settings → Import & export, and
-    the library's *Import…*): folders become folders, frontmatter and ordering
-    are kept, images go through the asset store, and every import is undoable.
-    See `docs/import.md`.
+  - Markdown / plain text / Word (.docx) / zip import is in (Settings → Import
+    & export, and the library's *Import…*): folders become folders, frontmatter
+    and ordering are kept, Word documents split at Heading 1 with their runs,
+    lists, tables, links and pictures converted, images go through the asset
+    store, and every import is undoable. See `docs/import.md`.
   - Still to come, behind the same outline contract in
-    `app/services/import_docs.py`: DOCX (heading split, runs, tables, inline
-    pictures), EPUB (spine → chapters, needs an `html_to_md` reader), Obsidian
-    vaults (`![[embed]]` → assets, `[[note#h|alias]]` normalised) and Scrivener
-    (`Binder` XML + RTF → text via a small `rtf_to_md`).
+    `app/services/import_docs.py`: EPUB (spine → chapters, needs an `html_to_md`
+    reader), Obsidian vaults (`![[embed]]` → assets, `[[note#h|alias]]`
+    normalised) and Scrivener (`Binder` XML + RTF → text via a small
+    `rtf_to_md`).
 
 - [ ] **In-app backup restore** `P2` `M`
   - Backups can be created, listed, and deleted, but restoring means manually

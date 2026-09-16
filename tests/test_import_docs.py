@@ -87,7 +87,8 @@ def test_detect_labels_the_families():
     assert import_service.detect([]) == "empty"
     assert import_service.detect([("a.md", b"")]) == "markdown"
     assert import_service.detect([("a.txt", b"")]) == "text"
-    assert import_service.detect([("a.docx", b"")]) == "unsupported"
+    assert import_service.detect([("a.docx", b"")]) == "docx"
+    assert import_service.detect([("a.pdf", b"%PDF")]) == "unsupported"
 
 
 def test_an_unreadable_bundle_is_reported(make_project):
@@ -95,7 +96,7 @@ def test_an_unreadable_bundle_is_reported(make_project):
     with pytest.raises(import_service.ImportDocsError):
         import_service.import_bundle("p1", None, [])
     with pytest.raises(import_service.ImportDocsError):
-        import_service.import_bundle("p1", None, [("a.docx", b"PK\x03\x04")])
+        import_service.import_bundle("p1", None, [("a.pdf", b"%PDF-1.4")])
 
 
 # ---------------------------------------------------------------------------

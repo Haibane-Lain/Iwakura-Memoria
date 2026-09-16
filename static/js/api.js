@@ -124,6 +124,7 @@ export const api = {
       fd.append("folder", payload.folder || "");
       fd.append("name", payload.name || "");
       fd.append("as", payload.as || "chapter");
+      fd.append("split", payload.split === false ? "0" : "1");
       fd.append("source", payload.source || "auto");
       return fetch(`/api/projects/${encodePath(id)}/import`, { method: "POST", body: fd }).then(
         async (res) => {
