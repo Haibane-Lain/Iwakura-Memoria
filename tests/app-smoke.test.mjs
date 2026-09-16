@@ -390,6 +390,32 @@ await check("the project shell boots against a mocked API", async () => {
   await waitFor(() => doc.querySelector("#main-content .settings-view"));
   assert.ok(doc.querySelector("#main-content .settings-view"), "settings tab renders");
 
+  // Import lives in Settings: the dialog offers both pickers and the project's
+  // folders (from the "all" tree, wiki included) as targets.
+  const importEntry = [...doc.querySelectorAll("#main-content .settings-view .icon-btn")].find(
+    (btn) => btn.textContent === "Import…"
+  );
+  assert.ok(importEntry, "the settings view offers Import");
+  importEntry.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const importModal = await waitFor(() =>
+    [...doc.querySelectorAll(".modal")].find((m) => m.querySelector("h3")?.textContent === "Import")
+  );
+  assert.ok(importModal.querySelector(".import-summary"), "the import dialog shows a summary");
+  assert.deepEqual(
+    [...importModal.querySelectorAll(".import-pick .icon-btn")].map((b) => b.textContent),
+    ["Choose files…", "Choose folder…"],
+    "the import dialog offers both pickers"
+  );
+  assert.ok(importModal.querySelector(".icon-btn.primary").disabled, "Import starts disabled");
+  const targetSelect = [...importModal.querySelectorAll("select")].pop();
+  assert.equal(targetSelect.querySelector("option").textContent, "Project root");
+  assert.match(targetSelect.textContent, /Act 1/, "the tree's folders are offered as targets");
+  [...importModal.querySelectorAll(".icon-btn")]
+    .find((btn) => btn.textContent === "Cancel")
+    .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => !importModal.isConnected);
+  assert.ok(!doc.querySelector(".import-summary"), "Cancel closes the import dialog");
+
   click("stats");
   await waitFor(() => doc.querySelector("#main-content .stats-view"));
   assert.ok(doc.querySelector("#main-content .stats-view"), "stats tab renders");
@@ -690,6 +716,18 @@ await check("app.js boots into the library route", async () => {
   assert.ok(doc.querySelector("#app .topbar"), "library topbar rendered");
   assert.ok(doc.querySelector("#app .library"), "project library rendered");
   assert.match(doc.querySelector("#app .library").textContent, /No projects yet/);
+
+  // Import from the library builds a whole new project: the dialog asks for the
+  // project name and needs no existing project to list folders for.
+  const importBtn = [...doc.querySelectorAll(".library-header .icon-btn")].find(
+    (btn) => btn.textContent === "Import…"
+  );
+  assert.ok(importBtn, "the library offers Import");
+  importBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  const importModal = await waitFor(() =>
+    [...doc.querySelectorAll(".modal")].find((m) => m.querySelector("h3")?.textContent === "Import project")
+  );
+  assert.ok(importModal.querySelector(".field input"), "the new-project import asks for a name");
   assert.equal(capture.errors.length, 0, `library boot threw: ${capture.errors.map(String).join("; ")}`);
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   capture.stop();

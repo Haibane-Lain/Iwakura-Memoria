@@ -1,5 +1,6 @@
 import { api, encodePath } from "./api.js";
 import { renderExportDialog } from "./export-dialog.js";
+import { renderImportDialog } from "./import-dialog.js";
 import { renderRepetitionDialog } from "./repetition-dialog.js";
 import { renderDictionaryDialog } from "./dictionary-dialog.js";
 import { renderLookupDialog } from "./lookup-dialog.js";
@@ -3309,10 +3310,20 @@ async function renderSettingsTab() {
         ]),
       ]),
       el("div", { class: "settings-section" }, [
-        el("h2", {}, "Export & backup"),
+        el("h2", {}, "Import & export"),
         el("p", { class: "desc" }, "Export this project as zip, docx, pdf, or epub — or back up your whole library: every project, settings, stats, and chat history, saved as a timestamped zip next to your data folder (the 10 newest backups are kept)."),
         el("div", { class: "modal-actions" }, [
           el("button", { class: "icon-btn primary", onclick: () => renderExportDialog(state.project.id) }, "Export project…"),
+          el("button", {
+            class: "icon-btn",
+            onclick: () =>
+              renderImportDialog({
+                projectId: state.project.id,
+                onChanged: async () => {
+                  await afterTreeChange();
+                },
+              }),
+          }, "Import…"),
           el("button", { class: "icon-btn", onclick: runBackup }, "Back up everything now"),
           backupStatus,
         ]),

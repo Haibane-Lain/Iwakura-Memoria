@@ -115,6 +115,32 @@ export const api = {
     wiki: (id) => api.get(`/api/projects/${encodePath(id)}/wiki`),
     repetition: (id, payload) =>
       api.post(`/api/projects/${encodePath(id)}/repetition/check`, payload),
+    // Import is multipart (like image uploads), so it bypasses the JSON helper
+    // and its 15s timeout: a folder of files can legitimately take longer.
+    importBundle: (id, payload) => {
+      const fd = new FormData();
+      for (const file of payload.files || []) fd.append("files", file, file.name);
+      fd.append("paths", JSON.stringify(payload.paths || []));
+      fd.append("folder", payload.folder || "");
+      fd.append("name", payload.name || "");
+      fd.append("as", payload.as || "chapter");
+      fd.append("source", payload.source || "auto");
+      return fetch(`/api/projects/${encodePath(id)}/import`, { method: "POST", body: fd }).then(
+        async (res) => {
+          if (!res.ok) {
+            let detail = `${res.status} ${res.statusText}`;
+            try {
+              const data = await res.json();
+              if (data.detail) detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+            } catch {
+              /* ignore */
+            }
+            throw new Error(detail);
+          }
+          return res.json();
+        }
+      );
+    },
     search: (id, payload) =>
       api.post(`/api/projects/${encodePath(id)}/search`, payload),
     replace: (id, payload) =>

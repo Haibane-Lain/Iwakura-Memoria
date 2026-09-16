@@ -2,6 +2,7 @@ import { api } from "./api.js";
 import * as router from "./router.js";
 import * as theme from "./themes.js";
 import { renderExportDialog } from "./export-dialog.js";
+import { renderImportDialog } from "./import-dialog.js";
 import { el, toast, promptDialog, confirmDialog, formatNumber } from "./ui.js";
 
 async function createProject() {
@@ -22,6 +23,16 @@ async function createProject() {
   } catch (err) {
     toast(err.message, "error");
   }
+}
+
+// Import a bundle as a whole new project: the dialog creates the project and
+// then navigates into it.
+function importProject() {
+  renderImportDialog({
+    onDone: (summary, projectId) => {
+      if (projectId) router.navigate("project", { id: projectId });
+    },
+  });
 }
 
 async function deleteProject(id, title) {
@@ -128,6 +139,7 @@ async function render() {
       [
         el("div", { class: "library-header" }, [
           el("h1", {}, "Projects"),
+          el("button", { class: "icon-btn", onclick: importProject }, "Import…"),
           el("button", { class: "icon-btn primary", onclick: createProject }, "+ New project"),
         ]),
         grid,

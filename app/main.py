@@ -19,6 +19,7 @@ from app.routes import backups as backup_routes
 from app.routes import comments as comments_routes
 from app.routes import documents as documents_routes
 from app.routes import grammar as grammar_routes
+from app.routes import imports as import_routes
 from app.routes import lookup as lookup_routes
 from app.routes import projects as projects_routes
 from app.routes import repetition as repetition_routes
@@ -192,6 +193,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_routes.router)
     app.include_router(assets_routes.router)
     app.include_router(documents_routes.router)
+    app.include_router(import_routes.router)
     app.include_router(wiki_routes.wiki_router)
     app.include_router(wiki_routes.stats_router)
     app.include_router(templates_routes.router)

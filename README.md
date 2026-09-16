@@ -293,7 +293,7 @@ table it sits in the normal text flow at the full column width rather than
 floating right.
 
 **Backups** live *next to* the data folder at
-`%LOCALAPPDATA%\IwakuraMemoria\backups\` (Settings → Export & backup → *Back
+`%LOCALAPPDATA%\IwakuraMemoria\backups\` (Settings → Import & export → *Back
 up everything now*). Each is a timestamped zip of the whole `data/` layout —
 extracting one over the data folder restores everything. The 10 newest are
 kept automatically; older ones are deleted.
