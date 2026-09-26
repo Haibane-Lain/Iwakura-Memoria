@@ -109,16 +109,19 @@ def test_a_document_without_headings_keeps_its_file_name(make_project):
     assert docs[0]["body"] == "Just prose."
 
 
-def test_headings_deeper_than_the_editor_renders_are_clamped(make_project):
+def test_headings_keep_their_level_up_to_six(make_project):
     def fill(doc):
         doc.add_heading("One", level=1)
         doc.add_heading("Four", level=4)
         doc.add_heading("Six", level=6)
+        doc.add_heading("Nine", level=9)
 
     _summary, docs = import_one(make_project, build_docx(fill), split=False)
-    assert "### Four" in docs[0]["body"]
-    assert "### Six" in docs[0]["body"]
-    assert "####" not in docs[0]["body"]
+    assert "#### Four" in docs[0]["body"]
+    assert "###### Six" in docs[0]["body"]
+    # Word goes to nine levels; the editor stops at six, so the rest clamp to it.
+    assert "###### Nine" in docs[0]["body"]
+    assert "#######" not in docs[0]["body"]
 
 
 def test_the_title_property_names_the_document(make_project):

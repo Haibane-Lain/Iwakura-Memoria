@@ -257,17 +257,20 @@ project rename carries its snapshots/comments/trash.
   full scan of every chapter/note; `_word_stats_remove_doc` was made consistent.
   Tests: `test_word_stats_doc_count_stable_after_first_save`,
   `test_word_stats_counts_a_document_new_to_the_cache`.
-- [ ] **Comment-panel + style-control async races** `P2` `M` —
-  `static/js/comments-panel.js:94` and the style controls in
-  `static/js/project.js:360-497` apply a response without checking the document
-  is still current, so a slow reply paints the old document's comments/style.
-- [ ] **h4–h6 headings flatten to paragraphs** `P2` `S` —
-  `client/editor-entry.js:549` limits `StyledHeading` to levels `[1,2,3]`;
-  `####`…`######` are lost on load → save.
-- [ ] **Stale position after an await** `P2` `S` — image insert
-  (`client/editor-entry.js:951`) and portrait upload
-  (`client/character-table.js:339`) reuse a pre-await position, so an edit made
-  during the upload puts the image in the wrong place.
+- [x] **Comment-panel + style-control async races** `P2` `M` — shipped:
+  `comments-panel.js` reload takes a `latest-task` token and drops a reply whose
+  document is no longer current (`reload`, plus a `docId` guard on the
+  post-await `ctrl()` mutations); every `api.docs.style` call in `project.js`
+  captures `state.currentDocId` and ignores its reply if the writer has since
+  switched documents.
+- [x] **h4–h6 headings flatten to paragraphs** `P2` `S` — shipped:
+  `StyledHeading` now renders levels `[1..6]` with matching CSS; the DOCX
+  importer keeps `Heading 4`…`Heading 6` (clamping only 7–9 to `######`) and
+  `docs/import.md` says so. `####`…`######` round-trip on load → save.
+- [x] **Stale position after an await** `P2` `S` — shipped: a shared
+  `client/pending-pos.js` state field maps the insertion point through the edits
+  made while an upload is in flight; `insertImageFiles` and
+  `setPortraitFromFiles` hold/read it instead of a captured offset.
 - [ ] **`wordAt` mixes text and document offsets** `P2` `S` —
   `client/editor-entry.js:130` compares `textContent` offsets with document
   positions, so right-click → Lookup on a word after an inline image selects the

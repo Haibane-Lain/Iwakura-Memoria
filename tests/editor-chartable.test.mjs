@@ -341,6 +341,34 @@ await check("a second drop on the slot replaces the picture instead of stacking"
   s.close();
 });
 
+await check("an edit above the table during the upload still fills the right slot", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const s = open("x", {
+    uploadImage: async () => {
+      await gate;
+      return { path: "assets/new-portrait-abc123.png", width: 8, height: 6 };
+    },
+  });
+  s.ctrl.insertCharacterTable({ title: "Übel" });
+  const pos = portraitPos(s.ctrl);
+  const pending = s.ctrl.setPortrait(pos, file("Ubel.png"));
+  // Type in the paragraph above the table while the upload is in flight; the
+  // slot's offset shifts and the picture must follow it.
+  s.ctrl.editor.view.dispatch(s.ctrl.editor.state.tr.insertText("AB", 1));
+  release();
+
+  assert.equal(await pending, true, "the portrait still filled its slot");
+  assert.equal(s.host.querySelectorAll(".ct-portrait img.doc-image").length, 1);
+  assert.match(
+    s.ctrl.getMarkdown(),
+    /<tr class="ct-portrait"><td colspan="2"><p><img src="assets\/new-portrait-abc123\.png"/
+  );
+  s.close();
+});
+
 await check("clicking the empty slot asks the host for a file", () => {
   const s = open("");
   s.ctrl.insertCharacterTable({ title: "Übel" });

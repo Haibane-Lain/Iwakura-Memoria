@@ -69,7 +69,7 @@ and python-docx is loaded only when a Word document is actually imported.
 
 | Word | Becomes |
 |---|---|
-| `Heading 1`…`Heading 9`, `Title`, `Subtitle`, or an outline level | `#`…`###` — the editor renders three heading levels, so deeper ones arrive as `###` |
+| `Heading 1`…`Heading 9`, `Title`, `Subtitle`, or an outline level | `#`…`######` — the editor renders six heading levels, so deeper ones arrive as `######` |
 | bold / italic / strikethrough | `**bold**`, `*italic*`, `~~struck~~` |
 | underline, superscript, subscript, highlight | `<u>`, `<sup>`, `<sub>`, `<mark>` (inline HTML the editor keeps) |
 | a monospaced run | `` `code` `` |
@@ -81,7 +81,7 @@ and python-docx is loaded only when a Word document is actually imported.
 
 Known limits, all deliberate:
 
-- **Headings deeper than three levels** flatten to `###`.
+- **Headings deeper than six levels** (Word goes to nine) clamp to `######`.
 - **Blockquotes and hyperlinks cannot round-trip through this app's own DOCX
   export**: it writes a blockquote as an indented italic paragraph and a link as
   coloured underlined text, and neither carries a marker to read back. A Word

@@ -15,9 +15,8 @@ inline HTML, which the editor keeps), code spans, links, bulleted and numbered
 lists, GFM tables and pictures, which are emitted as ``![alt](@@imgN@@)`` and
 stored by the writer in the asset folder.
 
-Honest limits, all documented in ``docs/import.md``: headings are clamped to
-``###`` because the editor renders three levels; ``.doc`` (legacy binary) is not
-readable; footnotes and endnotes, headers and footers, and text boxes are
+Honest limits, all documented in ``docs/import.md``: ``.doc`` (legacy binary) is
+not readable; footnotes and endnotes, headers and footers, and text boxes are
 skipped; WMF/EMF pictures are refused by the image store and dropped. Word also
 loses information this app's own export relies on — it flattens blockquotes to
 indented italic paragraphs and hyperlinks to coloured underline text — so those
@@ -37,9 +36,9 @@ _R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 _WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
 _V = "{urn:schemas-microsoft-com:vml}"
 
-# The editor renders h1-h3 only (StyledHeading's levels); a deeper Word heading
-# arrives as an h3 rather than silently losing its heading mark.
-MAX_HEADING = 3
+# The editor renders h1-h6 (StyledHeading's levels). Word goes up to nine, so a
+# deeper heading is clamped rather than losing its heading mark.
+MAX_HEADING = 6
 
 _HEADING_RE = re.compile(r"^heading\s*([1-9])$", re.IGNORECASE)
 _HEADING_ID_RE = re.compile(r"^heading([1-9])$", re.IGNORECASE)
@@ -197,7 +196,7 @@ def _paragraph_blocks(p, document, images: dict, lists: _Lists) -> list[tuple[in
 
 
 def _heading_level(p, document) -> int:
-    """The paragraph's heading level (1-3), or 0 when it is body text.
+    """The paragraph's heading level (1-6), or 0 when it is body text.
 
     Word's own ``Heading N`` styles are matched by name and by style id, and the
     base-style chain is walked so a custom style ("Chapter", based on "Heading

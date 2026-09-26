@@ -7,6 +7,7 @@
 // and when one is added/deleted it keeps the matching marker in step.
 import { api } from "./api.js";
 import { el, toast, confirmDialog } from "./ui.js";
+import { createLatestTask } from "./latest-task.js";
 
 function formatTime(iso) {
   const date = new Date(iso);
@@ -63,6 +64,10 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   let draft = "";
   let busy = false;
   let reviewing = false;
+  // The newest reload wins, and only if it still belongs to the current
+  // document; a slow reply must not paint the previous document's comments
+  // onto the pane (see latest-task.js).
+  const loadTask = createLatestTask();
 
   const ctrl = () => pane.ctrl;
   const docId = () => pane.docId;
@@ -93,18 +98,26 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
 
   async function reload() {
     const id = docId();
+    const token = loadTask.begin();
     if (!id) {
       items = [];
       render();
       notify();
       return;
     }
+    let next;
     try {
-      items = (await api.comments.list(projectId, id)) || [];
+      next = (await api.comments.list(projectId, id)) || [];
     } catch (err) {
+      if (!loadTask.isCurrent(token) || docId() !== id) return;
       items = [];
       toast(err.message, "error");
+      render();
+      notify();
+      return;
     }
+    if (!loadTask.isCurrent(token) || docId() !== id) return;
+    items = next;
     render();
     notify();
   }
@@ -155,6 +168,10 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     busy = false;
     composing = null;
     draft = "";
+    // The writer may have switched documents while the note was being created;
+    // anchoring now would mark text in the wrong one. The note is kept (with no
+    // marker) so it can be re-anchored when that document is next opened.
+    if (docId() !== id) return;
     const anchored = wrapMarker(record.id, selection);
     if (!anchored) {
       // Never leave a body with no marker behind: the server-side annotate path
@@ -176,11 +193,12 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   }
 
   async function toggleResolved(comment) {
+    const id = docId();
     const advancing = reviewing && !comment.resolved;
     const nextId = advancing ? nextOpenId(comment.id) : null;
     try {
       await api.comments.update(projectId, comment.id, {
-        docId: docId(),
+        docId: id,
         resolved: !comment.resolved,
       });
     } catch (err) {
@@ -188,7 +206,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
       return;
     }
     await reload();
-    if (advancing) {
+    if (advancing && docId() === id) {
       if (nextId) revealById(nextId);
       else render();
     }
@@ -237,8 +255,9 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   async function saveEdit(comment, value) {
     const body = value.trim();
     if (!body) return;
+    const id = docId();
     try {
-      await api.comments.update(projectId, comment.id, { docId: docId(), body });
+      await api.comments.update(projectId, comment.id, { docId: id, body });
     } catch (err) {
       toast(err.message, "error");
       return;
@@ -248,6 +267,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   }
 
   async function removeComment(comment) {
+    const id = docId();
     const ok = await confirmDialog({
       title: "Delete comment?",
       message: "The note is removed; the anchored text stays.",
@@ -256,16 +276,17 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     });
     if (!ok) return;
     try {
-      await api.comments.remove(projectId, comment.id, docId());
+      await api.comments.remove(projectId, comment.id, id);
     } catch (err) {
       toast(err.message, "error");
       return;
     }
-    if (ctrl()) ctrl().removeComment(comment.id);
+    if (ctrl() && docId() === id) ctrl().removeComment(comment.id);
     await reload();
   }
 
   async function clearResolved() {
+    const id = docId();
     const resolved = items.filter((c) => c.resolved).map((c) => c.id);
     if (!resolved.length) return;
     const ok = await confirmDialog({
@@ -276,12 +297,12 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     });
     if (!ok) return;
     try {
-      await api.comments.clear(projectId, docId(), { resolvedOnly: true });
+      await api.comments.clear(projectId, id, { resolvedOnly: true });
     } catch (err) {
       toast(err.message, "error");
       return;
     }
-    if (ctrl()) ctrl().removeComments(resolved);
+    if (ctrl() && docId() === id) ctrl().removeComments(resolved);
     await reload();
   }
 
@@ -292,6 +313,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   }
 
   async function clearAiNotes() {
+    const id = docId();
     const ids = aiCommentIds();
     if (!ids.length) return;
     const ok = await confirmDialog({
@@ -302,12 +324,12 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     });
     if (!ok) return;
     try {
-      await api.comments.clear(projectId, docId(), { author: "Lain" });
+      await api.comments.clear(projectId, id, { author: "Lain" });
     } catch (err) {
       toast(err.message, "error");
       return;
     }
-    if (ctrl()) ctrl().removeComments(ids);
+    if (ctrl() && docId() === id) ctrl().removeComments(ids);
     await reload();
   }
 

@@ -114,6 +114,13 @@ check("an aligned paragraph keeps project-relative image srcs", () => {
   assert.ok(!out.includes("loading="), `an editor-only attribute leaked: ${out}`);
 });
 
+/* ---------------- heading levels ---------------- */
+
+check("h4-h6 headings survive load → save", () => {
+  const source = "# One\n\n#### Four\n\n##### Five\n\n###### Six\n\nBody.";
+  assert.equal(roundTrip(source), source, "deeper headings must not flatten to paragraphs");
+});
+
 if (failures) {
   console.error(`editor-markdown: ${failures} check(s) failed`);
   process.exit(1);

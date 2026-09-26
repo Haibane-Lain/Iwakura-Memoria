@@ -135,6 +135,33 @@ await check("insertImage uploads and inserts at the caret", async () => {
   s.close();
 });
 
+await check("an edit during the upload does not send the picture to a stale offset", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const s = open("x", {
+    uploadImage: async () => {
+      await gate;
+      return { path: "assets/late-abc123.png", width: 8, height: 6 };
+    },
+  });
+  const view = s.ctrl.editor.view;
+  // insertImage starts at the caret (pos 1) and holds that point in state; the
+  // writer then types before it while the upload is in flight.
+  const pending = s.ctrl.insertImage(file("Late.png"));
+  view.dispatch(view.state.tr.insertText("AB", 1));
+  release();
+  await pending;
+
+  assert.equal(
+    s.ctrl.getMarkdown(),
+    "AB![Late](assets/late-abc123.png)x",
+    "the picture follows the edit instead of landing at the old offset"
+  );
+  s.close();
+});
+
 await check("a failed upload inserts nothing and reports the error", async () => {
   const s = open("x", {
     uploadImage: async () => {

@@ -53,6 +53,7 @@ import {
   removeCommentMarks,
   setCommentPreserving,
 } from "./comments.js";
+import { PendingPos, setPendingPos, pendingPos, clearPendingPos } from "./pending-pos.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
@@ -560,7 +561,7 @@ const StyledParagraph = Paragraph.extend({
 
 const StyledHeading = Heading.extend({
   addOptions() {
-    return { levels: [1, 2, 3] };
+    return { levels: [1, 2, 3, 4, 5, 6] };
   },
   addAttributes() {
     return {
@@ -957,9 +958,12 @@ async function insertImageFiles(view, files, pos, imageOpts) {
     await setPortraitFromFiles(view, portrait, wanted, imageOpts);
     return;
   }
+  // The upload is a round trip, so the writer can keep editing while it runs.
+  // Hold the insertion point in editor state and let ProseMirror map it through
+  // those edits rather than inserting at a stale offset (see pending-pos.js).
+  setPendingPos(view, pos);
   if (imageOpts.onUploadState) imageOpts.onUploadState(true);
   try {
-    let at = pos;
     for (const file of wanted) {
       let info = null;
       try {
@@ -971,7 +975,8 @@ async function insertImageFiles(view, files, pos, imageOpts) {
         continue;
       }
       if (!view || view.isDestroyed || !info || !info.path) continue;
-      const type = view.state.schema.nodes.image;
+      const at = pendingPos(view);
+      const type = at == null ? null : view.state.schema.nodes.image;
       if (!type) continue;
       const insertAt = inlineInsertPos(view, at);
       if (insertAt == null) continue;
@@ -982,9 +987,12 @@ async function insertImageFiles(view, files, pos, imageOpts) {
         width: null,
       });
       view.dispatch(view.state.tr.insert(insertAt, node));
-      at = insertAt + node.nodeSize;
+      // Keep the marker after what was just inserted so the next file in the
+      // batch follows it instead of landing before it.
+      setPendingPos(view, insertAt + node.nodeSize);
     }
   } finally {
+    if (!view.isDestroyed) clearPendingPos(view);
     if (imageOpts.onUploadState) imageOpts.onUploadState(false);
   }
 }
@@ -1028,6 +1036,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       makeTypewriterExtension(() => _typewriterEnabled),
       makeCommentsExtension(),
       makeFindHighlightExtension(),
+      PendingPos,
       ...makeCharacterTableNodes(imageOpts),
       ...makeTimelineNodes(),
     ],

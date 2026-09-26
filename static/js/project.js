@@ -356,12 +356,16 @@ async function applyFontValue(value) {
     applyInlineFont(value);
     return;
   }
+  const docId = state.currentDocId;
   try {
-    const updated = await api.docs.style(state.project.id, state.currentDocId, {
+    const updated = await api.docs.style(state.project.id, docId, {
       target: targetForContext(),
       ...(state.currentSection ? { section: state.currentSection } : {}),
       font: value,
     });
+    // A slow reply for a document the writer has since left must not repaint
+    // the new one with the old one's style.
+    if (state.currentDocId !== docId) return;
     state.docStyle = updated.style || {};
     applyDocStyle();
   } catch (err) {
@@ -396,12 +400,14 @@ function sizeSelect(target) {
     if (state.selectionActive) {
       applyInlineSize(size);
     } else if (state.editorCtrl && state.currentDocId) {
+      const docId = state.currentDocId;
       try {
-        const updated = await api.docs.style(state.project.id, state.currentDocId, {
+        const updated = await api.docs.style(state.project.id, docId, {
           target: targetForContext(),
           ...(state.currentSection ? { section: state.currentSection } : {}),
           size,
         });
+        if (state.currentDocId !== docId) return;
         state.docStyle = updated.style || {};
         applyDocStyle();
       } catch (err) {
@@ -444,11 +450,13 @@ function zoomSelect(target, scope = "write") {
       return;
     }
     if (!state.currentDocId) return;
+    const docId = state.currentDocId;
     try {
-      const updated = await api.docs.style(state.project.id, state.currentDocId, {
+      const updated = await api.docs.style(state.project.id, docId, {
         target: "document",
         zoom,
       });
+      if (state.currentDocId !== docId) return;
       state.docStyle = updated.style || {};
       applyDocStyle();
     } catch (err) {
@@ -486,12 +494,14 @@ function alignGroup(target) {
             syncEditorControls();
             return;
           }
+          const docId = state.currentDocId;
           try {
-            const updated = await api.docs.style(state.project.id, state.currentDocId, {
+            const updated = await api.docs.style(state.project.id, docId, {
               target: targetForContext(),
               ...(state.currentSection ? { section: state.currentSection } : {}),
               align: a.id,
             });
+            if (state.currentDocId !== docId) return;
             state.docStyle = updated.style || {};
             applyDocStyle();
           } catch (err) {
@@ -541,6 +551,7 @@ function updateTargetIndicator() {
 async function resetContextStyle() {
   const editor = state.editorCtrl && state.editorCtrl.editor;
   if (!editor || !state.currentDocId) return;
+  const docId = state.currentDocId;
   try {
     if (state.selectionActive) {
       editor.chain().focus().unsetMark("fontFamily").unsetMark("fontSize").run();
@@ -549,11 +560,12 @@ async function resetContextStyle() {
       syncEditorControls();
       return;
     }
-    const updated = await api.docs.style(state.project.id, state.currentDocId, {
+    const updated = await api.docs.style(state.project.id, docId, {
       target: targetForContext(),
       ...(state.currentSection ? { section: state.currentSection } : {}),
       clear: true,
     });
+    if (state.currentDocId !== docId) return;
     state.docStyle = updated.style || {};
     applyDocStyle();
   } catch (err) {

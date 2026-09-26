@@ -47,6 +47,9 @@ function jsonResponse(data, status = 200) {
 let store = [];
 let nextId = 1;
 let requests = [];
+// When set, the next GET /comments parks until the test calls `.release()` —
+// used to resolve a stale list after the pane has moved to another document.
+let listDelay = null;
 
 globalThis.fetch = async (url, opts = {}) => {
   const parsed = new URL(String(url), "http://localhost");
@@ -55,7 +58,15 @@ globalThis.fetch = async (url, opts = {}) => {
   requests.push(`${method} ${pathname}`);
 
   if (pathname === "/api/projects/p/comments" && method === "GET") {
-    return jsonResponse(store);
+    const data = store;
+    if (listDelay) {
+      const gate = listDelay;
+      listDelay = null;
+      return new Promise((resolve) => {
+        gate.release = () => resolve(jsonResponse(data));
+      });
+    }
+    return jsonResponse(data);
   }
   if (pathname === "/api/projects/p/comments" && method === "POST") {
     const payload = JSON.parse(opts.body);
@@ -418,6 +429,28 @@ await check("Re-anchor all re-links every recoverable note", async () => {
   );
   assert.ok(panel.querySelector(".comment-item.detached"), "the lost quote stays detached");
   pane.ctrl = ctrl;
+});
+
+await check("a reply for a document the pane has left is not applied", async () => {
+  pane.docId = "01-scene";
+  store = [{ id: "c_old00000001", docId: "01-scene", body: "old note", resolved: false }];
+  const gate = {};
+  listDelay = gate;
+  const stale = panel._reload();
+
+  // The writer switches documents while the first list is still in flight; the
+  // new document's reload finishes first.
+  pane.docId = "02-other";
+  store = [{ id: "c_new00000001", docId: "02-other", body: "new note", resolved: false }];
+  await panel._reload();
+  assert.match(panel.textContent, /new note/);
+
+  // The stale reply lands now and must be dropped.
+  gate.release();
+  await stale;
+  assert.match(panel.textContent, /new note/);
+  assert.ok(!panel.textContent.includes("old note"), "the old document's list was applied");
+  pane.docId = "01-scene";
 });
 
 if (failures) {

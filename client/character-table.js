@@ -6,6 +6,7 @@ import {
   parseImageWidth,
 } from "../static/js/image-utils.js";
 import { inlineHtml } from "./raw-html.js";
+import { setPendingPos, pendingPos, clearPendingPos } from "./pending-pos.js";
 
 // A character table is the wiki's right-hand info box (the Fandom "infobox"):
 // a floating frame holding a title, a subtitle, a portrait and label/value
@@ -319,6 +320,9 @@ export async function setPortraitFromFiles(view, pos, files, imageOpts) {
   if (!wanted.length || !imageOpts || !imageOpts.uploadImage) return false;
   const initial = view.state.doc.nodeAt(pos);
   if (!initial || initial.type.name !== "ctPortrait") return false;
+  // The upload can outlast edits above the table, so track the slot through
+  // them instead of replacing whatever sits at the stale offset (pending-pos.js).
+  setPendingPos(view, pos);
   if (imageOpts.onUploadState) imageOpts.onUploadState(true);
   try {
     let info = null;
@@ -338,7 +342,8 @@ export async function setPortraitFromFiles(view, pos, files, imageOpts) {
     }
     if (!info || !info.path || !view || view.isDestroyed) return false;
     const schema = view.state.schema;
-    const target = view.state.doc.nodeAt(pos);
+    const slot = pendingPos(view);
+    const target = slot == null ? null : view.state.doc.nodeAt(slot);
     if (!target || target.type.name !== "ctPortrait") return false;
     const image = schema.nodes.image.create({
       src: info.path,
@@ -348,10 +353,11 @@ export async function setPortraitFromFiles(view, pos, files, imageOpts) {
     });
     const paragraph = schema.nodes.paragraph.create(null, [image]);
     view.dispatch(
-      view.state.tr.replaceWith(pos + 1, pos + 1 + target.content.size, paragraph)
+      view.state.tr.replaceWith(slot + 1, slot + 1 + target.content.size, paragraph)
     );
     return true;
   } finally {
+    if (!view.isDestroyed) clearPendingPos(view);
     if (imageOpts.onUploadState) imageOpts.onUploadState(false);
   }
 }
