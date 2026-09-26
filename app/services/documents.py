@@ -1449,14 +1449,21 @@ def _renumber(
         lock_paths.extend(_doc_paths_under(old))
     temp_dir = directory / config.REORDER_TMP_DIRNAME
     temp_dir.mkdir(exist_ok=True)
+    completed = False
     try:
         with _locks_for(lock_paths):
             for old, _ in staged:
                 shutil.move(str(old), str(temp_dir / old.name))
             for old, new in staged:
                 shutil.move(str(temp_dir / old.name), str(new))
+        completed = True
     finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        # Only drop the staging folder once every entry is back in place. A
+        # move that fails partway leaves the remainder in .reorder-tmp, where
+        # recover_reorder_tmp() restores it on the next launch — deleting it
+        # here would destroy documents.
+        if completed:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     renamed: dict[str, str] = {}
     for entry_id, (_, new) in zip(ordered_ids, staged, strict=True):

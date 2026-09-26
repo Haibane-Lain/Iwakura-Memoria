@@ -180,6 +180,46 @@ def test_add_comment_rejects_a_missing_quote(make_project):
         )
 
 
+# --- confirm_all re-applies Access/Mode --------------------------------------
+
+
+def test_confirm_all_reapplies_access_and_mode(monkeypatch):
+    """Deferred calls are dispatched at confirm time, so the session's Access
+    and Mode must be passed through again — a Plan session must not slip a write
+    through via Accept all."""
+    seen = []
+
+    def fake_dispatch(name, args, project_id, scope, **kwargs):
+        seen.append((name, kwargs))
+        return "", None
+
+    monkeypatch.setattr(tools, "dispatch", fake_dispatch)
+    monkeypatch.setattr(agent.sessions, "save", lambda *a, **k: None)
+
+    session = {
+        "sessionId": "s1",
+        "scope": [""],
+        "mode": "advanced",
+        "access": "plan",
+        "selectedEntries": [],
+        "history": [],
+        "agentState": {
+            "pending": {"name": "add_comment", "args": {"entryId": "x"}},
+            "deferred": [
+                {"id": "d1", "function": {"name": "edit_entry", "arguments": "{}"}}
+            ],
+        },
+    }
+    agent.confirm("proj", session, "confirm_all")
+
+    by_name = {name: kwargs for name, kwargs in seen}
+    assert set(by_name) == {"add_comment", "edit_entry"}
+    for kwargs in by_name.values():
+        assert kwargs["access"] == "plan"
+        assert kwargs["mode"] == "advanced"
+        assert kwargs["selected_entries"] == []
+
+
 # --- session state ----------------------------------------------------------
 
 

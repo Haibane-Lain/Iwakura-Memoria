@@ -57,7 +57,6 @@ import {
   promptDialog,
   confirmDialog,
   showModal,
-  countWords,
   formatNumber,
 } from "./ui.js";
 
@@ -88,7 +87,6 @@ const {
   markActiveDirty,
   parkEditor,
   flushSave,
-  updateTreeWords,
   afterSnapshotRestore,
   refreshAfterReplace,
   startComment,
@@ -106,10 +104,6 @@ let _switching = false;
 let _beforeUnload = null;
 
 /* ---------------- helpers ---------------- */
-
-function mode() {
-  return state.settings.wordCountMode || "auto";
-}
 
 function isWikiScope() {
   return state.currentTab === "wiki";
@@ -1734,25 +1728,13 @@ async function onWikilinkClick(name) {
   }
 }
 
-async function createMissingNote(title, fromDocId) {
+async function createMissingNote(title) {
   try {
     const doc = await api.docs.create(state.project.id, {
       title,
       kind: "note",
       folder: "worldbuilding",
     });
-    if (fromDocId) {
-      const from = await api.docs.get(state.project.id, fromDocId);
-      const updated = from.content.replace(
-        new RegExp(`\\[\\[${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\]`),
-        `[[${title}]]`
-      );
-      await api.docs.save(state.project.id, fromDocId, updated);
-      updateTreeWords(fromDocId, countWords(updated, mode()));
-      // The source document's editor now holds pre-rewrite text; drop it so
-      // returning to it rebuilds from disk instead of resurrecting the old body.
-      dropEditorFor(fromDocId);
-    }
     await afterTreeChange();
     await refreshWiki();
     toast(`Created note "${title}"`);

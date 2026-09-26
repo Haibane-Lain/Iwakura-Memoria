@@ -206,6 +206,20 @@ def rename_project(project_id: str, new_name: str) -> dict[str, Any]:
                     shutil.move(str(old_sessions), str(new_sessions))
                 except OSError:
                     pass
+        # Document history, comment bodies and trash are keyed by project id
+        # too; carry them along so a rename keeps them (best-effort).
+        for dirname in (
+            config.SNAPSHOTS_DIRNAME,
+            config.COMMENTS_DIRNAME,
+            config.TRASH_DIRNAME,
+        ):
+            old_side = config.DATA_DIR / dirname / pid
+            new_side = config.DATA_DIR / dirname / new_folder.name
+            if old_side.is_dir() and not new_side.exists():
+                try:
+                    shutil.move(str(old_side), str(new_side))
+                except OSError:
+                    pass
         folder = new_folder
     _write_meta(folder, meta)
     return get_project(new_folder.name)

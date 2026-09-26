@@ -699,13 +699,26 @@ def confirm(project_id: str, session: dict[str, Any], decision: str) -> dict[str
     pending = agent_state["pending"]
     scope = session.get("scope")
     session_id = session.get("sessionId")
+    # Re-apply the session's Access/Mode at execution time too: deferred calls
+    # were never dispatched (so never validated) when the round was planned.
+    mode = _session_mode(session)
+    access = _session_access(session)
+    selected = _selected_entries(session)
     actions: list[dict[str, Any]] = []
     notes: list[str] = []
 
     def _exec(name: str, args: dict[str, Any], confirmed: bool) -> None:
         try:
             _, action = tools.dispatch(
-                name, args, project_id, scope, confirmed=confirmed, session_id=session_id
+                name,
+                args,
+                project_id,
+                scope,
+                confirmed=confirmed,
+                session_id=session_id,
+                mode=mode,
+                access=access,
+                selected_entries=selected,
             )
         except Exception as exc:  # noqa: BLE001 — isolate failures; one bad call must not 500 the batch
             notes.append(f"Could not run {name}: {exc}")

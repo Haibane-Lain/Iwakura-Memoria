@@ -85,6 +85,35 @@ check("single escaped brackets in prose survive", () => {
   assert.equal(roundTrip(source), source);
 });
 
+/* ---------------- aligned blocks ---------------- */
+
+check("an aligned paragraph keeps project-relative image srcs", () => {
+  const host = dom.window.document.getElementById("m");
+  host.replaceChildren();
+  const ctrl = dom.window.LainEditor.create({
+    element: host,
+    content: "before ![cat](assets/x.png) after",
+    placeholder: "Begin writing…",
+    onChange: () => {},
+    projectId: "my-project",
+    uploadImage: async () => ({ path: "assets/x.png" }),
+    onImageError: () => {},
+    onUploadState: () => {},
+    onOpenImage: () => {},
+  });
+  // Align the paragraph the way the ribbon does, then save.
+  ctrl.editor.commands.selectAll();
+  ctrl.setBlockTextAlign("center");
+  const out = ctrl.getMarkdown();
+  ctrl.destroy();
+
+  assert.ok(out.includes("text-align:center"), `the alignment was lost: ${out}`);
+  assert.ok(out.includes('src="assets/x.png"'), `expected the stored src, got: ${out}`);
+  assert.ok(!out.includes("/api/"), `a served URL leaked into the Markdown: ${out}`);
+  assert.ok(!out.includes("doc-image"), `an editor-only class leaked: ${out}`);
+  assert.ok(!out.includes("loading="), `an editor-only attribute leaked: ${out}`);
+});
+
 if (failures) {
   console.error(`editor-markdown: ${failures} check(s) failed`);
   process.exit(1);

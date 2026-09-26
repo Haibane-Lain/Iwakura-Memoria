@@ -223,6 +223,124 @@ Legend for hooks: where the work would plug into the current code.
 
 ---
 
+## Code review findings (2026-09)
+
+A focused review of the shipped features. The data-loss / corruption items were
+fixed straight away and are not listed here: reorder staging no longer deletes
+documents on a failed move, `createMissingNote` no longer discards unsaved
+edits, grammar offsets/replacements are mapped correctly, aligned blocks keep
+project-relative image `src`s, `confirm_all` re-applies Access/Mode, and a
+project rename carries its snapshots/comments/trash.
+
+### Robustness / races
+
+- [ ] **Re-entrancy guards don't guard** `P1` `S` — `openDocument`
+  (`static/js/editor-workspace.js:1342`), `newDocument`
+  (`static/js/project.js:1590`) and `switchTab` (`:3394`) do
+  `if (flag) { flag = false; } flag = true;`, so nothing is ever refused:
+  double-clicking **+ Chapter** creates two entries and fast tab/sidebar clicks
+  race renders. Restore an early `return`, or use a request token.
+- [ ] **Missing documents answer 503, not 404** `P2` `S` —
+  `app/routes/documents.py:69` tests `OSError` before `FileNotFoundError` (a
+  subclass), so the 404 branch is dead.
+- [ ] **One bad byte breaks the tree and library** `P1` `S` —
+  `app/services/documents.py:443,742,1565` read UTF-8 without
+  `errors="replace"` (unlike `iter_documents`), so a hand-edited cp1252 file
+  400s the tree and 500s the library list.
+- [ ] **Word-stats document count inflates** `P2` `S` —
+  `app/services/documents.py:128` counts every file up front, then
+  `_word_stats_update` counts an empty document again on its first write.
+- [ ] **Comment-panel + style-control async races** `P2` `M` —
+  `static/js/comments-panel.js:94` and the style controls in
+  `static/js/project.js:360-497` apply a response without checking the document
+  is still current, so a slow reply paints the old document's comments/style.
+- [ ] **h4–h6 headings flatten to paragraphs** `P2` `S` —
+  `client/editor-entry.js:549` limits `StyledHeading` to levels `[1,2,3]`;
+  `####`…`######` are lost on load → save.
+- [ ] **Stale position after an await** `P2` `S` — image insert
+  (`client/editor-entry.js:951`) and portrait upload
+  (`client/character-table.js:339`) reuse a pre-await position, so an edit made
+  during the upload puts the image in the wrong place.
+- [ ] **`wordAt` mixes text and document offsets** `P2` `S` —
+  `client/editor-entry.js:130` compares `textContent` offsets with document
+  positions, so right-click → Lookup on a word after an inline image selects the
+  wrong span and replace lands in the wrong place.
+- [ ] **Comment ranges over-merge** `P2` `S` — `client/comments.js:128` joins
+  every run sharing a cid, even non-adjacent ones, so reveal selects unrelated
+  text between them.
+- [ ] **Find panel stuck on "Searching…"** `P3` `S` —
+  `static/js/search-dialog.js:171` returns before resetting the status when a
+  request is superseded.
+
+### Accessibility & polish
+
+- [ ] **Modal Escape + focus management** `P2` `M` — `static/js/ui.js:46`
+  (`showModal`) wires only a backdrop click: no Escape, no focus move/restore,
+  no `role="dialog"`. Most dialogs (export, import, repetition, link, lookup,
+  dictionary) inherit the gap.
+- [ ] **Library leaks project shortcuts** `P2` `S` —
+  `static/js/project.js:3599-3645`; `state.project` is never reset, so
+  `Ctrl+F`/`Ctrl+W`/`Ctrl+\`/`Ctrl+Shift+D` stay bound on the library screen.
+- [ ] **Listener leaks** `P3` `S` — the context menu
+  (`static/js/project.js:1214`) can attach a permanent document click handler
+  when dismissed before its 0 ms timer, and the color popover (`:2405`) only
+  removes its outside-mousedown listener when it fires.
+- [ ] **`updateTopbar` throws after leaving a project** `P3` `S` —
+  `static/js/project.js:615` dereferences a null `#tb-title`; an in-flight save
+  that lands on the library screen surfaces a spurious toast.
+- [ ] **Every autosave rebuilds the whole sidebar** `P2` `S` —
+  `static/js/editor-workspace.js:1239` calls `renderSidebar()` on each save (up
+  to every 800 ms) and can abort an in-progress drag; update just the row.
+- [ ] **Heading serializer churns leading markers** `P3` `S` —
+  `client/editor-entry.js:520` re-escapes a heading's first `-`/`*`/`+`/`1.`,
+  so `# - dash` becomes `# \- dash` on first save.
+- [ ] **Wikilink alias whitespace** `P3` `S` —
+  `client/editor-entry.js:81` computes the hidden span from the trimmed target,
+  so `[[ Target | alias ]]` displays the alias with stray spaces.
+
+### Security / defense-in-depth
+
+- [ ] **Add `PATCH` to the Origin-checked methods** `P2` `S` —
+  `app/security.py:37`; the app mutates via PATCH (rename document/folder,
+  project update, session rename) but only POST/PUT/DELETE require an Origin.
+
+### Docs / TODO hygiene
+
+- [ ] **README packaging claims contradict the installer section** `P2` `S` —
+  `README.md:500` says packaging is "still open" while `:507` documents a shipped
+  installer; `:543`'s frozen-server path is wrong (real output is
+  `scripts\build\_bundle\server\`).
+- [ ] **Reserved paths not enforced** `P2` `S` — `README.md:251` calls
+  `templates/` and `dictionary.json` reserved, but `_validate_folder_name` does
+  not reject them; a project named "AI Sessions" collides with
+  `data/ai-sessions/`.
+- [ ] **`.comments/` missing from the data-layout diagram** `P3` `S` —
+  `README.md:205-225` omits it even though it holds comment bodies.
+- [ ] **Stale TODO / review references** `P3` `S` — Quick-win #1
+  (link/code/divider buttons) is already shipped; the "Recent list" marked
+  shipped never existed; `TODO.md:60,219-221` and `docs/ai-review.md:23` point at
+  the wrong lines/symbols.
+
+### Tests
+
+- [ ] **Wiki resolution + backlinks** `P2` `M` — `app/services/wiki.py` /
+  `app/routes/wiki.py` have no real coverage.
+- [ ] **Templates service + route** `P2` `S` — zero tests.
+- [ ] **Reserved-name enforcement** `P3` `S` — mirror
+  `tests/test_assets.py:162` for `templates`/`dictionary.json`, and reject
+  `ai-sessions` as a project id.
+- [ ] **Electron shell contract** `P3` `M` — `electron/preload.js` vs
+  `main.py::_WindowApi`, plus port selection / tree-kill.
+- [ ] **Grammar route** `P3` `S` — `POST /api/grammar/check` has no HTTP test.
+
+### Dead code
+
+- [ ] Unused `CharacterCount` extension (`client/editor-entry.js`),
+  `.wiki-view` / `.wiki-grid` / `.broken-item` CSS (`static/css/app.css`), and
+  dead `build_export_html` (`app/services/export.py`).
+
+---
+
 ## Also tracked elsewhere
 
 - **Tiptap v2 → v3 upgrade** — deferred; see GitHub issue #1

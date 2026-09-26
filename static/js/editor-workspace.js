@@ -967,7 +967,7 @@ function backlinksPanel(pane) {
           el("button", {
             class: "mini-add",
             title: `Create "${target}"`,
-            onclick: () => shell.createMissingNote(target, docId),
+            onclick: () => shell.createMissingNote(target),
           }, "+"),
         ])
       );

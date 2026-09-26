@@ -9,7 +9,6 @@ import Heading from "@tiptap/extension-heading";
 import { Markdown } from "tiptap-markdown";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { DOMSerializer } from "@tiptap/pm/model";
 import {
   ASSET_PREFIX,
   clampImageWidth,
@@ -41,6 +40,7 @@ import {
   scrollPosIntoView,
 } from "./typewriter.js";
 import { wordRange } from "./word-at.js";
+import { inlineHtml } from "./raw-html.js";
 import {
   findMatchRanges,
   makeFindHighlightExtension,
@@ -253,8 +253,6 @@ let _grammarTimer = null;
 let _grammarView = null;
 let _grammarSkipping = false;
 let _grammarReplaceRange = null;
-let _lastDocOffsets = null;
-let _lastDocText = null;
 let _grammarDictionaryWords = [];
 let _grammarAddToDictCallback = null;
 let _onLookupWord = null;
@@ -276,13 +274,16 @@ function _grammarDocText(doc) {
   const offsets = [];
   doc.descendants((node, pos) => {
     if (node.isText) {
-      const prev = offsets.length > 0 ? offsets[offsets.length - 1] : null;
-      if (!prev || prev.ltPos + prev.len !== text.length) {
-        offsets.push({ ltPos: text.length, docPos: pos });
-        offsets[offsets.length - 1].len = node.text.length;
-      } else {
-        prev.len += node.text.length;
+      let run = offsets[offsets.length - 1];
+      // Start a new run unless this text begins exactly where the run before
+      // it ended. Inline leaves — an image, a hard break — sit between text
+      // runs and take up document positions, so merging across one would map
+      // every character after it to the wrong place.
+      if (!run || run.docPos + run.len !== pos) {
+        run = { ltPos: text.length, docPos: pos, len: 0 };
+        offsets.push(run);
       }
+      run.len += node.text.length;
       text += node.text;
       return false;
     }
@@ -308,6 +309,21 @@ function _ltToDocPos(offsets, target) {
   }
   const last = offsets[offsets.length - 1];
   return last.docPos + last.len;
+}
+
+// The document range a grammar decoration currently covers, read from the DOM
+// rather than from the offsets captured when the check ran. Decorations are
+// mapped through every edit after they are painted, so the element is always on
+// the right word; the stored offset is not.
+function _grammarDomRange(view, errorEl) {
+  try {
+    const from = view.posAtDOM(errorEl, 0);
+    const to = view.posAtDOM(errorEl, errorEl.childNodes.length);
+    if (to <= from || to > view.state.doc.content.size) return null;
+    return { from, to };
+  } catch {
+    return null;
+  }
 }
 
 const GRAMMAR_FETCH_TIMEOUT_MS = 30000;
@@ -365,8 +381,6 @@ function _grammarSchedule(view) {
   const docText = _grammarDocText(view.state.doc);
   const hash = _grammarHash(docText.text);
   if (hash === pluginState.textHash) return;
-  _lastDocOffsets = docText.offsets;
-  _lastDocText = docText.text;
   const checkedHash = hash;
   _grammarTimer = setTimeout(async () => {
     if (_grammarBusy) return;
@@ -403,6 +417,7 @@ function makeGrammarPlugin() {
         const newEnabled = enabled !== undefined ? enabled : value.enabled;
         const incoming = tr.getMeta("grammarDecorations");
         let set = incoming ? incoming.set : value.set;
+        if (!newEnabled) set = DecorationSet.empty;
         if (tr.docChanged && !incoming) {
           set = set.map(tr.mapping, tr.doc);
           if (_grammarReplaceRange) {
@@ -521,12 +536,9 @@ function serializeStyledBlock(state, node, tag) {
     state.closeBlock(node);
     return;
   }
-  const container = document.createElement("div");
-  container.appendChild(
-    DOMSerializer.fromSchema(this.editor.schema).serializeFragment(node.content, { document })
-  );
+  const serialized = inlineHtml(node.content);
   state.write(`<${tag} style="text-align:${align}">`);
-  state.write(container.innerHTML);
+  state.write(serialized);
   state.write(`</${tag}>`);
   state.closeBlock(node);
 }
@@ -610,11 +622,10 @@ function _grammarShowTooltip(errorEl) {
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
         const view = _grammarView;
-        const offsets = _lastDocOffsets;
-        if (!view || view.isDestroyed || !offsets) return;
-        const from = _ltToDocPos(offsets, match.offset);
-        const to = _ltToDocPos(offsets, match.offset + match.length);
-        if (from < 0 || to > view.state.doc.content.size) return;
+        if (!view || view.isDestroyed) return;
+        const range = _grammarDomRange(view, errorEl);
+        if (!range) return;
+        const { from, to } = range;
         const tr = view.state.tr;
         try {
           _grammarSkipping = true;
@@ -632,7 +643,7 @@ function _grammarShowTooltip(errorEl) {
     tip.appendChild(rl);
   }
 
-  const matchedWord = (_lastDocText || "").substring(match.offset, match.offset + match.length).trim();
+  const matchedWord = (errorEl.textContent || "").trim();
   if (matchedWord && _grammarAddToDictCallback && matchedWord.length > 1) {
     const alreadyIn = _grammarDictionaryWords.some((w) => w.toLowerCase() === matchedWord.toLowerCase());
     const sep = document.createElement("div");
@@ -1295,8 +1306,6 @@ window.LainEditor = {
           _grammarSkipping = false;
           _grammarBusy = false;
           _grammarReplaceRange = null;
-          _lastDocOffsets = null;
-          _lastDocText = null;
         }
         editor.view.dom.removeEventListener("click", editor._grammarClick);
         if (editor._wikilinkClick) {

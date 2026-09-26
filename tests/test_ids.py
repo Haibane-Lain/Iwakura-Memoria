@@ -94,6 +94,21 @@ def test_rename_project_works_without_sessions(data_dir, make_project):
     assert renamed["id"] == "renamed"
 
 
+def test_rename_project_migrates_sidecars(data_dir, make_project):
+    """History, comments and trash are keyed by project id and must follow a rename."""
+    make_project("proj")
+    for dirname in (".snapshots", ".comments", ".trash"):
+        d = data_dir / dirname / "proj"
+        d.mkdir(parents=True)
+        (d / "marker.json").write_text("{}", encoding="utf-8")
+
+    renamed = projects_service.rename_project("proj", "New Name")
+    assert renamed["id"] == "new-name"
+    for dirname in (".snapshots", ".comments", ".trash"):
+        assert (data_dir / dirname / "new-name" / "marker.json").exists(), dirname
+        assert not (data_dir / dirname / "proj").exists(), dirname
+
+
 # --- B5: rename conflict is a 409 -------------------------------------------
 
 

@@ -72,6 +72,56 @@ def test_recover_reorder_tmp_noop_when_absent(data_dir, make_project):
     assert documents_service.recover_reorder_tmp() == 0
 
 
+def test_failed_reorder_keeps_every_document(data_dir, make_project, monkeypatch):
+    """A move that fails mid-renumber must not delete the staged documents.
+
+    Regression for the unconditional `rmtree` that used to wipe whatever was
+    still sitting in .reorder-tmp when a move raised.
+    """
+    import pytest
+
+    make_project("proj")
+    documents_service.create_document("proj", "Alpha", content="aaa")
+    documents_service.create_document("proj", "Beta", content="bbb")
+    documents_service.create_document("proj", "Gamma", content="ccc")
+
+    real_move = documents_service.shutil.move
+    calls = {"n": 0}
+
+    def flaky(src, dst, *args, **kwargs):
+        calls["n"] += 1
+        # Moves 1-3 stage into .reorder-tmp, 4-6 move back out. Fail on the
+        # second unstage, leaving two documents still staged.
+        if calls["n"] == 5:
+            raise OSError("locked by another process")
+        return real_move(src, dst, *args, **kwargs)
+
+    project = data_dir / "proj"
+    monkeypatch.setattr(documents_service.shutil, "move", flaky)
+    with pytest.raises(OSError):
+        documents_service.reorder_documents("proj", ["03-gamma", "01-alpha", "02-beta"])
+
+    # Nothing was deleted: all three bodies survive, in the folder or staged.
+    in_place = {p.name for p in project.glob("*.md")}
+    tmp = project / ".reorder-tmp"
+    staged = {p.name for p in tmp.glob("*.md")} if tmp.is_dir() else set()
+    assert len(in_place | staged) == 3, (in_place, staged)
+    assert len(in_place) == 1 and len(staged) == 2
+
+    # The startup recovery puts the staged entries back. Restore only the
+    # patched move (undoing the whole monkeypatch would also drop the test's
+    # IWAKURA_DATA_DIR override).
+    monkeypatch.setattr(documents_service.shutil, "move", real_move)
+    old = time.time() - 3600
+    os.utime(tmp, (old, old))
+    documents_service.recover_reorder_tmp()
+    restored = list(project.glob("*.md"))
+    assert len(restored) == 3
+    text = "".join(p.read_text(encoding="utf-8") for p in restored)
+    for body in ("aaa", "bbb", "ccc"):
+        assert body in text
+
+
 # --- R5: PDF export smoke ---------------------------------------------------
 
 
