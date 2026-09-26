@@ -107,11 +107,13 @@ export function applyCommentsMeta(editor, meta) {
   editor.view.dispatch(editor.state.tr.setMeta(commentsPluginKey, meta || {}));
 }
 
-// Every comment range in a document, one entry per id in document order.
-// Adjacent runs of the same id are merged so the result is usable as a single
-// selection target.
+// Every comment run in a document, in document order. Contiguous runs of the
+// same id are merged into one selection target; runs with a gap between them
+// are reported separately — a single note may anchor several spans (a comment
+// over a selection that wraps an existing anchor marks each free span).
 export function collectCommentRanges(doc) {
-  const byCid = new Map();
+  const runs = [];
+  const lastByCid = new Map();
   doc.descendants((node, pos) => {
     if (!node.isText) return;
     const mark = node.marks.find((m) => m.type.name === "comment");
@@ -120,16 +122,19 @@ export function collectCommentRanges(doc) {
     if (!cid) return;
     const from = pos;
     const to = pos + node.nodeSize;
-    const entry = byCid.get(cid);
-    if (!entry) {
-      byCid.set(cid, { cid, from, to, text: node.text });
+    const prev = lastByCid.get(cid);
+    if (prev && prev.to === from) {
+      // Adjacent to the previous run for this id: extend it.
+      prev.to = to;
+      prev.text += node.text;
       return;
     }
-    entry.from = Math.min(entry.from, from);
-    entry.to = Math.max(entry.to, to);
-    entry.text += node.text;
+    // A gap (other text, an image, another block) starts a new run.
+    const run = { cid, from, to, text: node.text };
+    runs.push(run);
+    lastByCid.set(cid, run);
   });
-  return [...byCid.values()].sort((a, b) => a.from - b.from);
+  return runs.sort((a, b) => a.from - b.from);
 }
 
 // Strip the comment mark for the given ids, leaving the anchored text in place.

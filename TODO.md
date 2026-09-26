@@ -271,16 +271,20 @@ project rename carries its snapshots/comments/trash.
   `client/pending-pos.js` state field maps the insertion point through the edits
   made while an upload is in flight; `insertImageFiles` and
   `setPortraitFromFiles` hold/read it instead of a captured offset.
-- [ ] **`wordAt` mixes text and document offsets** `P2` `S` —
-  `client/editor-entry.js:130` compares `textContent` offsets with document
-  positions, so right-click → Lookup on a word after an inline image selects the
-  wrong span and replace lands in the wrong place.
-- [ ] **Comment ranges over-merge** `P2` `S` — `client/comments.js:128` joins
-  every run sharing a cid, even non-adjacent ones, so reveal selects unrelated
-  text between them.
-- [ ] **Find panel stuck on "Searching…"** `P3` `S` —
-  `static/js/search-dialog.js:171` returns before resetting the status when a
-  request is superseded.
+- [x] **`wordAt` mixes text and document offsets** `P2` `S` — shipped:
+  `client/word-at.js` gained `inlineText`/`wordRangeAt`, which map a document
+  offset (counting inline images) to a text index and back, using a placeholder
+  so a word never spans an image; `wordAt` uses them. Tests:
+  `tests/word-at.test.mjs`.
+- [x] **Comment ranges over-merge** `P2` `S` — shipped: `collectCommentRanges`
+  now reports one entry per contiguous run (adjacent runs merge, gaps split), so
+  `revealComment` selects the first run instead of the text between two; the
+  panel's `anchoredMap` takes the first run and dedupes orphan markers. Tests:
+  `tests/editor-comments.test.mjs`.
+- [x] **Find panel stuck on "Searching…"** `P3` `S` — shipped: the
+  "no document is open" branch of `run()` clears the status, which the
+  superseded in-flight request deliberately leaves alone. Test:
+  `tests/search-dialog.test.mjs`.
 
 ### Accessibility & polish
 

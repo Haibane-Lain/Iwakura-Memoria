@@ -39,7 +39,7 @@ import {
   scrollParent,
   scrollPosIntoView,
 } from "./typewriter.js";
-import { wordRange } from "./word-at.js";
+import { wordRangeAt } from "./word-at.js";
 import { inlineHtml } from "./raw-html.js";
 import {
   findMatchRanges,
@@ -128,13 +128,17 @@ function wordAt(view, pos) {
   const $pos = view.state.doc.resolve(pos);
   const parent = $pos.parent;
   if (!parent || !parent.isTextblock) return null;
-  const found = wordRange(parent.textContent, $pos.parentOffset);
+  // `parentOffset` is a document offset, which counts inline images the text
+  // does not; hand the children to wordRangeAt so it maps back correctly.
+  const children = [];
+  for (let i = 0; i < parent.childCount; i += 1) {
+    const child = parent.child(i);
+    children.push({ isText: child.isText, text: child.text || "", size: child.nodeSize });
+  }
+  const found = wordRangeAt(children, $pos.parentOffset);
   if (!found) return null;
-  return {
-    word: found.word,
-    from: $pos.start() + found.start,
-    to: $pos.start() + found.end,
-  };
+  const base = $pos.start();
+  return { word: found.word, from: base + found.from, to: base + found.to };
 }
 
 const wordMenuPlugin = new Plugin({

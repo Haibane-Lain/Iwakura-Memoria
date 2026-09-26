@@ -153,6 +153,9 @@ export function renderSearchDialog({
     const scope = scopeSelect.value;
     if (scope === "document" && !currentDocId()) {
       results.replaceChildren(el("div", { class: "search-empty" }, "No document is open."));
+      // This run supersedes any in-flight one, which now refuses to touch the
+      // status. Clear it here or "Searching…" is left on screen for good.
+      statusEl.textContent = "";
       paint(null);
       return;
     }

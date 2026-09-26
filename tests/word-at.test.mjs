@@ -4,7 +4,7 @@
 // Run: node tests/word-at.test.mjs  (or `npm run test:wordat`)
 import assert from "node:assert/strict";
 
-import { wordRange } from "../client/word-at.js";
+import { wordRange, wordRangeAt, inlineText } from "../client/word-at.js";
 
 let failures = 0;
 function check(label, fn) {
@@ -56,6 +56,41 @@ check("handles unicode letters", () => {
 check("clamps an out-of-range offset", () => {
   assert.deepEqual(wordRange("alpha", 99), { word: "alpha", start: 0, end: 5 });
   assert.deepEqual(wordRange("alpha", -3), { word: "alpha", start: 0, end: 5 });
+});
+
+check("a word after an inline image maps document offsets", () => {
+  // "The " + image (one position, no text) + "cat sat".
+  const children = [
+    { isText: true, text: "The ", size: 4 },
+    { isText: false, text: "", size: 1 },
+    { isText: true, text: "cat sat", size: 7 },
+  ];
+  // Document offsets: "The " 0..4, image 4..5, "cat" 5..8, " sat" 8..12.
+  assert.deepEqual(wordRangeAt(children, 6), { word: "cat", from: 5, to: 8 });
+  assert.deepEqual(wordRangeAt(children, 9), { word: "sat", from: 9, to: 12 });
+});
+
+check("a word never spans an inline image", () => {
+  const children = [
+    { isText: true, text: "ab", size: 2 },
+    { isText: false, text: "", size: 1 },
+    { isText: true, text: "cd", size: 2 },
+  ];
+  // Document offsets: "ab" 0..2, image 2..3, "cd" 3..5.
+  assert.deepEqual(wordRangeAt(children, 1), { word: "ab", from: 0, to: 2 });
+  assert.deepEqual(wordRangeAt(children, 3), { word: "cd", from: 3, to: 5 });
+  assert.equal(wordRangeAt(children, 2), null, "the image itself has no word");
+});
+
+check("inlineText keeps a placeholder per non-text node", () => {
+  const { text, docOffsets } = inlineText([
+    { isText: true, text: "a", size: 1 },
+    { isText: false, text: "", size: 1 },
+    { isText: true, text: "b", size: 1 },
+  ]);
+  assert.equal(text.length, 3);
+  assert.equal(text[1], "\uFFFC");
+  assert.deepEqual(docOffsets, [0, 1, 2, 3]);
 });
 
 if (failures) {

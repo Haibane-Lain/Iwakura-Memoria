@@ -141,8 +141,36 @@ await check("commenting over an existing anchor keeps the inner anchor", () => {
   s.ctrl.setComment("c_bbb");
   const md = s.ctrl.getMarkdown();
   assert.match(md, /<span data-cid="c_aaa">one<\/span>/, "the inner anchor survives");
-  const cids = [...s.ctrl.getCommentRanges().map((r) => r.cid)].sort();
+  const cids = [...new Set(s.ctrl.getCommentRanges().map((r) => r.cid))].sort();
   assert.deepEqual(cids, ["c_aaa", "c_bbb"], "both comments are still anchored");
+  s.close();
+});
+
+await check("disjoint runs of one id stay separate and reveal only the first", () => {
+  const s = open('A <span data-cid="c_x">one</span> B <span data-cid="c_x">two</span>.');
+  const ranges = s.ctrl.getCommentRanges();
+  assert.deepEqual([...ranges.map((r) => r.cid)], ["c_x", "c_x"]);
+  assert.deepEqual([...ranges.map((r) => r.text)], ["one", "two"]);
+
+  assert.equal(s.ctrl.revealComment("c_x"), true);
+  const sel = s.ctrl.editor.state.selection;
+  assert.equal(
+    s.ctrl.editor.state.doc.textBetween(sel.from, sel.to),
+    "one",
+    "only the first run is selected, not the gap between them"
+  );
+  s.close();
+});
+
+await check("adjacent runs of one id still merge", () => {
+  // The bold keeps the two comment-marked runs as separate text nodes while
+  // their document positions stay contiguous.
+  const s = open(
+    'A <span data-cid="c_x">one</span><strong><span data-cid="c_x"> two</span></strong> B.'
+  );
+  const ranges = s.ctrl.getCommentRanges();
+  assert.equal(ranges.length, 1);
+  assert.equal(ranges[0].text, "one two");
   s.close();
 });
 

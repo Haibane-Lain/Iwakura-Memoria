@@ -75,7 +75,11 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   function anchoredMap() {
     const map = new Map();
     if (!ctrl()) return map;
-    for (const range of ctrl().getCommentRanges()) map.set(range.cid, range);
+    // A note can anchor several disjoint runs; the first one is the
+    // representative for display and ordering (revealComment does the same).
+    for (const range of ctrl().getCommentRanges()) {
+      if (!map.has(range.cid)) map.set(range.cid, range);
+    }
     return map;
   }
 
@@ -525,7 +529,15 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
 
     // Markers with no sidecar body (a hand-edited or externally changed file).
     const known = new Set(items.map((c) => c.id));
-    const orphans = ctrl() ? ctrl().getCommentRanges().filter((r) => !known.has(r.cid)) : [];
+    const seenOrphan = new Set();
+    const orphans = [];
+    if (ctrl()) {
+      for (const range of ctrl().getCommentRanges()) {
+        if (known.has(range.cid) || seenOrphan.has(range.cid)) continue;
+        seenOrphan.add(range.cid);
+        orphans.push(range);
+      }
+    }
     if (orphans.length) {
       children.push(el("div", { class: "panel-title", style: { marginTop: "16px" } }, "Unlinked anchors"));
       for (const range of orphans) {
