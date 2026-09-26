@@ -471,6 +471,54 @@ await check("find highlights go to the active editor and never steal focus", asy
   dom.window.close();
 });
 
+await check("a superseded openDocument does not clobber the newer one", async () => {
+  const dom = makeDom();
+  const { ctx, workspace } = await freshWorkspace();
+  dom.window.LainEditor = makeFakeEditor({});
+
+  // Defer the *first* GET for each document so the test controls the order the
+  // two opens finish in. Later GETs (renderEditorView re-fetches the doc) reply
+  // straight away.
+  const pending = {};
+  const seen = new Set();
+  globalThis.fetch = async (url, opts = {}) => {
+    const href = String(url);
+    const method = (opts.method || "GET").toUpperCase();
+    if (/\/api\/projects\/demo\/documents\/[^/]+$/.test(href)) {
+      const id = decodeURIComponent(href.split("/documents/")[1]);
+      if (method === "GET") {
+        if (!seen.has(id)) {
+          seen.add(id);
+          return new Promise((resolve) => {
+            pending[id] = () => resolve(jsonResponse(DOCS[id]));
+          });
+        }
+        return jsonResponse(DOCS[id]);
+      }
+      return jsonResponse({ words: 2 });
+    }
+    if (/\/api\/projects\/demo\/comments/.test(href)) return jsonResponse([]);
+    return jsonResponse({}, 404);
+  };
+
+  const first = workspace.openDocument("a.md");
+  await tick();
+  const second = workspace.openDocument("b.md");
+  await tick();
+  assert.ok(pending["a.md"] && pending["b.md"], "both opens are in flight");
+
+  // B finishes first and renders; A's late reply must be dropped.
+  pending["b.md"]();
+  assert.equal(await second, true, "the newest open reports true");
+  assert.equal(ctx.panes.primary.docId, "b.md", "B is on screen");
+
+  pending["a.md"]();
+  assert.equal(await first, false, "the superseded open reports false");
+  assert.equal(ctx.panes.primary.docId, "b.md", "A did not clobber B");
+  assert.equal(ctx.state.currentDocId, "b.md", "the current document stays B");
+  dom.window.close();
+});
+
 if (failures) {
   console.error(`editor-workspace: ${failures} check(s) failed`);
   process.exit(1);

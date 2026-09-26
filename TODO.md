@@ -234,12 +234,13 @@ project rename carries its snapshots/comments/trash.
 
 ### Robustness / races
 
-- [ ] **Re-entrancy guards don't guard** `P1` `S` — `openDocument`
-  (`static/js/editor-workspace.js:1342`), `newDocument`
-  (`static/js/project.js:1590`) and `switchTab` (`:3394`) do
-  `if (flag) { flag = false; } flag = true;`, so nothing is ever refused:
-  double-clicking **+ Chapter** creates two entries and fast tab/sidebar clicks
-  race renders. Restore an early `return`, or use a request token.
+- [x] **Re-entrancy guards don't guard** `P1` `S` — shipped: `openDocument`
+  (`static/js/editor-workspace.js`) and `switchTab` (`static/js/project.js`) take
+  a newest-wins token (`static/js/latest-task.js`) and re-check it after every
+  `await`, so a superseded run stops before mutating; `newDocument` now refuses a
+  repeat click with a real early return. `openDocument` returns whether it opened
+  the requested document, and the search/repetition jumps skip their highlight
+  when superseded.
 - [ ] **Missing documents answer 503, not 404** `P2` `S` —
   `app/routes/documents.py:69` tests `OSError` before `FileNotFoundError` (a
   subclass), so the 404 branch is dead.

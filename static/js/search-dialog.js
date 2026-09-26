@@ -246,7 +246,9 @@ export function renderSearchDialog({
   // Open the chapter a result belongs to, scroll its match into view and keep it
   // highlighted. The panel stays open so the next result is one click away.
   const jump = async (docId, hit, button) => {
-    await openDocument(docId);
+    // A newer result click supersedes this one; don't paint its highlight onto
+    // whatever document ended up on screen.
+    if (!(await openDocument(docId))) return;
     const found = highlightMatches(query(), options(), hit.occurrence);
     markActiveHit(button);
     updateCounter(found);

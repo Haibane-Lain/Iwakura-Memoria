@@ -27,6 +27,7 @@ import { defaultZoomForScope as resolveDefaultZoom } from "./editor-prefs.js";
 import { prettyPath } from "./doc-tree.js";
 import { commentsPanel } from "./comments-panel.js";
 import { createScrollMemory } from "./editor-scroll.js";
+import { createLatestTask } from "./latest-task.js";
 
 // Per-document scroll offsets, kept across tab switches (see editor-scroll.js).
 const scrollMemory = createScrollMemory();
@@ -35,8 +36,9 @@ const scrollMemory = createScrollMemory();
 
 const LS_TABS = "im.tabs";
 
-// Only one document can be mid-open at a time.
-let _opening = false;
+// The newest open wins: clicking chapter A and then B must end on B, so a
+// superseded open stops before it mutates the panes (see latest-task.js).
+const openTask = createLatestTask();
 
 function tabsStorageKey() {
   return state.project ? `${LS_TABS}.${state.project.id}` : null;
@@ -1335,19 +1337,18 @@ export async function openDocument(docId) {
   const visible = paneForDoc(docId);
   if (visible) {
     if (state.activePane !== visible.name) setActivePane(visible.name);
-    return;
+    return true;
   }
-  if (docId === state.currentDocId) return;
-  console.warn("[diag] openDocument start", docId, { _opening });
-  if (_opening) {
-    _opening = false;
-  }
-  _opening = true;
-  try {
-  await flushSave();
+  if (docId === state.currentDocId) return true;
   const wiki = docId.startsWith("worldbuilding/");
+  // A later click supersedes this one; every await is a chance for that to
+  // happen, so re-check after each before touching shared state.
+  const token = openTask.begin();
+  await flushSave();
+  if (!openTask.isCurrent(token)) return false;
   try {
     const doc = await api.docs.get(state.project.id, docId);
+    if (!openTask.isCurrent(token)) return false;
     docTabs.open(docId);
     persistTabs();
     state.currentDocId = docId;
@@ -1360,12 +1361,11 @@ export async function openDocument(docId) {
     // offset when its children are replaced).
     shell.renderSidebar({ keepScroll: true });
     await renderEditorTab(doc, { wiki });
+    return openTask.isCurrent(token);
   } catch (err) {
     console.warn("openDocument failed", docId, err);
     toast(err.message, "error");
-  }
-  } finally {
-    _opening = false;
+    return false;
   }
 }
 

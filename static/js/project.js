@@ -49,6 +49,7 @@ import {
 import { ASSET_ACCEPT, MAX_IMAGE_BYTES, isImageFile } from "./image-utils.js";
 import { DEFAULT_WIKI_ZOOM, DEFAULT_ZOOM, ZOOM_PRESETS, zoomFactor } from "./zoom.js";
 import { keepScrollTop, alignTop } from "./scroll-keep.js";
+import { createLatestTask } from "./latest-task.js";
 import { UNTITLED, renameTarget } from "./entry-naming.js";
 import { TEXT_COLORS } from "./text-colors.js";
 import {
@@ -98,10 +99,14 @@ const {
 let _treeSearchOpen = new Set();
 
 let lainCtrl = null;
+// A create is refused while one is in flight (see newDocument); a tab switch
+// takes the newest-wins token below.
 let _creating = false;
 
-let _switching = false;
 let _beforeUnload = null;
+
+// The newest tab click wins; a superseded switch stops before it mutates.
+const tabTask = createLatestTask();
 
 /* ---------------- helpers ---------------- */
 
@@ -1581,9 +1586,9 @@ async function onLainActions(actions) {
 /* ---------------- document actions ---------------- */
 
 async function newDocument(kind, folder) {
-  if (_creating) {
-    _creating = false;
-  }
+  // A create is started again only after the previous one finished; a second
+  // click while one is in flight would make two "Untitled" entries.
+  if (_creating) return;
   _creating = true;
   try {
     const doc = await api.docs.create(state.project.id, {
@@ -1603,8 +1608,7 @@ async function newDocument(kind, folder) {
     // "Untitled" placeholder can land on a different entry. We know exactly
     // which one we made, so open that.
     state.currentDocId = null;
-    await openDocument(doc.id);
-    claimNamingFocus();
+    if (await openDocument(doc.id)) claimNamingFocus();
   } catch (err) {
     toast(err.message, "error");
   } finally {
@@ -1693,8 +1697,7 @@ async function newWikiEntry(folder) {
     await refreshWiki();
     // See newDocument: the title-based remap is ambiguous with "Untitled".
     state.currentDocId = null;
-    await openDocument(doc.id);
-    claimNamingFocus();
+    if (await openDocument(doc.id)) claimNamingFocus();
   } catch (err) {
     toast(err.message, "error");
   }
@@ -3372,10 +3375,9 @@ async function renderSettingsTab() {
 /* ---------------- tab switching ---------------- */
 
 async function switchTab(tab) {
-  console.warn("[diag] switchTab start", tab, { _switching, _creating });
-  if (_creating) _creating = false;
-  if (_switching) _switching = false;
-  _switching = true;
+  // The newest tab click wins. A superseded switch stops before touching the
+  // panes so the last click is the one that renders (see latest-task.js).
+  const token = tabTask.begin();
   const main = document.getElementById("main-content");
   if (main) main.style.opacity = "0";
   try {
@@ -3385,11 +3387,15 @@ async function switchTab(tab) {
   if (tab !== "write") state.writeQuery = "";
   if (tab === "write" || tab === "wiki") {
     await flushSave();
+    if (!tabTask.isCurrent(token)) return;
     const wiki = tab === "wiki";
     state.currentTab = tab;
     setActiveTab(tab);
     state.currentDocId = wiki ? state.wikiDocId : state.writeDocId;
-    if (wiki) await loadWikiData();
+    if (wiki) {
+      await loadWikiData();
+      if (!tabTask.isCurrent(token)) return;
+    }
     if (!state.currentDocId) {
       const f = firstDoc();
       if (f) {
@@ -3408,10 +3414,12 @@ async function switchTab(tab) {
     const doc = state.currentDocId
       ? await api.docs.get(state.project.id, state.currentDocId)
       : null;
+    if (!tabTask.isCurrent(token)) return;
     await renderEditorTab(doc, { wiki, pane: "primary" });
     return;
   }
   await flushSave();
+  if (!tabTask.isCurrent(token)) return;
   state.currentTab = tab;
   setActiveTab(tab);
   // Keep the document's editor cached so its undo history survives a detour
@@ -3423,8 +3431,11 @@ async function switchTab(tab) {
   } catch (err) {
     console.warn("switchTab failed", tab, err);
   } finally {
-    if (main) requestAnimationFrame(() => { main.style.opacity = "1"; });
-    _switching = false;
+    // Only the winning switch restores the pane; a superseded one must not
+    // reveal whatever is on screen while the winner is still painting.
+    if (main && tabTask.isCurrent(token)) {
+      requestAnimationFrame(() => { main.style.opacity = "1"; });
+    }
   }
 }
 

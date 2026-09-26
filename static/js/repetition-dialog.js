@@ -177,7 +177,7 @@ export async function renderRepetitionDialog({ projectId, openDocument, revealTe
     const echoSection = section("Nearby echoes", "same word reused close together", wordRows(result.echoes, "echo"));
     const jump = (docId, text) => async () => {
       close();
-      await openDocument(docId);
+      if (!(await openDocument(docId))) return;
       if (!revealText(text)) toast("Opened the document");
     };
     const phraseItems = result.phrases.map((item) =>
