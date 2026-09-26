@@ -147,6 +147,22 @@ function makeFakeEditor(slot) {
         removeComment() {},
         removeComments() {},
         revealComment() { return false; },
+        findMatches(query, options) {
+          slot.findCalls = slot.findCalls || [];
+          slot.findCalls.push({ query, options });
+          return (slot.ranges || []).map((range) => ({ ...range }));
+        },
+        setFindHighlights(ranges, active) {
+          slot.highlights = { ranges, active };
+        },
+        clearFindHighlights() {
+          slot.cleared = (slot.cleared || 0) + 1;
+          slot.highlights = null;
+        },
+        revealRange(from, to, opts = { focus: true }) {
+          slot.reveals = slot.reveals || [];
+          slot.reveals.push({ from, to, focus: opts.focus });
+        },
         activate() {},
         deactivate() {},
         destroy() {},
@@ -409,6 +425,49 @@ await check("dropping a rewritten document's editor rebuilds it from disk", asyn
   await workspace.renderEditorView();
   assert.equal(ctx.panes.primary.ctrl.getMarkdown(), 'Alpha <span data-cid="c_x">body</span>');
   DOCS["a.md"].content = "Alpha body";
+  dom.window.close();
+});
+
+await check("find highlights go to the active editor and never steal focus", async () => {
+  const dom = makeDom();
+  installFetch();
+  const { ctx, workspace } = await freshWorkspace();
+  const slot = { ranges: [{ from: 5, to: 9 }, { from: 20, to: 24 }] };
+  dom.window.LainEditor = makeFakeEditor(slot);
+
+  await workspace.openDocument("a.md");
+  assert.equal(ctx.state.editorCtrl, ctx.panes.primary.ctrl, "the open document owns the ctrl");
+
+  // A click on a cross-document result: paint every match, activate the one the
+  // server's ordinal named, and scroll to it without moving the keyboard out of
+  // the find input.
+  const found = workspace.highlightFindMatches("dark", { wholeWord: true }, 1);
+  assert.deepEqual(found, { total: 2, active: 1 });
+  assert.equal(slot.findCalls.at(-1).query, "dark");
+  assert.deepEqual(slot.findCalls.at(-1).options, { wholeWord: true });
+  assert.equal(slot.highlights.active, 1);
+  assert.deepEqual(slot.highlights.ranges, [{ from: 5, to: 9 }, { from: 20, to: 24 }]);
+  assert.deepEqual(slot.reveals.at(-1), { from: 20, to: 24, focus: false });
+
+  // The server counts matches over the saved, cleaned text, so its ordinal can
+  // outrun the live document: fall back to the first match instead of nothing.
+  assert.deepEqual(workspace.highlightFindMatches("dark", {}, 7), { total: 2, active: 0 });
+  assert.deepEqual(slot.reveals.at(-1), { from: 5, to: 9, focus: false });
+
+  // No match on screen: the panel shows no counter and nothing stays tinted.
+  slot.ranges = [];
+  assert.equal(workspace.highlightFindMatches("dark", {}, 0), null);
+  assert.ok(slot.cleared > 0, "painting a new query clears the old highlights first");
+
+  // revealText keeps its old contract for the repetition check (focus + select).
+  slot.ranges = [{ from: 5, to: 9 }, { from: 20, to: 24 }];
+  assert.equal(workspace.revealText("dark", 1), true);
+  assert.deepEqual(slot.reveals.at(-1), { from: 20, to: 24, focus: true });
+  assert.equal(workspace.revealText("", 0), false, "an empty needle is never a jump");
+
+  // Closing the panel clears the mounted editor and the parked ones.
+  workspace.clearFindHighlights();
+  assert.equal(slot.highlights, null);
   dom.window.close();
 });
 

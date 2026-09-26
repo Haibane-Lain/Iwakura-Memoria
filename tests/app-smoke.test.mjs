@@ -295,7 +295,7 @@ const PROJECT_ROUTES = [
     },
   ],
   [
-    /\/api\/projects\/demo\/documents\/[^/]+$/,
+    /\/api\/projects\/demo\/documents\/.+$/,
     (href, method, opts) => {
       const body = opts && opts.body ? JSON.parse(opts.body) : {};
       if (method === "PATCH" && body.title) {
@@ -522,27 +522,34 @@ await check("the project shell boots against a mocked API", async () => {
   filter.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   assert.ok(!sectionWith("Overused words").hidden, "All shows the word sections again");
 
-  // Full-text search: open the Find dialog, run a query, and confirm the hit
+  // Full-text search: open the Find panel, run a query, and confirm the hit
   // renders with its match highlighted.
-  const findBtn = doc.querySelector('.tool-btn[title^="Find & replace"]');
+  const findBtn = doc.querySelector('.tool-btn[title^="Find"]');
   assert.ok(findBtn, "find ribbon button exists");
-  // Ctrl+F opens the dialog (the toolbar button does too).
+  // Ctrl+F opens the panel (the toolbar button does too).
   doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
-  const searchDialog = await waitFor(() => doc.querySelector(".search-modal"));
-  const searchInput = searchDialog.querySelector(".search-input");
+  const findPanel = await waitFor(() => doc.querySelector(".find-panel"));
+  const searchInput = findPanel.querySelector(".search-input");
   assert.ok(searchInput, "search input exists");
+  // The panel floats in the corner: no backdrop of its own, so the document
+  // underneath is still reachable while it is open.
+  assert.equal(findPanel.parentElement, doc.body, "the panel is not inside an overlay");
+  assert.ok(
+    !findPanel.classList.contains("modal-backdrop") && !findPanel.closest(".modal-backdrop"),
+    "the find panel does not block the document"
+  );
   searchInput.value = "wolf";
   searchInput.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
-  await waitFor(() => searchDialog.querySelector(".search-hit"));
-  assert.match(searchDialog.querySelector(".search-summary").textContent, /1 match in 1 document/);
-  assert.ok(searchDialog.querySelector(".search-hit mark"), "the match is highlighted");
+  await waitFor(() => findPanel.querySelector(".search-hit"));
+  assert.match(findPanel.querySelector(".search-summary").textContent, /1 match in 1 document/);
+  assert.ok(findPanel.querySelector(".search-hit mark"), "the match is highlighted");
 
-  // The same dialog sweeps replacements across the scope: preview, confirm,
+  // The same panel sweeps replacements across the scope: preview, confirm,
   // then the replace endpoint.
-  const replaceInput = searchDialog.querySelector(".search-replace-input");
+  const replaceInput = findPanel.querySelector(".search-replace-input");
   assert.ok(replaceInput, "replace field exists");
   replaceInput.value = "fox";
-  const replaceBtn = [...searchDialog.querySelectorAll(".icon-btn")].find(
+  const replaceBtn = [...findPanel.querySelectorAll(".icon-btn")].find(
     (btn) => btn.textContent === "Replace all"
   );
   assert.ok(replaceBtn, "replace all button exists");
@@ -554,6 +561,13 @@ await check("the project shell boots against a mocked API", async () => {
   );
   confirmBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await waitFor(() => calls.some((call) => call === "POST /api/projects/demo/replace"));
+
+  // Closing the panel stops the highlighting (the editor is told to clear).
+  const closeBtn = findPanel.querySelector(".find-close");
+  assert.ok(closeBtn, "the panel has a close button");
+  closeBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => !doc.querySelector(".find-panel"));
+  assert.ok(!doc.querySelector(".find-panel"), "✕ closes the panel");
 
   // Document history opens from the toolbar. With no document open it points
   // at the empty state; the list/preview/restore paths are backend-tested.
@@ -708,6 +722,21 @@ await check("the project shell boots against a mocked API", async () => {
     rootMenu()?.parentElement.querySelector(".tree-name-input")
   );
   assert.equal(nested.value, "Untitled", "the chapter starts unnamed inside the folder");
+
+  // Find again: clicking a result opens its chapter and keeps the panel open, so
+  // the next result is one click away. It used to close the dialog and toast, and
+  // the match was a selection that vanished on the next keystroke.
+  doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+  const panel = await waitFor(() => doc.querySelector(".find-panel"));
+  const findInput = panel.querySelector(".search-input");
+  findInput.value = "wolf";
+  findInput.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  const hit = await waitFor(() => panel.querySelector(".search-hit"));
+  hit.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => panel.querySelector(".search-hit.active"));
+  assert.ok(doc.querySelector(".find-panel"), "the panel stays open after a jump");
+  panel.querySelector(".find-close").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => !doc.querySelector(".find-panel"));
 
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   assert.equal(capture.errors.length, 0, `a tab threw: ${capture.errors.map(String).join("; ")}`);

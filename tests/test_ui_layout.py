@@ -24,6 +24,9 @@ LAIN_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "lain.js"
 EDITOR_WORKSPACE_JS = (
     Path(__file__).resolve().parent.parent / "static" / "js" / "editor-workspace.js"
 )
+SEARCH_DIALOG_JS = (
+    Path(__file__).resolve().parent.parent / "static" / "js" / "search-dialog.js"
+)
 WRITE_COLUMN = 760
 WIKI_COLUMN_MIN = 1000
 CONTENTS_MIN = 200
@@ -332,3 +335,34 @@ def test_lain_jobs_section_is_wired_end_to_end():
     assert "jobs.stream" in lain or "api.ai.jobs.stream" in lain, (
         "lain.js must stream job progress"
     )
+
+
+def test_the_find_panel_floats_without_blocking_the_document():
+    """Find must stay usable *while* the document does.
+
+    A modal would drop a full-screen backdrop over the editor, and a text
+    selection would vanish as soon as the find input took the keyboard, so the
+    panel is a fixed corner box with no overlay and the matches are painted as
+    in-document decorations instead.
+    """
+    panel = _block(".find-panel")
+    assert re.search(r"position\s*:\s*fixed", panel), ".find-panel must float"
+    assert re.search(r"right\s*:\s*\d+px", panel), "the panel sits in a corner"
+    assert re.search(r"z-index\s*:\s*\d+", panel), "the panel must stack above the editor"
+    assert not re.search(r"inset\s*:\s*0", panel), "the panel must not cover the window"
+
+    find = SEARCH_DIALOG_JS.read_text(encoding="utf-8")
+    assert 'class: "find-panel"' in find, "search-dialog.js builds the floating panel"
+    assert not re.search(r"\bshowModal\b", find), (
+        "the panel must not use the modal helper — that is what puts a backdrop over the document"
+    )
+    assert "clearHighlights()" in find, "closing the panel must drop the highlights"
+    assert "highlightMatches(" in find, "the panel paints through the shell callback"
+
+    for selector in (".ProseMirror .find-hit", ".ProseMirror .find-hit-active"):
+        assert re.search(r"background\s*:", _block(selector)), (
+            f"{selector} must paint the match"
+        )
+
+    workspace = EDITOR_WORKSPACE_JS.read_text(encoding="utf-8")
+    assert "clearFindHighlights" in workspace, "the shell clears the tints on every editor"

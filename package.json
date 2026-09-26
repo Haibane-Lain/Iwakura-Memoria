@@ -20,6 +20,7 @@
     "test:timeline": "node tests/editor-timeline.test.mjs",
     "test:primitives": "node tests/editor-primitives.test.mjs",
     "test:comments": "node tests/editor-comments.test.mjs",
+    "test:find": "node tests/find-highlight.test.mjs",
     "test:commentspanel": "node tests/comments-panel.test.mjs",
     "test:critiquedialog": "node tests/critique-dialog.test.mjs",
     "test:critiquerun": "node tests/critique-run.test.mjs",
@@ -41,7 +42,7 @@
     "test:zoom": "node tests/zoom.test.mjs",
     "test:scrollkeep": "node tests/scroll-keep.test.mjs",
     "test:smoke": "node tests/app-smoke.test.mjs",
-    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:markdown && npm run test:chartable && npm run test:timeline && npm run test:primitives && npm run test:comments && npm run test:commentspanel && npm run test:critiquedialog && npm run test:critiquerun && npm run test:entrynaming && npm run test:importplan && npm run test:lookup && npm run test:linkdialog && npm run test:wordat && npm run test:wikilinksuggest && npm run test:typewriter && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:editorprefs && npm run test:workspace && npm run test:editorscroll && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
+    "test:js": "npm run build && npm run test:sanitize && npm run test:search && npm run test:image && npm run test:editor && npm run test:markdown && npm run test:chartable && npm run test:timeline && npm run test:primitives && npm run test:comments && npm run test:find && npm run test:commentspanel && npm run test:critiquedialog && npm run test:critiquerun && npm run test:entrynaming && npm run test:importplan && npm run test:lookup && npm run test:linkdialog && npm run test:wordat && npm run test:wikilinksuggest && npm run test:typewriter && npm run test:history && npm run test:pool && npm run test:tabs && npm run test:tabs-smoke && npm run test:doctree && npm run test:editorprefs && npm run test:workspace && npm run test:editorscroll && npm run test:zoom && npm run test:scrollkeep && npm run test:smoke"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -37,6 +37,11 @@ import { makeWikilinkMenuExtension } from "./wikilink-menu.js";
 import { centerCaret, makeTypewriterExtension } from "./typewriter.js";
 import { wordRange } from "./word-at.js";
 import {
+  findMatchRanges,
+  makeFindHighlightExtension,
+  setFindRanges,
+} from "./find-highlight.js";
+import {
   applyCommentsMeta,
   collectCommentRanges,
   makeCommentsExtension,
@@ -1006,6 +1011,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       makeWikilinkMenuExtension(getWikilinkItems),
       makeTypewriterExtension(() => _typewriterEnabled),
       makeCommentsExtension(),
+      makeFindHighlightExtension(),
       ...makeCharacterTableNodes(imageOpts),
       ...makeTimelineNodes(),
     ],
@@ -1162,6 +1168,31 @@ window.LainEditor = {
           .setTextSelection({ from: range.from, to: range.to })
           .scrollIntoView()
           .run();
+        return true;
+      },
+      /* ---------------- find in document ---------------- */
+      // The find panel drives these: it finds the matches, paints them, and
+      // scrolls the current one into view. `revealRange` deliberately does not
+      // focus by default — the panel's input keeps the keyboard while the
+      // document scrolls underneath (Google Docs behaves the same way).
+      findMatches(query, options) {
+        return findMatchRanges(editor.state.doc, query, options || {});
+      },
+      setFindHighlights(ranges, activeIndex) {
+        setFindRanges(editor, ranges, activeIndex);
+      },
+      clearFindHighlights() {
+        setFindRanges(editor, [], -1);
+      },
+      revealRange(from, to, { focus = true } = {}) {
+        if (editor.isDestroyed) return false;
+        const size = editor.state.doc.content.size;
+        const start = Math.max(0, Math.min(from, size));
+        const end = Math.max(start, Math.min(to, size));
+        const tr = editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end));
+        tr.scrollIntoView();
+        editor.view.dispatch(tr);
+        if (focus) editor.view.focus();
         return true;
       },
       // Grammar decorations share one "active view" slot. A freshly created

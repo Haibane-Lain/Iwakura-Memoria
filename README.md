@@ -88,16 +88,23 @@ install; see [Lookup](#lookup).
   box is pinned below the tabs, so it stays in reach however far down a long
   tree you have scrolled.
 - **Find & replace** — The **Find** toolbar button (or **Ctrl+F**, including
-  **Ctrl+Shift+F**) searches the *contents* of every document, not just titles.
-  Case-insensitive by default, with **Case sensitive** and **Whole word**
-  toggles and a scope selector (whole project, Write, Wiki, or the current
-  document). Results are grouped by document with a highlighted snippet per
-  hit; click one to open the document and select that exact match. The dialog
-  also has a *Replace* field and **Replace all in {scope}**: replacement works
-  on the stored Markdown but only in prose — code, HTML tags, image paths, link
+  **Ctrl+Shift+F**) opens a small panel in the top-right corner that searches the
+  *contents* of every document, not just titles. It floats over the page instead
+  of blocking it: the document stays scrollable and editable while the panel is
+  open, and every match of the query in the document on screen is tinted, with
+  the current one highlighted more strongly. Click a result to open that chapter,
+  scroll the match into view and jump the highlight to it — the panel stays open,
+  so the next result is one click away, and **▲**/**▼** (or **Enter** /
+  **Shift+Enter**) walk the matches of the open document with a `3 of 12` counter.
+  Case-insensitive by default, with **Case sensitive** and **Whole word** toggles
+  and a scope selector (whole project, Write, Wiki, or the current document);
+  results are grouped by document with a highlighted snippet per hit. Closing the
+  panel (`Esc`, **✕**, or **Ctrl+F** again) clears the highlights. The replace
+  field and **Replace all in {scope}** are unchanged: replacement works on the
+  stored Markdown but only in prose — code, HTML tags, image paths, link
   destinations, and `[[wikilink]]` targets are left alone — and snapshots every
-  changed document first (as **Before replace** in its **History**), so the
-  whole sweep is reversible.
+  changed document first (as **Before replace** in its **History**), so the whole
+  sweep is reversible.
 - **Inline images** — Drop one or more pictures onto the editor (or paste a
   screenshot, or use the 🖼 toolbar button) and they appear inline, in both the
   Write and Wiki tabs. Drag the corner handle to resize — the size is saved

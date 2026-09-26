@@ -303,6 +303,38 @@ def test_build_messages_handles_stored_read_digests():
     assert "Mara" in messages[0]["content"]
 
 
+def test_simple_mode_sends_one_leading_system_message(make_project):
+    """Regression: LM Studio renders the model's own Jinja template, and the
+    Qwen-family templates raise "System message must be at the beginning" for
+    any system message that is not first. The Simple-mode context block used to
+    ride along as a second system message, which broke the critique pass (it
+    runs Simple against a dedicated session)."""
+    from app.services import documents as documents_service
+
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Mara", content="Mara is the captain.")
+    session = {
+        "sessionId": "a" * 32,
+        "scope": [""],
+        "mode": "simple",
+        "selectedEntries": [doc["id"]],
+        "history": [{"role": "user", "content": "hi"}],
+    }
+    messages = agent._build_messages("proj", session, "")
+    assert [m["role"] for m in messages].count("system") == 1
+    assert messages[0]["role"] == "system"
+    # The context is still delivered — only its container changed.
+    assert "Mara is the captain." in messages[0]["content"]
+    assert "Accessible folders and entries" in messages[0]["content"]
+    assert messages[-1]["role"] == "user"
+
+
+def test_advanced_mode_sends_one_leading_system_message():
+    session = {"scope": [""], "mode": "advanced", "history": []}
+    messages = agent._build_messages("proj", session, "hi")
+    assert [m["role"] for m in messages] == ["system", "user"]
+
+
 # --- routes -----------------------------------------------------------------
 
 

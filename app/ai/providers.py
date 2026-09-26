@@ -21,6 +21,34 @@ TIMEOUT_SECONDS = 300.0
 USER_AGENT = "LainsWritingTools/0.1.0"
 
 
+def _coalesce_system_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fold every system message into a single leading system message.
+
+    Local servers (LM Studio, llama.cpp, vLLM) render the model's *own* Jinja
+    chat template, and the Qwen-family templates raise ``System message must be
+    at the beginning`` for any system message that is not first — two leading
+    system messages are enough to fail the whole request. The agent loop builds
+    exactly one (see ``agent._build_messages``); this guard enforces the shape
+    for every caller so a future one cannot regress it.
+
+    Returns the input list unchanged when there is less than two system
+    messages to merge (the common case, so the OpenAI-compatible happy path is
+    untouched). Non-system messages keep their relative order; a system message
+    found later in the list is hoisted into the leading one rather than left in
+    place, because a strict template rejects it wherever it sits.
+    """
+    systems = [m for m in messages if m.get("role") in ("system", "developer")]
+    if len(systems) < 2:
+        return messages
+    merged = dict(systems[0])
+    merged["role"] = "system"
+    merged["content"] = "\n\n".join(
+        text for text in (str(m.get("content") or "") for m in systems) if text
+    )
+    rest = [m for m in messages if m.get("role") not in ("system", "developer")]
+    return [merged, *rest] if merged["content"] else rest
+
+
 class AIError(Exception):
     """Raised when a provider request fails (bad key, timeout, HTTP error)."""
 
@@ -96,6 +124,7 @@ class AIClient:
         on output tokens is sent so long generations aren't cut at the
         provider default.
         """
+        messages = _coalesce_system_messages(messages)
         body: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -157,6 +186,7 @@ class AIClient:
         ``tool_calls``, ``usage``, ``finish_reason``). Raises :class:`AIError`
         on transport, HTTP, or stream errors.
         """
+        messages = _coalesce_system_messages(messages)
         body: dict[str, Any] = {
             "model": self.model,
             "messages": messages,

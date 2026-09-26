@@ -322,26 +322,30 @@ def _selected_context(project_id: str, session: dict[str, Any]) -> str:
 def _build_messages(
     project_id: str, session: dict[str, Any], user_message: str
 ) -> list[dict[str, Any]]:
+    """Build one request's message list.
+
+    Exactly one system message is ever sent, and it comes first. The
+    Qwen-family chat templates that local servers (LM Studio, llama.cpp) render
+    raise "System message must be at the beginning" for any system message that
+    is not first, so Simple mode's context block is folded into the system
+    prompt instead of riding along as a second system message.
+    """
     mode = _session_mode(session)
-    messages: list[dict[str, Any]] = [
-        {
-            "role": "system",
-            "content": system_prompt(
-                session.get("scope"),
-                session.get("currentDocId"),
-                session.get("compressedSummary"),
-                session.get("attachments"),
-                session.get("readSet"),
-                mode,
-                _session_access(session),
-                read_digests=list((session.get("readDigests") or {}).values()),
-            ),
-        }
-    ]
+    content = system_prompt(
+        session.get("scope"),
+        session.get("currentDocId"),
+        session.get("compressedSummary"),
+        session.get("attachments"),
+        session.get("readSet"),
+        mode,
+        _session_access(session),
+        read_digests=list((session.get("readDigests") or {}).values()),
+    )
     if mode == "simple":
         context = _selected_context(project_id, session)
         if context:
-            messages.append({"role": "system", "content": context})
+            content = f"{content}\n\n{context}"
+    messages: list[dict[str, Any]] = [{"role": "system", "content": content}]
     messages.extend(_history_messages(session))
     if user_message:
         messages.append({"role": "user", "content": user_message})

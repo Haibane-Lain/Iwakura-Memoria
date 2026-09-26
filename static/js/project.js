@@ -83,6 +83,8 @@ const {
   persistTabs,
   reconcileTabs,
   revealText,
+  highlightFindMatches,
+  clearFindHighlights,
   markActiveDirty,
   parkEditor,
   flushSave,
@@ -2235,8 +2237,8 @@ function searchBtn() {
   return btn;
 }
 
-// The find dialog needs a few shell capabilities (flush before replacing,
-// reload changed documents, open-and-select a hit). Bundle them once so the
+// The find panel needs a few shell capabilities (flush before replacing,
+// reload changed documents, open-and-highlight a hit). Bundle them once so the
 // toolbar button and the Ctrl+F shortcut stay in step.
 function openFindReplace() {
   renderSearchDialog({
@@ -2245,7 +2247,8 @@ function openFindReplace() {
     flushSave,
     refreshAfterReplace,
     openDocument,
-    revealText,
+    highlightMatches: highlightFindMatches,
+    clearHighlights: clearFindHighlights,
   });
 }
 

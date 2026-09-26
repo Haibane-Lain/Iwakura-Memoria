@@ -1260,46 +1260,68 @@ export function applyDictionaryWords(words) {
 
 /* ---------------- editor navigation ---------------- */
 
-// Best-effort "jump to the match": the editor's text is what the check saw,
-// but finding it by string is cheap and works for the common case. Markdown
-// drift simply opens the document without a selection. ``occurrence`` selects
-// the Nth hit within the document (search passes the one the user clicked).
+// Every live editor the shell may have painted find highlights on: the mounted
+// pane plus everything parked in the LRU pool, whose ProseMirror state — and so
+// its decorations — survives a tab switch.
+function liveEditorCtrls() {
+  const ctrls = [];
+  if (state.editorCtrl) ctrls.push(state.editorCtrl);
+  for (const id of editorPool.keys()) {
+    const ctrl = editorPool.get(id);
+    if (ctrl) ctrls.push(ctrl);
+  }
+  return ctrls;
+}
+
+// Drop the find highlights from every editor, mounted or parked. Called when the
+// panel closes, before painting a new query, and on navigation.
+export function clearFindHighlights() {
+  const seen = new Set();
+  for (const ctrl of liveEditorCtrls()) {
+    if (!ctrl || seen.has(ctrl) || typeof ctrl.clearFindHighlights !== "function") continue;
+    seen.add(ctrl);
+    try {
+      ctrl.clearFindHighlights();
+    } catch {
+      /* a destroyed editor is not worth failing a search over */
+    }
+  }
+}
+
+// Paint every match of `query` in the document on screen and scroll the
+// `occurrence`-th one into view. Returns `{total, active}` — the panel's "N of M"
+// counter and its prev/next steps — or null when there is no editor or no match.
+// The server's occurrence ordinal is computed over the *saved, cleaned* text, so
+// it can drift from the live document; falling back to the first match keeps a
+// clicked result useful instead of landing nowhere. Focus stays where it is (the
+// find input), which is what lets the document be used while the panel is open.
+export function highlightFindMatches(query, options = {}, occurrence = 0) {
+  const ctrl = state.editorCtrl;
+  clearFindHighlights();
+  if (!ctrl || typeof ctrl.findMatches !== "function" || !query) return null;
+  const ranges = ctrl.findMatches(query, options);
+  if (!ranges.length) return null;
+  const wanted = Math.max(0, occurrence | 0);
+  const active = wanted < ranges.length ? wanted : 0;
+  ctrl.setFindHighlights(ranges, active);
+  ctrl.revealRange(ranges[active].from, ranges[active].to, { focus: false });
+  return { total: ranges.length, active };
+}
+
+// Best-effort "jump to the match": the editor's text is what the check saw, so
+// matching it again is cheap and works for the common case. Markdown drift
+// simply opens the document without a selection. ``occurrence`` selects the Nth
+// hit within the document (the find panel passes the one the user clicked). The
+// matching itself lives in the editor bundle, so this path and the find panel
+// can never disagree about what counts as a match.
 export function revealText(text, occurrence = 0) {
-  const editor = state.editorCtrl && state.editorCtrl.editor;
+  const ctrl = state.editorCtrl;
   const needle = (text || "").trim();
-  if (!editor || !needle) return false;
-  const lower = needle.toLowerCase();
-  let remaining = Math.max(0, occurrence | 0);
-  let found = -1;
-  editor.state.doc.descendants((node, pos) => {
-    if (found >= 0 || !node.isTextblock) return found < 0;
-    const content = node.textContent;
-    const offsets = [];
-    let index = content.indexOf(needle);
-    if (index >= 0) {
-      // Exact-case hits first, then a case-insensitive pass catches the rest
-      // (mirrors the old single-match behavior, now across every block).
-      while (index >= 0) {
-        offsets.push(index);
-        index = content.indexOf(needle, index + 1);
-      }
-    } else {
-      const haystack = content.toLowerCase();
-      index = haystack.indexOf(lower);
-      while (index >= 0) {
-        offsets.push(index);
-        index = haystack.indexOf(lower, index + 1);
-      }
-    }
-    if (remaining < offsets.length) {
-      found = pos + 1 + offsets[remaining];
-      return false;
-    }
-    remaining -= offsets.length;
-    return true;
-  });
-  if (found < 0) return false;
-  editor.chain().focus().setTextSelection({ from: found, to: found + needle.length }).scrollIntoView().run();
+  if (!ctrl || typeof ctrl.findMatches !== "function" || !needle) return false;
+  const ranges = ctrl.findMatches(needle, {});
+  if (!ranges.length) return false;
+  const range = ranges[Math.max(0, occurrence | 0)] || ranges[0];
+  ctrl.revealRange(range.from, range.to);
   return true;
 }
 
