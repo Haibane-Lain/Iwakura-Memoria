@@ -1073,7 +1073,8 @@ function updateContentsBox(markdown, title) {
 }
 
 function scrollToHeading(item) {
-  const editor = state.editorCtrl && state.editorCtrl.editor;
+  const ctrl = state.editorCtrl;
+  const editor = ctrl && ctrl.editor;
   if (!editor) return;
   let targetPos = item.pos === 0 ? 0 : null;
   if (targetPos === null) {
@@ -1086,7 +1087,9 @@ function scrollToHeading(item) {
     });
     if (targetPos === null) return;
   }
-  editor.chain().focus().setTextSelection(targetPos).scrollIntoView().run();
+  // A heading reads best near the top of the pane, not centred. The editor's
+  // reveal scrolls with the same CSS-zoom-aware maths the find panel uses.
+  ctrl.revealRange(targetPos, targetPos, { focus: true, ratio: 0.15 });
 }
 
 /* ---------------- save pipeline ---------------- */

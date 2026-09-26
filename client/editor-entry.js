@@ -34,7 +34,12 @@ import {
 } from "./editor-primitives.js";
 import { makeSlashMenuExtension } from "./slash-menu.js";
 import { makeWikilinkMenuExtension } from "./wikilink-menu.js";
-import { centerCaret, makeTypewriterExtension } from "./typewriter.js";
+import {
+  centerCaret,
+  makeTypewriterExtension,
+  scrollParent,
+  scrollPosIntoView,
+} from "./typewriter.js";
 import { wordRange } from "./word-at.js";
 import {
   findMatchRanges,
@@ -1106,6 +1111,74 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
   return editor;
 }
 
+// Where a jumped-to line comes to rest in the visible area (Google Docs centres
+// the match; a little above centre reads better in prose). Headings pass a
+// smaller ratio so they land near the top of the pane.
+const REVEAL_RATIO = 0.4;
+
+// How long a fresh reveal keeps correcting itself. Long enough to absorb a lazy
+// image decoding above the match, short enough not to fight a user who scrolls
+// away right after.
+const REVEAL_SETTLE_MS = 1500;
+
+// One live "keep this position in view" watcher per editor view.
+const revealPins = new WeakMap();
+
+function stopRevealPin(view) {
+  const stop = revealPins.get(view);
+  if (stop) stop();
+}
+
+// After a reveal, content above the match can still grow — a lazy image
+// decoding, a node view settling — which slides the target away from where it
+// was scrolled. Re-run the zoom-aware scroll on the next frame, whenever an
+// image loads, and whenever the editor's box resizes; the match stays put until
+// the page stops changing (or the user takes over).
+function pinReveal(view, pos, ratio) {
+  stopRevealPin(view);
+  const cleanups = [];
+  let timer = null;
+  let active = true;
+  const target = () => {
+    if (!active) return;
+    if (view.isDestroyed) {
+      stopRevealPin(view);
+      return;
+    }
+    scrollPosIntoView(view, pos, { ratio });
+  };
+  const stop = () => {
+    if (revealPins.get(view) !== stop) return;
+    active = false;
+    revealPins.delete(view);
+    if (timer !== null) clearTimeout(timer);
+    for (const off of cleanups) off();
+    cleanups.length = 0;
+  };
+
+  // Capture: the events do not bubble from the <img> descendants.
+  view.dom.addEventListener("load", target, true);
+  view.dom.addEventListener("error", target, true);
+  cleanups.push(() => view.dom.removeEventListener("load", target, true));
+  cleanups.push(() => view.dom.removeEventListener("error", target, true));
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(target);
+    observer.observe(view.dom);
+    cleanups.push(() => observer.disconnect());
+  }
+  // A manual scroll means the reader has taken over; stop correcting.
+  const scroller = scrollParent(view.dom);
+  if (scroller) {
+    for (const type of ["wheel", "pointerdown", "keydown"]) {
+      scroller.addEventListener(type, stop, { passive: true });
+      cleanups.push(() => scroller.removeEventListener(type, stop));
+    }
+  }
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(target);
+  timer = setTimeout(stop, REVEAL_SETTLE_MS);
+  revealPins.set(view, stop);
+}
+
 window.LainEditor = {
   create(opts) {
     const navWidget = opts.showNav ? document.createElement("div") : null;
@@ -1162,13 +1235,7 @@ window.LainEditor = {
       revealComment(cid) {
         const range = collectCommentRanges(editor.state.doc).find((r) => r.cid === cid);
         if (!range) return false;
-        editor
-          .chain()
-          .focus()
-          .setTextSelection({ from: range.from, to: range.to })
-          .scrollIntoView()
-          .run();
-        return true;
+        return this.revealRange(range.from, range.to, { focus: true });
       },
       /* ---------------- find in document ---------------- */
       // The find panel drives these: it finds the matches, paints them, and
@@ -1184,14 +1251,21 @@ window.LainEditor = {
       clearFindHighlights() {
         setFindRanges(editor, [], -1);
       },
-      revealRange(from, to, { focus = true } = {}) {
+      // Select `from..to` and bring it into view. The scroll is done by hand
+      // (see `scrollPosIntoView`) rather than through `tr.scrollIntoView()`:
+      // ProseMirror only scrolls when the editor owns the DOM selection, so a
+      // jump from the find panel — where the input keeps focus — would not move
+      // at all, and its arithmetic ignores the editor's CSS `zoom`.
+      revealRange(from, to, { focus = true, ratio = REVEAL_RATIO } = {}) {
         if (editor.isDestroyed) return false;
         const size = editor.state.doc.content.size;
         const start = Math.max(0, Math.min(from, size));
         const end = Math.max(start, Math.min(to, size));
         const tr = editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, end));
-        tr.scrollIntoView();
         editor.view.dispatch(tr);
+        if (scrollPosIntoView(editor.view, start, { ratio })) {
+          pinReveal(editor.view, start, ratio);
+        }
         if (focus) editor.view.focus();
         return true;
       },
@@ -1211,6 +1285,7 @@ window.LainEditor = {
         }
       },
       destroy() {
+        stopRevealPin(editor.view);
         // Only clear the shared grammar state when this editor owns it, so
         // destroying a parked editor can't blank the active one's state.
         if (_grammarView === editor.view) {

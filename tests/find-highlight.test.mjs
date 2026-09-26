@@ -137,7 +137,13 @@ await check("revealRange selects the match without stealing the keyboard", () =>
     doc.body.append(sink);
     sink.focus();
     assert.equal(doc.activeElement, sink, "the find input starts focused");
-    s.ctrl.revealRange(range.from, range.to, { focus: false });
+    // jsdom has no layout, so the scroll helper finds no scroller and no
+    // settle-watcher is started; the jump must still succeed and return.
+    assert.equal(
+      s.ctrl.revealRange(range.from, range.to, { focus: false }),
+      true,
+      "the reveal reports success even without a scroll parent"
+    );
     assert.equal(doc.activeElement, sink, "focus stayed in the find input");
     const { from, to } = s.ctrl.editor.state.selection;
     assert.equal(from, range.from);

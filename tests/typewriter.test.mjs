@@ -4,7 +4,7 @@
 // Run: node tests/typewriter.test.mjs  (or `npm run test:typewriter`)
 import assert from "node:assert/strict";
 
-import { TYPEWRITER_RATIO, typewriterDelta } from "../client/typewriter-math.js";
+import { TYPEWRITER_RATIO, clampScrollTop, scrollDelta, typewriterDelta } from "../client/typewriter-math.js";
 
 let failures = 0;
 function check(label, fn) {
@@ -73,6 +73,22 @@ check("a zero zoomRatio falls back to 1 instead of dividing by zero", () => {
     typewriterDelta({ caretTop: 450, viewportTop: 0, viewportHeight: 600, zoomRatio: 0 }),
     150
   );
+});
+
+check("scrollDelta is the same arithmetic the reveal paths use", () => {
+  assert.equal(scrollDelta, typewriterDelta);
+  // A match below the resting line scrolls down to put it at `ratio`.
+  assert.equal(
+    scrollDelta({ targetTop: 500, viewportTop: 0, viewportHeight: 600, ratio: 0.4 }),
+    260
+  );
+});
+
+check("clampScrollTop keeps the offset inside the scrollable range", () => {
+  assert.equal(clampScrollTop(-50, 100, 2000, 600), 50, "cannot go above the top");
+  assert.equal(clampScrollTop(5000, 100, 2000, 600), 1400, "cannot go past the end");
+  assert.equal(clampScrollTop(50, 100, 2000, 600), 150, "a move inside the range is kept");
+  assert.equal(clampScrollTop(50, 100, 400, 600), 0, "a scroller shorter than its box is pinned at 0");
 });
 
 if (failures) {
