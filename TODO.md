@@ -241,16 +241,22 @@ project rename carries its snapshots/comments/trash.
   repeat click with a real early return. `openDocument` returns whether it opened
   the requested document, and the search/repetition jumps skip their highlight
   when superseded.
-- [ ] **Missing documents answer 503, not 404** `P2` `S` —
-  `app/routes/documents.py:69` tests `OSError` before `FileNotFoundError` (a
-  subclass), so the 404 branch is dead.
-- [ ] **One bad byte breaks the tree and library** `P1` `S` —
-  `app/services/documents.py:443,742,1565` read UTF-8 without
-  `errors="replace"` (unlike `iter_documents`), so a hand-edited cp1252 file
-  400s the tree and 500s the library list.
-- [ ] **Word-stats document count inflates** `P2` `S` —
-  `app/services/documents.py:128` counts every file up front, then
-  `_word_stats_update` counts an empty document again on its first write.
+- [x] **Missing documents answer 503, not 404** `P2` `S` — shipped:
+  `_http_error` in `app/routes/documents.py` now checks `FileNotFoundError`
+  (404) before `OSError` (503), matching `comments.py`/`snapshots.py`. Test:
+  `tests/test_documents.py::test_missing_document_is_404_not_503`.
+- [x] **One bad byte breaks the tree and library** `P1` `S` — shipped: the
+  read-only paths `_doc_summary`, `get_document` and `project_word_stats` in
+  `app/services/documents.py` now read with `errors="replace"` (like
+  `iter_documents`). The read-modify-write paths stay strict on purpose, so a
+  save never rewrites a bad byte as U+FFFD. Test:
+  `tests/test_documents.py::test_tree_and_stats_tolerate_non_utf8`.
+- [x] **Word-stats document count inflates** `P2` `S` — shipped:
+  `_word_stats_update` increments `doc_count` only for a document the cache has
+  never seen (not on the 0-word → words transition), so the count matches the
+  full scan of every chapter/note; `_word_stats_remove_doc` was made consistent.
+  Tests: `test_word_stats_doc_count_stable_after_first_save`,
+  `test_word_stats_counts_a_document_new_to_the_cache`.
 - [ ] **Comment-panel + style-control async races** `P2` `M` —
   `static/js/comments-panel.js:94` and the style controls in
   `static/js/project.js:360-497` apply a response without checking the document

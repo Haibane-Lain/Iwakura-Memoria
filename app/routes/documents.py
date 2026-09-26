@@ -67,10 +67,12 @@ class FolderMove(BaseModel):
 
 
 def _http_error(exc: Exception) -> HTTPException:
+    # FileNotFoundError is an OSError, so the 404 check has to come first.
+    if isinstance(exc, FileNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, OSError):
         return HTTPException(status_code=503, detail=f"File busy or locked: {exc}")
-    status = 404 if isinstance(exc, FileNotFoundError) else 400
-    return HTTPException(status_code=status, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/{project_id}/documents", status_code=201)

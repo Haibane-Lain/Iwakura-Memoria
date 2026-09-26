@@ -123,9 +123,13 @@ def _word_stats_update(
         if entry is None:
             return
         prev = entry["docs"].get(doc_id, 0)
+        known = doc_id in entry["docs"]
         entry["docs"][doc_id] = new_words
         entry["total_words"] += new_words - prev
-        if prev == 0 and new_words > 0:
+        # ``doc_count`` counts every document (chapters & notes), the same set
+        # ``project_word_stats`` scans, so only a doc the cache has never seen
+        # adds one — writing into an empty doc must not count it twice.
+        if not known:
             entry["doc_count"] += 1
 
 
@@ -135,10 +139,11 @@ def _word_stats_remove_doc(project_id: str, mode: str, doc_id: str) -> None:
         entry = _word_stats_cache.get(key)
         if entry is None:
             return
-        prev = entry["docs"].pop(doc_id, 0)
-        if prev > 0:
-            entry["total_words"] -= prev
-            entry["doc_count"] -= 1
+        if doc_id not in entry["docs"]:
+            return
+        prev = entry["docs"].pop(doc_id)
+        entry["total_words"] -= prev
+        entry["doc_count"] -= 1
 
 
 def _save_lock_for(doc_path: Path) -> threading.Lock:
@@ -440,7 +445,7 @@ def _doc_summary(folder: Path, doc_id: str, mode: str = "auto") -> dict[str, Any
     path = _doc_path(folder, doc_id)
     if not path.exists():
         raise FileNotFoundError(f"Document '{doc_id}' not found")
-    raw = path.read_text(encoding="utf-8")
+    raw = path.read_text(encoding="utf-8", errors="replace")
     meta, body = parse_frontmatter(raw)
     merged = dict(_default_meta(doc_id))
     merged.update(meta)
@@ -739,7 +744,7 @@ def get_document(project_id: str, doc_id: str, mode: str = "auto") -> dict[str, 
     path = _doc_path(folder, doc_id)
     if not path.exists():
         raise FileNotFoundError(f"Document '{doc_id}' not found")
-    raw = path.read_text(encoding="utf-8")
+    raw = path.read_text(encoding="utf-8", errors="replace")
     meta, body = parse_frontmatter(raw)
     merged = dict(_default_meta(doc_id))
     merged.update(meta)
@@ -1569,7 +1574,7 @@ def project_word_stats(project_id: str, mode: str = "auto") -> dict[str, int]:
         if config.STATS_DIRNAME in path.parts:
             continue
         doc_id = _entry_id(path, folder)
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8", errors="replace")
         _, body = parse_frontmatter(raw)
         words = count_words(body, mode)
         docs[doc_id] = words

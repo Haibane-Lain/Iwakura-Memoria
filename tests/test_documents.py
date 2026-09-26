@@ -5,8 +5,20 @@ from __future__ import annotations
 import os
 import time
 
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import create_app
 from app.services import documents as documents_service
 from app.services import projects as projects_service
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    """TestClient whose data dir is a throwaway folder (like test_security)."""
+    monkeypatch.setenv("IWAKURA_DATA_DIR", str(tmp_path / "data"))
+    return TestClient(create_app())
+
 
 # --- B3: word-stats cache invalidation --------------------------------------
 
@@ -78,8 +90,6 @@ def test_failed_reorder_keeps_every_document(data_dir, make_project, monkeypatch
     Regression for the unconditional `rmtree` that used to wipe whatever was
     still sitting in .reorder-tmp when a move raised.
     """
-    import pytest
-
     make_project("proj")
     documents_service.create_document("proj", "Alpha", content="aaa")
     documents_service.create_document("proj", "Beta", content="bbb")
@@ -131,3 +141,83 @@ def test_export_pdf_produces_pdf(data_dir, make_project):
     data = projects_service.export_pdf("proj")
     assert data[:4] == b"%PDF"
     assert len(data) > 1000
+
+
+# --- Word-stats document count ----------------------------------------------
+
+
+def test_word_stats_doc_count_stable_after_first_save(data_dir, make_project):
+    """Writing into a previously-empty doc must not count it a second time.
+
+    The full scan counts every document (chapters & notes), and the incremental
+    update used to add one again on the 0-word -> words transition.
+    """
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Empty")
+    # Build the cache from disk: the empty document is already counted.
+    assert documents_service.project_word_stats("proj")["documents"] == 1
+
+    documents_service.save_document("proj", doc["id"], "one two")
+    stats = documents_service.project_word_stats("proj")
+    assert stats["documents"] == 1
+    assert stats["words"] == 2
+
+
+def test_word_stats_counts_a_document_new_to_the_cache(data_dir, make_project):
+    """A document that appears after the cache was built still adds one."""
+    # A unique project id: the word-stats cache is a module global that outlives
+    # a test, so reusing "proj" could observe another test's cached count.
+    make_project("newdocproj")
+    assert documents_service.project_word_stats("newdocproj")["documents"] == 0
+
+    (data_dir / "newdocproj" / "01-alpha.md").write_text(
+        "---\ntitle: Alpha\n---\n\n", encoding="utf-8"
+    )
+    documents_service.save_document("newdocproj", "01-alpha", "hello")
+
+    stats = documents_service.project_word_stats("newdocproj")
+    assert stats["documents"] == 1
+    assert stats["words"] == 1
+
+
+# --- Non-UTF-8 files ---------------------------------------------------------
+
+
+def test_tree_and_stats_tolerate_non_utf8(data_dir, make_project):
+    """A hand-edited cp1252 byte must not 400 the tree or 500 the library.
+
+    Reads that only display or count decode with ``errors="replace"``, the same
+    as ``iter_documents``; the read-modify-write paths stay strict on purpose so
+    a save never rewrites the bad byte as U+FFFD.
+    """
+    make_project("proj")
+    (data_dir / "proj" / "01-cafe.md").write_bytes(
+        b"---\ntitle: Caf\xe9\n---\nCaf\xe9 body\n"
+    )
+
+    tree = documents_service.get_tree("proj")
+    assert [d["id"] for d in tree["documents"]] == ["01-cafe"]
+
+    doc = documents_service.get_document("proj", "01-cafe")
+    assert "body" in doc["content"]
+
+    stats = documents_service.project_word_stats("proj")
+    assert stats["documents"] == 1
+
+
+# --- HTTP status for a missing document --------------------------------------
+
+
+def test_missing_document_is_404_not_503(client):
+    headers = {"host": "127.0.0.1"}
+    created = client.post("/api/projects", json={"name": "Demo"}, headers=headers)
+    assert created.status_code in (200, 201)
+
+    missing = client.get("/api/projects/demo/documents/nope", headers=headers)
+    assert missing.status_code == 404
+
+    # A missing project is a 404 too, not a "file busy" 503.
+    assert (
+        client.get("/api/projects/ghost/documents/nope", headers=headers).status_code
+        == 404
+    )
