@@ -329,9 +329,11 @@ project rename carries its snapshots/comments/trash.
 
 ### Security / defense-in-depth
 
-- [ ] **Add `PATCH` to the Origin-checked methods** `P2` `S` —
-  `app/security.py:37`; the app mutates via PATCH (rename document/folder,
-  project update, session rename) but only POST/PUT/DELETE require an Origin.
+- [x] **Add `PATCH` to the Origin-checked methods** `P2` `S` — shipped:
+  `app/security.py` now lists PATCH in `_STATE_CHANGING_METHODS` (docstring and
+  README updated), so the project/document/folder/session PATCH routes require a
+  loopback `Origin` like the other mutating methods. Covered in
+  `tests/test_security.py`.
 
 ### Docs / TODO hygiene
 

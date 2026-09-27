@@ -65,6 +65,7 @@ def test_origin_checked_only_for_state_changing_methods():
     assert check_local_request("127.0.0.1", "GET", "http://evil.com") is None
     assert check_local_request("127.0.0.1", "POST", "http://evil.com") is not None
     assert check_local_request("127.0.0.1", "PUT", "http://evil.com") is not None
+    assert check_local_request("127.0.0.1", "PATCH", "http://evil.com") is not None
     assert check_local_request("127.0.0.1", "DELETE", "http://evil.com") is not None
 
 
@@ -103,6 +104,30 @@ def test_foreign_origin_rejected_for_state_changes(client):
 def test_same_origin_state_change_reaches_routing(client):
     # 404 (project missing) proves the guard let a loopback-origin DELETE through.
     method, path, kwargs = _api("DELETE", "/api/projects/does-not-exist", origin="http://127.0.0.1:8000")
+    assert client.request(method, path, **kwargs).status_code == 404
+
+
+def test_patch_foreign_origin_rejected(client):
+    # Projects, documents and folders are renamed via PATCH, so it must be
+    # Origin-checked like the other mutating methods.
+    method, path, kwargs = _api(
+        "PATCH", "/api/projects/does-not-exist", origin="http://evil.com", json={"title": "x"}
+    )
+    assert client.request(method, path, **kwargs).status_code == 403
+
+
+def test_patch_same_origin_reaches_routing(client):
+    # 404 (project missing) proves the guard let a loopback-origin PATCH through.
+    method, path, kwargs = _api(
+        "PATCH", "/api/projects/does-not-exist", origin="http://127.0.0.1:8000", json={"title": "x"}
+    )
+    assert client.request(method, path, **kwargs).status_code == 404
+
+
+def test_patch_missing_origin_allowed(client):
+    # curl and the Electron main process send no Origin; the guard only applies
+    # when the header is present.
+    method, path, kwargs = _api("PATCH", "/api/projects/does-not-exist", json={"title": "x"})
     assert client.request(method, path, **kwargs).status_code == 404
 
 

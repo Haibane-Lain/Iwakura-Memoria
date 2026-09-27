@@ -581,7 +581,7 @@ checked against two headers a web page cannot spoof before it reaches a route:
 - **Host** must be a loopback hostname (`127.0.0.1`, `localhost`, `[::1]`).
   This blocks DNS-rebinding attacks: a malicious page whose domain resolves
   to `127.0.0.1` still sends its own hostname in `Host` and is rejected.
-- For **POST/PUT/DELETE**, an explicit `Origin` header must also be loopback
+- For **POST/PUT/PATCH/DELETE**, an explicit `Origin` header must also be loopback
   (any port — the Electron shell uses dynamic ports). Read-only requests and
   requests with no `Origin` header at all (curl, the Electron main process)
   pass on the Host check alone.

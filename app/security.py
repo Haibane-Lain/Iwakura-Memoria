@@ -7,7 +7,7 @@ validated against two headers a web page cannot lie about:
 - ``Host`` must be a loopback hostname. This defeats DNS-rebinding attacks:
   an attacker page whose domain resolves to 127.0.0.1 still sends its own
   hostname in ``Host`` and is rejected here.
-- For state-changing methods (POST/PUT/DELETE) an explicit ``Origin`` must
+- For state-changing methods (POST/PUT/PATCH/DELETE) an explicit ``Origin`` must
   also be a loopback origin. The port check is permissive because the
   Electron shell uses dynamic ports (8000-8009); the host check is strict.
   The origin check only applies when the header is present, so curl,
@@ -34,7 +34,7 @@ from urllib.parse import urlsplit
 MASK = "••••••••••••"
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
-_STATE_CHANGING_METHODS = {"POST", "PUT", "DELETE"}
+_STATE_CHANGING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 def _loopback_hostname(host: str) -> str | None:
