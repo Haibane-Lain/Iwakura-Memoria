@@ -448,6 +448,30 @@ await check("the wikilink menu closes when its trigger is deleted", () => {
   s.close();
 });
 
+/* ---------------- wikilink decorations ---------------- */
+
+await check("a spaced alias shows only the trimmed label", () => {
+  const source = "See [[ Target | alias ]] here.";
+  const s = open(source);
+  const links = [...s.host.querySelectorAll(".wikilink")];
+  assert.equal(links.length, 1, "one link label");
+  assert.equal(links[0].getAttribute("data-wikilink"), "Target");
+  assert.equal(links[0].textContent, "alias", "the pipe and its padding are hidden");
+  assert.ok(!links[0].textContent.includes("|"), "the pipe must not be part of the label");
+  // The raw text is untouched — the padding is hidden, not removed.
+  assert.equal(s.ctrl.getMarkdown().trimEnd(), source);
+  s.close();
+});
+
+await check("a spaced target with no alias shows the trimmed target", () => {
+  const s = open("See [[ Alice ]] here.");
+  const links = [...s.host.querySelectorAll(".wikilink")];
+  assert.equal(links.length, 1);
+  assert.equal(links[0].textContent, "Alice");
+  assert.equal(links[0].getAttribute("data-wikilink"), "Alice");
+  s.close();
+});
+
 if (failures) {
   console.log(`editor-primitives: ${failures} check(s) failed`);
   process.exit(1);

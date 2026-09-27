@@ -2,7 +2,7 @@
 // it owns the overlay and persistence, and reports word changes through
 // `onChanged` so the shell can update its state and every live editor.
 import { api } from "./api.js";
-import { el } from "./ui.js";
+import { el, presentDialog } from "./ui.js";
 
 const DICT_MODAL_SEL = ".modal-overlay.dict-modal";
 
@@ -11,6 +11,8 @@ export function renderDictionaryDialog({ projectId, words, onChanged }) {
   if (existing) { existing.remove(); return; }
 
   let addInputEl, searchInputEl;
+  // Assigned once the overlay is wired below; the × button and backdrop call it.
+  let close = () => {};
 
   function saveWords() {
     if (typeof onChanged === "function") onChanged(words);
@@ -40,8 +42,8 @@ export function renderDictionaryDialog({ projectId, words, onChanged }) {
 
   function refreshList() {
     const query = searchInputEl ? searchInputEl.value.trim().toLowerCase() : "";
-    const list = modal.querySelector(".dict-word-list");
-    const count = modal.querySelector(".dict-word-count");
+    const list = dialog.querySelector(".dict-word-list");
+    const count = dialog.querySelector(".dict-word-count");
     if (!list) return;
 
     const filtered = query
@@ -79,39 +81,40 @@ export function renderDictionaryDialog({ projectId, words, onChanged }) {
     }
   }
 
-  const overlay = el("div", { class: "modal-overlay dict-modal" }, [
-    el("div", { class: "dict-dialog" }, [
-      el("div", { class: "dict-header" }, [
-        el("h3", {}, "Spelling"),
-        el("button", { class: "dict-close", onclick: () => overlay.remove() }, "\u00d7"),
-      ]),
-      el("div", { class: "dict-body" }, [
-        el("div", { class: "dict-add-row" }, [
-          addInputEl = el("input", {
-            type: "text",
-            class: "dict-add-input",
-            placeholder: "Add word\u2026",
-            onkeydown: (e) => { if (e.key === "Enter") addWord(); },
-          }),
-          el("button", { class: "primary dict-add-btn", onclick: addWord }, "Add"),
-        ]),
-        searchInputEl = el("input", {
+  const dialog = el("div", { class: "dict-dialog" }, [
+    el("div", { class: "dict-header" }, [
+      el("h3", {}, "Spelling"),
+      el("button", { class: "dict-close", onclick: () => close() }, "\u00d7"),
+    ]),
+    el("div", { class: "dict-body" }, [
+      el("div", { class: "dict-add-row" }, [
+        addInputEl = el("input", {
           type: "text",
-          class: "dict-search-input",
-          placeholder: "Search\u2026",
-          oninput: refreshList,
+          class: "dict-add-input",
+          placeholder: "Add word\u2026",
+          onkeydown: (e) => { if (e.key === "Enter") addWord(); },
         }),
-        el("div", { class: "dict-word-count" }),
-        el("div", { class: "dict-word-list" }),
+        el("button", { class: "primary dict-add-btn", onclick: addWord }, "Add"),
       ]),
+      searchInputEl = el("input", {
+        type: "text",
+        class: "dict-search-input",
+        placeholder: "Search\u2026",
+        oninput: refreshList,
+      }),
+      el("div", { class: "dict-word-count" }),
+      el("div", { class: "dict-word-list" }),
     ]),
   ]);
-
-  const modal = overlay.querySelector(".dict-dialog");
+  const overlay = el("div", { class: "modal-overlay dict-modal" }, [dialog]);
   document.body.appendChild(overlay);
 
+  // The shared dialog wiring gives this hand-rolled overlay the same ARIA,
+  // focus move/restore and Escape the showModal dialogs get.
+  ({ close } = presentDialog(overlay, dialog));
+
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) close();
   });
 
   refreshList();

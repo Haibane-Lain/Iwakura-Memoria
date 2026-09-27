@@ -260,9 +260,10 @@ export function renderSearchDialog({
 
   function onKey(e) {
     if (e.key !== "Escape") return;
-    // An overlay on top (the replace confirmation, a context menu) owns Escape
-    // while it is open — dismissing it must not take the panel down too.
-    if (document.querySelector(".modal-backdrop, .context-menu")) return;
+    // An overlay on top (the replace confirmation, a context menu, the spelling
+    // dialog, the color palette) owns Escape while it is open — dismissing it
+    // must not take the panel down too.
+    if (document.querySelector(".modal-backdrop, .modal-overlay, .context-menu, .color-popover")) return;
     e.preventDefault();
     close();
   }

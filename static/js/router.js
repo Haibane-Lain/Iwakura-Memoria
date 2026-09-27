@@ -1,8 +1,15 @@
 const handlers = {};
+const leaveHandlers = {};
 let current = null;
 
 export function on(name, fn) {
   handlers[name] = fn;
+}
+
+// Called when the active route changes *away from* `name`, so a route can
+// release what it owns (the project shell tears its state down for the library).
+export function onLeave(name, fn) {
+  leaveHandlers[name] = fn;
 }
 
 function parse() {
@@ -35,6 +42,9 @@ export function start() {
       route.params.id === current.params.id
     ) {
       return;
+    }
+    if (current && current.name !== route.name && leaveHandlers[current.name]) {
+      leaveHandlers[current.name]();
     }
     current = route;
     const fn = handlers[route.name] || handlers.library;

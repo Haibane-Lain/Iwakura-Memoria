@@ -318,6 +318,8 @@ const PROJECT_ROUTES = [
   [/\/api\/projects\/demo\/trash$/, () => []],
   [/\/api\/projects\/demo\/snapshots/, () => []],
   [/\/api\/projects\/demo\/comments/, () => []],
+  // The library lists projects; used when leaving a project for `#/`.
+  [/\/api\/projects$/, () => [PROJECT]],
   [/\/api\/projects\/demo$/, () => PROJECT],
   [/\/api\/backups$/, () => []],
 ];
@@ -469,6 +471,22 @@ await check("the project shell boots against a mocked API", async () => {
     .querySelector(".color-swatch")
     .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   assert.ok(!doc.querySelector(".color-popover"), "choosing a swatch closes the palette");
+
+  // Reopening the palette after a swatch closed it must not leave the first
+  // palette's outside-mousedown listener to close the new one. The listener is
+  // added on a 0ms timer, so wait for both to settle.
+  const nextTick = () => new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+  const colorButton = () => doc.querySelector('.tool-btn[title="Text color"]');
+  colorButton().dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await nextTick();
+  const paletteAgain = doc.querySelector(".color-popover");
+  paletteAgain.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+  assert.ok(
+    doc.querySelector(".color-popover"),
+    "a dismissed palette's listener must not close a reopened one"
+  );
+  doc.body.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+  assert.ok(!doc.querySelector(".color-popover"), "an outside mousedown still closes the palette");
 
   // The ribbon is grouped into labelled, stacked sections.
   const ribbonGroups = doc.querySelectorAll(".editor-toolbar .ribbon-group");
@@ -661,6 +679,19 @@ await check("the project shell boots against a mocked API", async () => {
     "the tree unfreezes once the name is saved"
   );
 
+  // A save updates one row's word count in place; rebuilding the whole sidebar
+  // (once per autosave) is what used to cancel an in-progress drag.
+  const workspace = await importJs("editor-workspace.js");
+  const rowBefore = doc.querySelector('.tree-item[data-docid="01-untitled"]');
+  assert.ok(rowBefore, "the named chapter's row is rendered");
+  workspace.updateTreeWords("01-untitled", 7);
+  assert.equal(
+    doc.querySelector('.tree-item[data-docid="01-untitled"]'),
+    rowBefore,
+    "the row node is reused, not rebuilt"
+  );
+  assert.equal(rowBefore.querySelector(".words").textContent, "7", "the count is repainted");
+
   // Right-clicking a folder row opens the same actions as its "⋯" button:
   // create inside it, make a subfolder, rename, delete.
   const addFolder = doc.querySelector('.mini-add[title="New folder"]');
@@ -711,6 +742,24 @@ await check("the project shell boots against a mocked API", async () => {
   doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   await waitFor(() => !doc.querySelector(".context-menu"));
 
+  // Closing a menu before its 0ms click listener attaches must not leave that
+  // listener behind: a stale one would close whatever menu opens next.
+  await openFolderMenu();
+  doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await waitFor(() => !doc.querySelector(".context-menu"));
+  await nextTick();
+  const reopened = await openFolderMenu();
+  await nextTick();
+  // A click on the menu itself is "inside" it, so only a stale listener from
+  // the dismissed menu could close it.
+  reopened.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  assert.ok(
+    doc.querySelector(".context-menu"),
+    "a dismissed menu's listener must not close a new one"
+  );
+  doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await waitFor(() => !doc.querySelector(".context-menu"));
+
   // "New chapter" creates the entry *inside* that folder and starts naming it.
   const menu2 = await openFolderMenu();
   [...menu2.querySelectorAll(".context-item")]
@@ -737,6 +786,36 @@ await check("the project shell boots against a mocked API", async () => {
   assert.ok(doc.querySelector(".find-panel"), "the panel stays open after a jump");
   panel.querySelector(".find-close").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
   await waitFor(() => !doc.querySelector(".find-panel"));
+
+  // Leaving the project for the library tears the shell down: `state.project`
+  // is cleared, so the global Ctrl+F/Ctrl+W/… shortcuts go inert instead of
+  // acting on a project that is no longer on screen.
+  const library = await importJs("library.js");
+  library.init();
+  dom.window.location.hash = "#/";
+  await waitFor(() => doc.querySelector("#app .library"));
+  const { state, shell } = await importJs("project-context.js");
+  assert.equal(state.project, null, "leaving a project clears its state");
+  doc.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true }));
+  assert.ok(!doc.querySelector(".find-panel"), "Ctrl+F is inert on the library");
+
+  // A save that was in flight when the project was left lands here. Its
+  // callbacks must not reject (the rejection surfaced as a spurious toast):
+  // the topbar and the tree are both gone with the project.
+  const errorsBefore = capture.errors.length;
+  shell.updateTopbar();
+  workspace.updateTreeWords("01-untitled", 3);
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+  assert.equal(
+    capture.errors.length,
+    errorsBefore,
+    "an in-flight save's callbacks must not reject on the library"
+  );
+
+  // Modules (and the router) are cached across this file's checks; restore the
+  // project route so the later app.js boot starts from a clean library.
+  dom.window.location.hash = "#/p/demo";
+  await waitFor(() => doc.querySelector("#app .workspace"));
 
   assert.deepEqual(unmatched, [], `only known API routes were called: ${unmatched.join(", ")}`);
   assert.equal(capture.errors.length, 0, `a tab threw: ${capture.errors.map(String).join("; ")}`);

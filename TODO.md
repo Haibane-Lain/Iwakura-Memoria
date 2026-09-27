@@ -288,29 +288,44 @@ project rename carries its snapshots/comments/trash.
 
 ### Accessibility & polish
 
-- [ ] **Modal Escape + focus management** `P2` `M` — `static/js/ui.js:46`
-  (`showModal`) wires only a backdrop click: no Escape, no focus move/restore,
-  no `role="dialog"`. Most dialogs (export, import, repetition, link, lookup,
-  dictionary) inherit the gap.
-- [ ] **Library leaks project shortcuts** `P2` `S` —
-  `static/js/project.js:3599-3645`; `state.project` is never reset, so
-  `Ctrl+F`/`Ctrl+W`/`Ctrl+\`/`Ctrl+Shift+D` stay bound on the library screen.
-- [ ] **Listener leaks** `P3` `S` — the context menu
-  (`static/js/project.js:1214`) can attach a permanent document click handler
-  when dismissed before its 0 ms timer, and the color popover (`:2405`) only
-  removes its outside-mousedown listener when it fires.
-- [ ] **`updateTopbar` throws after leaving a project** `P3` `S` —
-  `static/js/project.js:615` dereferences a null `#tb-title`; an in-flight save
-  that lands on the library screen surfaces a spurious toast.
-- [ ] **Every autosave rebuilds the whole sidebar** `P2` `S` —
-  `static/js/editor-workspace.js:1239` calls `renderSidebar()` on each save (up
-  to every 800 ms) and can abort an in-progress drag; update just the row.
-- [ ] **Heading serializer churns leading markers** `P3` `S` —
-  `client/editor-entry.js:520` re-escapes a heading's first `-`/`*`/`+`/`1.`,
-  so `# - dash` becomes `# \- dash` on first save.
-- [ ] **Wikilink alias whitespace** `P3` `S` —
-  `client/editor-entry.js:81` computes the hidden span from the trimmed target,
-  so `[[ Target | alias ]]` displays the alias with stray spaces.
+- [x] **Modal Escape + focus management** `P2` `M` — shipped: `static/js/ui.js`
+  gained a shared `presentDialog` (dialog stack, capture Escape that closes only
+  the top-most and defers to a menu/palette on top, focus move + restore,
+  `role="dialog"`/`aria-modal`, and a `close`/`dismiss` split with `onDismiss`).
+  `showModal`, `promptDialog` and `confirmDialog` use it; `project.js`'s
+  duplicate `showModalFromUI` is gone, the image lightbox and critique dialog
+  drop their own Escape handlers, and the hand-rolled spelling dialog opts in.
+  A backdrop click now also resolves a prompt/confirm instead of hanging. Test:
+  `tests/ui-modal.test.mjs`.
+- [x] **Library leaks project shortcuts** `P2` `S` — shipped:
+  `router.onLeave(name, fn)` fires on a route-name change; `project.js` factors
+  its reset block into `teardownProject()` (called at the top of `init` and on
+  leaving the project), clearing `state.project` and friends so the global
+  shortcuts go inert and a failed project load no longer keeps the old one.
+  Covered in `tests/app-smoke.test.mjs`.
+- [x] **Listener leaks** `P3` `S` — shipped: the context menu's deferred click
+  listener and the color palette's outside-mousedown listener are now removed by
+  their cleanup (and their timers cleared), so a popover dismissed before the
+  0 ms timer cannot leave a stray listener behind. Covered in
+  `tests/app-smoke.test.mjs`.
+- [x] **`updateTopbar` throws after leaving a project** `P3` `S` — shipped:
+  `updateTopbar` returns early with no `state.project`, null-checks `#tb-title`,
+  and re-checks the project and `#tb-goal` after the stats fetch; the save path's
+  `updateTreeWords` tolerates null trees and `refreshWiki` guards too. Covered in
+  `tests/app-smoke.test.mjs`.
+- [x] **Every autosave rebuilds the whole sidebar** `P2` `S` — shipped:
+  `updateTreeWords` now calls a new `shell.updateDocRow` that repaints just the
+  matching `.words` spans instead of `renderSidebar()`, so a save no longer
+  rebuilds the tree or cancels a drag. Covered in `tests/app-smoke.test.mjs`.
+- [x] **Heading serializer churns leading markers** `P3` `S` — shipped:
+  `serializeStyledBlock` renders heading inline content with
+  `fromBlockStart = false` (the `#` marker already consumed line start), so
+  `# - dash` round-trips. `*` stays escaped (prosemirror-markdown escapes it
+  everywhere). Covered in `tests/editor-markdown.test.mjs`.
+- [x] **Wikilink alias whitespace** `P3` `S` — shipped: `wikilinkDecorations`
+  measures the hidden span from the raw match groups and shows the trimmed
+  label, so `[[ Target | alias ]]` displays `alias` (and `[[ Alice ]]`
+  displays `Alice`). Covered in `tests/editor-primitives.test.mjs`.
 
 ### Security / defense-in-depth
 

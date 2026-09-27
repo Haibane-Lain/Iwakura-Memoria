@@ -1240,12 +1240,16 @@ export async function flushSave(except = null) {
 
 export function updateTreeWords(docId, words) {
   const walk = (n) => {
+    // A save can land after the project was left; the trees are null then.
+    if (!n) return;
     for (const d of n.documents || []) if (d.id === docId) d.words = words;
     for (const f of n.folders || []) walk(f);
   };
   walk(state.tree);
   walk(state.wikiTree);
-  shell.renderSidebar();
+  // Repaint just this document's number. Rebuilding the whole sidebar on every
+  // autosave (up to every 800 ms) is wasteful and cancels an in-progress drag.
+  shell.updateDocRow?.(docId, words);
 }
 
 // Push the dictionary into every mounted editor (both panes) and nudge grammar

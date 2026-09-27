@@ -574,6 +574,7 @@ async function resetContextStyle() {
 }
 
 async function refreshWiki() {
+  if (!state.project) return null;
   try {
     state.wiki = await api.projects.wiki(state.project.id);
   } catch (err) {
@@ -624,18 +625,38 @@ function topbar() {
 const UPDATE_TOPBAR_STATS_MS = 4000;
 
 async function updateTopbar() {
-  document.getElementById("tb-title").textContent = state.project.title;
+  // A save can land after the project was left (the library clears
+  // `state.project` and the topbar with it), so never assume either exists.
+  const project = state.project;
+  if (!project) return;
+  const titleEl = document.getElementById("tb-title");
+  if (titleEl) titleEl.textContent = project.title;
   const now = performance.now();
   if (now - state.statsThrottledAt < UPDATE_TOPBAR_STATS_MS) return;
   state.statsThrottledAt = now;
   try {
-    const stats = await api.projects.stats(state.project.id);
-    const goal = stats.goal.enabled ? ` / ${formatNumber(stats.goal.wordsPerDay)} goal` : "";
+    const stats = await api.projects.stats(project.id);
+    // Left or switched projects while the stats were in flight.
+    if (state.project !== project) return;
     const chip = document.getElementById("tb-goal");
+    if (!chip) return;
+    const goal = stats.goal.enabled ? ` / ${formatNumber(stats.goal.wordsPerDay)} goal` : "";
     chip.textContent = `${formatNumber(stats.todayWords)} today${goal}`;
     chip.style.borderLeftColor = stats.goalMetToday ? "var(--ok)" : "";
   } catch {
     /* ignore */
+  }
+}
+
+// A save changed one document's word count. Repaint just that row's number
+// instead of rebuilding the whole tree, which would throw away the DOM (and any
+// drag) on every autosave. A row may be absent (collapsed folder, filtered, or
+// the document lives in the other scope) — the state walk already recorded it.
+function updateDocRow(docId, words) {
+  for (const row of document.querySelectorAll(".tree-item")) {
+    if (row.dataset.docid !== docId) continue;
+    const count = row.querySelector(".words");
+    if (count) count.textContent = formatNumber(words);
   }
 }
 
@@ -1228,9 +1249,13 @@ function showContextMenu(x, y, items) {
   const onKey = (e) => {
     if (e.key === "Escape") closeContextMenu();
   };
-  setTimeout(() => document.addEventListener("click", onDocClick), 0);
+  // The click listener waits a tick so the opening click does not close the
+  // menu; clear the timer on dismiss so a menu closed before it fires cannot
+  // leave a stray listener that closes the *next* menu.
+  const timer = setTimeout(() => document.addEventListener("click", onDocClick), 0);
   document.addEventListener("keydown", onKey);
   menuCleanup = () => {
+    clearTimeout(timer);
     document.removeEventListener("click", onDocClick);
     document.removeEventListener("keydown", onKey);
     menu.remove();
@@ -1659,14 +1684,18 @@ async function pickTemplate() {
   await loadTemplates();
   return new Promise((resolve) => {
     const list = el("div", { class: "modal-list" });
-    const { close } = showModalFromUI([
-      el("h3", {}, "Choose a template"),
-      el("p", { class: "desc" }, "The chosen sections will be pre-filled for the new entry."),
-      list,
-      el("div", { class: "modal-actions" }, [
-        el("button", { class: "icon-btn", onclick: () => { close(); resolve(undefined); } }, "Cancel"),
-      ]),
-    ]);
+    // Escape/backdrop is a cancel: resolve so the caller does not hang.
+    const { close } = showModal(
+      [
+        el("h3", {}, "Choose a template"),
+        el("p", { class: "desc" }, "The chosen sections will be pre-filled for the new entry."),
+        list,
+        el("div", { class: "modal-actions" }, [
+          el("button", { class: "icon-btn", onclick: () => { close(); resolve(undefined); } }, "Cancel"),
+        ]),
+      ],
+      { onDismiss: () => resolve(undefined) }
+    );
     list.append(
       el("div", {
         class: "modal-list-item",
@@ -1793,7 +1822,7 @@ async function templatesManager() {
       )
     );
   };
-  const { close } = showModalFromUI([
+  const { close } = showModal([
     el("h3", {}, "Lore templates"),
     el("p", { class: "desc" }, "Templates pre-fill sections when you create a wiki entry."),
     el("div", { class: "modal-actions" }, [
@@ -1814,7 +1843,7 @@ function editTemplate(tpl, onSaved) {
     rows: 6,
     placeholder: "One section heading per line, e.g.\nAppearance\nPersonality",
   }, tpl ? (tpl.sections || []).join("\n") : "");
-  const { close } = showModalFromUI([
+  const { close } = showModal([
     el("h3", {}, tpl ? `Edit "${tpl.name}"` : "New template"),
     el("div", { class: "field" }, [el("label", {}, "Name"), nameInput]),
     el("div", { class: "field" }, [el("label", {}, "Sections (one per line)"), sectionsInput]),
@@ -2398,8 +2427,13 @@ function toolbarCommand(cmd, button) {
 }
 
 let colorMenu = null;
+let colorMenuCleanup = null;
 
 function closeColorMenu() {
+  if (colorMenuCleanup) {
+    colorMenuCleanup();
+    colorMenuCleanup = null;
+  }
   if (colorMenu) {
     colorMenu.remove();
     colorMenu = null;
@@ -2439,9 +2473,22 @@ function openColorMenu(anchor) {
   const onOutside = (event) => {
     if (pop.contains(event.target) || (anchor && anchor.contains(event.target))) return;
     closeColorMenu();
-    document.removeEventListener("mousedown", onOutside, true);
   };
-  setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
+  const onKey = (event) => {
+    if (event.key === "Escape") closeColorMenu();
+  };
+  // Deferred so the opening click does not immediately dismiss it; the cleanup
+  // is what removes both listeners, so a palette closed by a swatch (or by
+  // reopening the same button) cannot leave a stray one behind.
+  const timer = setTimeout(() => {
+    document.addEventListener("mousedown", onOutside, true);
+    document.addEventListener("keydown", onKey);
+  }, 0);
+  colorMenuCleanup = () => {
+    clearTimeout(timer);
+    document.removeEventListener("mousedown", onOutside, true);
+    document.removeEventListener("keydown", onKey);
+  };
 }
 
 function refreshToolbar() {
@@ -2496,25 +2543,15 @@ function showImageOverlay({ url, alt }) {
   if (!url) return;
   let closed = false;
   const image = el("img", { class: "image-lightbox", src: url, alt: alt || "" });
-  const { backdrop, close } = showModal([image]);
+  // Escape and a backdrop click are handled by the modal; the picture itself
+  // closes it too.
   const finish = () => {
     if (closed) return;
     closed = true;
-    document.removeEventListener("keydown", onKey, true);
     close();
   };
-  const onKey = (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      finish();
-    }
-  };
-  document.addEventListener("keydown", onKey, true);
+  const { close } = showModal([image], { onDismiss: finish });
   image.addEventListener("click", finish);
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) finish();
-  });
 }
 
 // A file dropped anywhere outside the editor would otherwise make Chromium
@@ -2639,7 +2676,7 @@ async function insertWikilinkDialog() {
     if (state.editorCtrl) state.editorCtrl.insertWikilink(title || search.value.trim());
   };
 
-  const { close } = showModalFromUI([
+  const { close } = showModal([
     el("h3", {}, "Link to a note"),
     el("div", { class: "field" }, [el("label", {}, "Type a title or search"), search]),
     list,
@@ -2686,18 +2723,6 @@ async function insertWikilinkDialog() {
   search.addEventListener("input", filter);
   filter();
   search.focus();
-}
-
-function showModalFromUI(children) {
-  const backdrop = el("div", { class: "modal-backdrop" });
-  const modal = el("div", { class: "modal" }, children);
-  backdrop.append(modal);
-  document.body.append(backdrop);
-  const close = () => backdrop.remove();
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) close();
-  });
-  return { backdrop, modal, close };
 }
 
 /* ---------------- stats tab ---------------- */
@@ -3462,22 +3487,51 @@ function renderSidebar({ keepScroll = false } = {}) {
   if (bar) renderTree(bar, { keepScroll });
 }
 
-async function init(params) {
-  // A fresh project route starts with no warm editors from a previous project.
+// Everything the project shell owns that must not survive a route change: the
+// warm editors, any half-typed name, the tab strip, timers, the save-on-close
+// hook and the project-scoped `state`. Called through router.onLeave when the
+// route leaves the project and again at the top of `init`, so a project that
+// fails to load ("Project not found") cannot keep the previous one live — not
+// least because the global shortcuts guard on `state.project`.
+function teardownProject() {
   resetEditorPool();
-  // ...and no half-named entry carried over from the project just left.
   stopNaming();
+  if (state.saveTimer) clearTimeout(state.saveTimer);
+  state.saveTimer = null;
+  if (state.wikiTimer) clearTimeout(state.wikiTimer);
+  state.wikiTimer = null;
+  if (_beforeUnload) {
+    window.removeEventListener("beforeunload", _beforeUnload);
+    _beforeUnload = null;
+  }
+  lainCtrl = null;
   // Tabs belong to the project just left; restoreTabs() refills from storage
-  // once the new tree is known.
+  // once the next tree is known.
   docTabs.restore({ tabs: [], active: null, recent: [] });
+  state.project = null;
+  state.tree = null;
+  state.wikiTree = null;
+  state.wiki = null;
+  state.templates = null;
+  state.dictionary = { words: [] };
+  state.editorCtrl = null;
   state.currentDocId = null;
   state.writeDocId = null;
   state.wikiDocId = null;
+  state.currentSection = null;
+  state.selectionActive = false;
   state.activePane = "primary";
   state.split = false;
+  state.dirty = false;
+  state.expanded = new Set();
+  state.wikiExpanded = new Set();
   // A fresh project starts with unfiltered sidebars.
   state.wikiQuery = "";
   state.writeQuery = "";
+}
+
+async function init(params) {
+  teardownProject();
   try {
     const settings = await api.settings.get();
     state.settings = {
@@ -3593,6 +3647,7 @@ registerShell({
   applyDocStyle,
   scheduleWikiRefresh,
   updateTopbar,
+  updateDocRow,
   refreshTree,
   refreshWiki,
 });
@@ -3600,6 +3655,9 @@ registerShell({
 export function register() {
   setupFileDropGuard();
   router.on("project", init);
+  // Leaving for the library drops `state.project`, so the global shortcuts
+  // below (which guard on it) go inert instead of acting on a hidden project.
+  router.onLeave("project", teardownProject);
   // Ctrl/Cmd+F (and Ctrl/Cmd+Shift+F) opens the Find & replace dialog.
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "F" || e.key === "f")) {

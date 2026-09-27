@@ -96,38 +96,38 @@ export function renderCritiqueDialog({ entries = [], currentDocId = null } = {})
       renderList();
     }
 
+    // Ctrl+Enter starts; Escape is a dismissal handled by the modal (below).
     const onKey = (event) => {
-      if (event.key === "Escape") finish(null);
-      else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
         if (!startBtn.disabled) finish([...selected]);
       }
     };
 
-    const { backdrop, close } = showModal([
-      el("h3", {}, "Lain critique"),
-      el(
-        "p",
-        { class: "critique-hint" },
-        "Pick the entries for Lain to review. It focuses on grammar, sentence structure and flow, and anchors a comment to each quote it flags — your prose is never changed."
-      ),
-      searchEl,
-      el("div", { class: "critique-tools" }, [
-        el("button", { class: "mini-btn", onclick: () => selectVisible(true) }, "Select all"),
-        el("button", { class: "mini-btn", onclick: () => selectVisible(false) }, "Clear"),
-        el("span", { class: "panel-head-spacer" }),
-        countEl,
-      ]),
-      listEl,
-      el("div", { class: "modal-actions" }, [
-        el("button", { class: "icon-btn", onclick: () => finish(null) }, "Cancel"),
-        startBtn,
-      ]),
-    ]);
+    const { close } = showModal(
+      [
+        el("h3", {}, "Lain critique"),
+        el(
+          "p",
+          { class: "critique-hint" },
+          "Pick the entries for Lain to review. It focuses on grammar, sentence structure and flow, and anchors a comment to each quote it flags — your prose is never changed."
+        ),
+        searchEl,
+        el("div", { class: "critique-tools" }, [
+          el("button", { class: "mini-btn", onclick: () => selectVisible(true) }, "Select all"),
+          el("button", { class: "mini-btn", onclick: () => selectVisible(false) }, "Clear"),
+          el("span", { class: "panel-head-spacer" }),
+          countEl,
+        ]),
+        listEl,
+        el("div", { class: "modal-actions" }, [
+          el("button", { class: "icon-btn", onclick: () => finish(null) }, "Cancel"),
+          startBtn,
+        ]),
+      ],
+      { onDismiss: () => finish(null) }
+    );
 
     renderList();
-    backdrop.addEventListener("click", (event) => {
-      if (event.target === backdrop) finish(null);
-    });
     document.addEventListener("keydown", onKey);
   });
 }

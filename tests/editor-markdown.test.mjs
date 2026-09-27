@@ -121,6 +121,23 @@ check("h4-h6 headings survive load → save", () => {
   assert.equal(roundTrip(source), source, "deeper headings must not flatten to paragraphs");
 });
 
+check("a heading's text is not escaped as if it were at line start", () => {
+  // After the `#` marker the text is mid-line, so a leading list/heading marker
+  // is literal. These used to come back as `# \- dash`, `# \+ plus`, `# 1\. one`.
+  // (`*` stays escaped: prosemirror-markdown escapes it everywhere, not just at
+  // line start, so `# * star` -> `# \* star` is its general emphasis safety.)
+  assert.equal(roundTrip("# - dash"), "# - dash");
+  assert.equal(roundTrip("## + plus"), "## + plus");
+  assert.equal(roundTrip("### 1. one"), "### 1. one");
+  assert.equal(roundTrip("# # hash"), "# # hash");
+});
+
+check("a paragraph's leading marker is still escaped", () => {
+  // The paragraph really does start the line, so the escape must survive.
+  assert.equal(roundTrip("\\- dash"), "\\- dash");
+  assert.equal(roundTrip("\\# hash"), "\\# hash");
+});
+
 if (failures) {
   console.error(`editor-markdown: ${failures} check(s) failed`);
   process.exit(1);

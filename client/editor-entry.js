@@ -65,24 +65,35 @@ function wikilinkDecorations(state) {
     const regex = new RegExp(WIKILINK_RE.source, "g");
     let match;
     while ((match = regex.exec(text)) !== null) {
-      const from = pos + match.index;
+      const start = match.index;
+      const end = start + match[0].length;
       const target = (match[1] || "").trim();
-      const alias = match[2] != null ? match[2].trim() : target;
-      const to = from + match[0].length;
-      decorations.push(Decoration.inline(from, from + 2, { class: "wikilink-bracket" }));
-      decorations.push(Decoration.inline(to - 2, to, { class: "wikilink-bracket" }));
-      if (alias === target) {
+      // Where the visible label sits inside the raw match, before trimming.
+      // `[[Target]]` -> the whole target; `[[Target|alias]]` -> the alias just
+      // past the `|`. Both are measured from the *raw* groups, not the trimmed
+      // target: a spaced `[[ Target | alias ]]` otherwise drifts the hidden
+      // span one character short and leaves ` | ` on screen.
+      let labelFrom = match[2] == null ? start + 2 : start + 2 + match[1].length + 1;
+      let labelTo = labelFrom + (match[2] == null ? match[1].length : match[2].length);
+      while (labelFrom < labelTo && /\s/.test(text[labelFrom])) labelFrom += 1;
+      while (labelTo > labelFrom && /\s/.test(text[labelTo - 1])) labelTo -= 1;
+      const innerFrom = start + 2;
+      const innerTo = end - 2;
+
+      // Hide the `[[` / `]]` and any padding around the label.
+      decorations.push(Decoration.inline(pos + start, pos + start + 2, { class: "wikilink-bracket" }));
+      decorations.push(Decoration.inline(pos + end - 2, pos + end, { class: "wikilink-bracket" }));
+      if (labelFrom > innerFrom) {
+        decorations.push(Decoration.inline(pos + innerFrom, pos + labelFrom, { class: "wikilink-bracket" }));
+      }
+      if (innerTo > labelTo) {
+        decorations.push(Decoration.inline(pos + labelTo, pos + innerTo, { class: "wikilink-bracket" }));
+      }
+      // The label itself is the link. An alias that trims to nothing ([[T|]])
+      // leaves only the brackets hidden.
+      if (labelTo > labelFrom) {
         decorations.push(
-          Decoration.inline(from + 2, to - 2, {
-            class: "wikilink",
-            "data-wikilink": target,
-          })
-        );
-      } else {
-        const hideEnd = from + 2 + target.length + 1;
-        decorations.push(Decoration.inline(from + 2, hideEnd, { class: "wikilink-bracket" }));
-        decorations.push(
-          Decoration.inline(hideEnd, to - 2, {
+          Decoration.inline(pos + labelFrom, pos + labelTo, {
             class: "wikilink",
             "data-wikilink": target,
           })
@@ -534,10 +545,15 @@ const textAlignAttr = {
 function serializeStyledBlock(state, node, tag) {
   const align = node.attrs.textAlign;
   if (!align) {
-    if (node.type.name === "heading") {
+    const heading = node.type.name === "heading";
+    if (heading) {
       state.write(`${"#".repeat(node.attrs.level)} `);
     }
-    state.renderInline(node);
+    // After the `#` marker the heading text is no longer at the start of the
+    // line, so it must not be escaped as if it were: `# - dash` used to come
+    // back as `# \- dash`. A paragraph really does start the line, so its text
+    // keeps the block-start escaping.
+    state.renderInline(node, !heading);
     state.closeBlock(node);
     return;
   }
