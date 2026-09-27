@@ -360,15 +360,24 @@ project rename carries its snapshots/comments/trash.
 
 ### Tests
 
-- [ ] **Wiki resolution + backlinks** `P2` `M` — `app/services/wiki.py` /
-  `app/routes/wiki.py` have no real coverage.
-- [ ] **Templates service + route** `P2` `S` — zero tests.
+- [x] **Wiki resolution + backlinks** `P2` `M` — shipped: `tests/test_wiki.py`
+  covers `resolve_wikilink` (id / title / normalized-id / missing) and `get_wiki`
+  (links, backlinks, deduped pairs, `linkCounts`, per-doc broken targets,
+  wiki-folder categories) plus the `GET /api/projects/{id}/wiki` route.
+- [x] **Templates service + route** `P2` `S` — shipped: `tests/test_templates.py`
+  covers default seeding, create/update/delete (slugging, duplicates, blank
+  names, section cleanup, missing → 404) and the GET/POST/PUT/DELETE routes.
 - [x] **Reserved-name enforcement** `P3` `S` — shipped with the "Reserved paths
   not enforced" fix: `tests/test_ids.py` covers `templates`/`dictionary.json` as
   user folder names and `ai-sessions` as a project id (pure + HTTP).
-- [ ] **Electron shell contract** `P3` `M` — `electron/preload.js` vs
-  `main.py::_WindowApi`, plus port selection / tree-kill.
-- [ ] **Grammar route** `P3` `S` — `POST /api/grammar/check` has no HTTP test.
+- [x] **Electron shell contract** `P3` `M` — shipped:
+  `tests/test_electron_contract.py` pins `main.py::_WindowApi` ↔
+  `electron/preload.js` methods and every preload→`ipcMain.handle` channel; the
+  free-port scan and tree-kill moved to `electron/lifecycle.js` (added to the
+  packaged files) and are covered by `tests/electron-lifecycle.test.mjs`.
+- [x] **Grammar route** `P3` `S` — shipped: `tests/test_grammar.py` now covers
+  `GET /api/grammar/status` and `POST /api/grammar/check` (200 with forwarded
+  arguments, 503 when unavailable, 422 without `text`).
 
 ### Dead code
 

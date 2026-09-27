@@ -22,6 +22,8 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
+const { BASE_PORT, pickFreePort, killTree } = require("./lifecycle");
+
 // Repo root in dev; under a packaged build the server exe + LanguageTool/JRE
 // are shipped as extraResources into process.resourcesPath (see package.json).
 const ROOT = path.resolve(__dirname, "..");
@@ -40,9 +42,6 @@ function resolvePythonExe() {
 }
 
 const PYTHON = resolvePythonExe();
-const BASE_PORT = 8000;
-const PORT_TRIES = 10;
-
 let serverProc = null;
 let serverPort = BASE_PORT;
 let win = null;
@@ -67,12 +66,7 @@ function isUp(port) {
 }
 
 async function startServer() {
-  let port = BASE_PORT;
-  for (let i = 0; i < PORT_TRIES; i++) {
-    if (!(await isUp(port))) break;
-    port += 1;
-    if (i === PORT_TRIES - 1) throw new Error(`no free port in 8000-${BASE_PORT + PORT_TRIES - 1}`);
-  }
+  const port = await pickFreePort(isUp);
 
   // Dev: python main.py --server-only --port N
   // Packaged: server.exe --server-only --port N (the exe is the entry point)
@@ -124,13 +118,7 @@ async function startServer() {
 
 function killServer() {
   if (!serverProc) return;
-  // Tree-kill: terminates the python process AND its java (LanguageTool) child,
-  // which a plain terminate would orphan (Windows has no process groups here).
-  try {
-    execSync(`taskkill /PID ${serverProc.pid} /T /F`, { stdio: "ignore" });
-  } catch {
-    /* already gone */
-  }
+  killTree(execSync, serverProc.pid);
   serverProc = null;
 }
 

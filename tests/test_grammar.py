@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
+from app.main import create_app
 from app.services import grammar as grammar_service
 
 
@@ -153,3 +155,74 @@ def test_stop_does_not_kill_adopted_server(monkeypatch, capsys):
     grammar_service.stop_lt_server()
     assert grammar_service._client is None
     assert grammar_service._lt_process is None
+
+
+# --- HTTP route -------------------------------------------------------------
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("IWAKURA_DATA_DIR", str(tmp_path / "data"))
+    return TestClient(create_app())
+
+
+_H = {"host": "127.0.0.1"}
+
+
+def test_status_reports_availability(client, monkeypatch):
+    monkeypatch.setattr(grammar_service, "is_available", lambda: False)
+    assert client.get("/api/grammar/status", headers=_H).json() == {"available": False}
+    monkeypatch.setattr(grammar_service, "is_available", lambda: True)
+    assert client.get("/api/grammar/status", headers=_H).json() == {"available": True}
+
+
+def test_check_forwards_arguments_and_returns_matches(client, monkeypatch):
+    seen = {}
+
+    def fake_check(text, language="en-US", dictionary_words=None):
+        seen.update(text=text, language=language, dictionary_words=dictionary_words)
+        return [
+            {
+                "offset": 0,
+                "length": 3,
+                "message": "Possible typo",
+                "replacements": ["the"],
+                "rule_id": "MORFOLOGIK_RULE_EN_GB",
+                "category": "TYPOS",
+                "context_text": "teh cat",
+                "context_offset": 0,
+            }
+        ]
+
+    monkeypatch.setattr(grammar_service, "check", fake_check)
+    resp = client.post(
+        "/api/grammar/check",
+        json={"text": "teh cat", "language": "en-GB", "dictionaryWords": ["cat"]},
+        headers=_H,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["matches"][0]["rule_id"] == "MORFOLOGIK_RULE_EN_GB"
+    assert seen == {"text": "teh cat", "language": "en-GB", "dictionary_words": ["cat"]}
+
+
+def test_check_defaults_language_and_dictionary(client, monkeypatch):
+    seen = {}
+
+    def fake_check(text, language="en-US", dictionary_words=None):
+        seen.update(text=text, language=language, dictionary_words=dictionary_words)
+        return []
+
+    monkeypatch.setattr(grammar_service, "check", fake_check)
+    assert client.post("/api/grammar/check", json={"text": "hi"}, headers=_H).status_code == 200
+    assert seen == {"text": "hi", "language": "en-US", "dictionary_words": None}
+
+
+def test_check_returns_503_when_unavailable(client, monkeypatch):
+    monkeypatch.setattr(grammar_service, "check", lambda *a, **k: None)
+    resp = client.post("/api/grammar/check", json={"text": "teh"}, headers=_H)
+    assert resp.status_code == 503
+    assert "not available" in resp.json()["detail"]
+
+
+def test_check_requires_text(client):
+    assert client.post("/api/grammar/check", json={}, headers=_H).status_code == 422
