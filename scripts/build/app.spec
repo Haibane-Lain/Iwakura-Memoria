@@ -1,15 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec: bundle the FastAPI server into a single server.exe.
+"""PyInstaller spec: bundle the FastAPI server into a single server exe.
 
 Build (from the repo root):
 
     .venv\\Scripts\\python.exe -m pip install -r requirements-dev.txt   # adds pyinstaller
-    .venv\\Scripts\\python.exe -m PyInstaller scripts\\build\\app.spec   # -> dist/app/server.exe
+    .venv\\Scripts\\python.exe -m PyInstaller scripts\\build\\app.spec   # -> dist/Iwakura-Memoria-server.exe (the build script's --distpath puts it in scripts/build/_bundle/server/)
 
 The frozen server runs the same headless entry point the Electron shell always
 used in dev:
 
-    server.exe --server-only --port 8000
+    Iwakura-Memoria-server.exe --server-only --port 8000
 
 `config._resolve_static_dir()` already returns `_MEIPASS/static` under
 PyInstaller, so the frontend (including `static/dist/editor.bundle.js`) is read

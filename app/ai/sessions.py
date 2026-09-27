@@ -39,8 +39,8 @@ def _now() -> str:
 def _sessions_dir(project_id: str) -> Path:
     if not config.is_safe_project_id(project_id):
         raise ValueError("Invalid project id")
-    base = (config.DATA_DIR / "ai-sessions").resolve()
-    path = (config.DATA_DIR / "ai-sessions" / project_id).resolve()
+    base = (config.DATA_DIR / config.AI_SESSIONS_DIRNAME).resolve()
+    path = (config.DATA_DIR / config.AI_SESSIONS_DIRNAME / project_id).resolve()
     if not path.is_relative_to(base):
         raise ValueError("Invalid project id")
     return path

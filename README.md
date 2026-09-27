@@ -209,6 +209,7 @@ data/
   ai-sessions/<project>/           # Lain chat session history
   .trash/<project>/                # deleted entries, restorable from Settings -> Trash
   .snapshots/<project>/            # per-document version history (preview + restore)
+  .comments/<project>/             # comment bodies (one sidecar JSON per document)
   <project>/
     project.json                   # title, daily goal, timestamps
     dictionary.json                # per-project spelling list (grammar ignore list)
@@ -497,9 +498,9 @@ npm --prefix electron install
 npm --prefix electron start
 ```
 
-Notes: it runs the venv Python in dev mode (no bundled runtime yet — the
-portable/packaging decision is still open); the close button tree-kills the
-Python process so the LanguageTool Java child is never orphaned; a
+Notes: `npm start` runs the venv Python in dev mode (the packaged installer
+instead bundles a frozen server — see **Distribution** below); the close button
+tree-kills the Python process so the LanguageTool Java child is never orphaned; a
 single-instance lock focuses the existing window instead of launching twice;
 the renderer's edge resize handles are inert no-ops because frameless windows
 resize natively. The legacy `run.bat --pywebview` path is kept for reference.
@@ -540,7 +541,7 @@ expected without a code-signing certificate.
 A frozen `--server-only` server can be smoked out on its own:
 
 ```
-dist\app\Iwakura-Memoria-server.exe --server-only --port 8000
+scripts\build\_bundle\server\Iwakura-Memoria-server.exe --server-only --port 8000
 ```
 
 Installed apps store data the same way as dev (`%LOCALAPPDATA%\IwakuraMemoria`),

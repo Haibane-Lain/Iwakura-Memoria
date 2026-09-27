@@ -3441,8 +3441,7 @@ async function switchTab(tab) {
         else state.writeDocId = f.id;
       }
     }
-    // Make sure the target is a tab (and the sidebar's Recent list current)
-    // before the sidebar render below.
+    // Make sure the target is a tab before the sidebar render below.
     if (state.currentDocId) {
       docTabs.open(state.currentDocId);
       persistTabs();
@@ -3507,7 +3506,7 @@ function teardownProject() {
   lainCtrl = null;
   // Tabs belong to the project just left; restoreTabs() refills from storage
   // once the next tree is known.
-  docTabs.restore({ tabs: [], active: null, recent: [] });
+  docTabs.restore({ tabs: [], active: null });
   state.project = null;
   state.tree = null;
   state.wikiTree = null;

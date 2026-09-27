@@ -16,8 +16,6 @@ from app.services import documents as documents_service
 from app.services import snapshots as snapshots_service
 from app.services import trash as trash_service
 
-DICTIONARY_FILENAME = "dictionary.json"
-
 
 def _find_pdf_fonts():
     system = sys.platform
@@ -198,9 +196,9 @@ def rename_project(project_id: str, new_name: str) -> dict[str, Any]:
         folder.rename(new_folder)
         # Chat sessions are keyed by project folder name; move them so the
         # renamed project keeps its history (best-effort, never fails a rename).
-        old_sessions = config.DATA_DIR / "ai-sessions" / pid
+        old_sessions = config.DATA_DIR / config.AI_SESSIONS_DIRNAME / pid
         if old_sessions.is_dir():
-            new_sessions = config.DATA_DIR / "ai-sessions" / new_folder.name
+            new_sessions = config.DATA_DIR / config.AI_SESSIONS_DIRNAME / new_folder.name
             if not new_sessions.exists():
                 try:
                     shutil.move(str(old_sessions), str(new_sessions))
@@ -259,7 +257,7 @@ def get_document_tree(project_id: str, scope: str = "write") -> dict[str, Any]:
 def get_dictionary(project_id: str) -> dict[str, Any]:
     pid = _safe_id(project_id)
     folder = project_dir(pid)
-    dict_path = folder / DICTIONARY_FILENAME
+    dict_path = folder / config.DICTIONARY_FILENAME
     try:
         data = json.loads(dict_path.read_text(encoding="utf-8"))
         words = data.get("words", [])
@@ -278,7 +276,7 @@ def update_dictionary(project_id: str, words: list[str]) -> dict[str, Any]:
         if clean and clean.lower() not in seen:
             seen.add(clean.lower())
             unique.append(clean)
-    dict_path = folder / DICTIONARY_FILENAME
+    dict_path = folder / config.DICTIONARY_FILENAME
     config._write_atomic(
         dict_path,
         json.dumps({"words": unique}, ensure_ascii=False, indent=2),

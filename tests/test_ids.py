@@ -34,6 +34,13 @@ def test_is_safe_project_id_accepts_real_names():
         assert config.is_safe_project_id(good) is True, good
 
 
+def test_is_safe_project_id_rejects_reserved_data_root_names():
+    # A slug of "ai-sessions" would collide with the data-root folder that
+    # holds Lain's chat history (and Windows is case-insensitive).
+    for bad in ("ai-sessions", "AI-Sessions", "AI-SESSIONS"):
+        assert config.is_safe_project_id(bad) is False, bad
+
+
 def test_api_rejects_dotdot_project_id(client, tmp_path):
     created = client.post("/api/projects", json={"name": "Soul"}, headers=_H)
     assert created.status_code == 201
@@ -48,6 +55,14 @@ def test_api_rejects_dotdot_project_id(client, tmp_path):
 
     r = client.get("/api/projects/%2E%2E/ai/sessions", headers=_H)
     assert r.status_code == 400
+
+
+def test_api_rejects_ai_sessions_project(client, tmp_path):
+    # The slug collides with `data/ai-sessions/`, so creating it must fail
+    # without ever making the folder.
+    r = client.post("/api/projects", json={"name": "AI Sessions"}, headers=_H)
+    assert r.status_code == 409
+    assert not (tmp_path / "data" / "ai-sessions").exists()
 
 
 def test_sessions_dir_rejects_dotdot(data_dir):
@@ -74,6 +89,16 @@ def test_doc_path_rejects_escapes(tmp_path):
     # a bare ".." doc id appends ".md", resolving to "...md" *inside* the
     # folder — contained (harmless oddity, not an escape)
     assert documents_service._doc_path(folder, "..") == folder / "...md"
+
+
+def test_reserved_names_cannot_be_user_folders(make_project):
+    make_project("p1")
+    # These shadow app-managed state at the project root (the lore template
+    # store and the spelling list), so they are reserved like assets/ and
+    # stats/. Case-insensitively too, since Windows filesystems are.
+    for name in ("templates", "Templates", "dictionary.json", "Dictionary.JSON"):
+        with pytest.raises(documents_service.DocumentError):
+            documents_service.create_folder("p1", name)
 
 
 # --- B4: project rename migrates ai sessions --------------------------------

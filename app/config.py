@@ -64,6 +64,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 PROJECT_META_FILENAME = "project.json"
+# Per-project spelling list (the grammar ignore list).
+DICTIONARY_FILENAME = "dictionary.json"
 STATS_DIRNAME = "stats"
 HISTORY_FILENAME = "history.jsonl"
 REORDER_TMP_DIRNAME = ".reorder-tmp"
@@ -80,6 +82,10 @@ SNAPSHOTS_DIRNAME = ".snapshots"
 # At the data root for the same reason as the trash and snapshots; unlike
 # those, it is content, so backups keep it.
 COMMENTS_DIRNAME = ".comments"
+# Lain chat sessions, keyed by project id. At the data root like the trash and
+# snapshots. A project slug that lands on this name would shadow them, so
+# ``is_safe_project_id`` rejects it.
+AI_SESSIONS_DIRNAME = "ai-sessions"
 # Marker written once the one-time zoom rebase (documents.rebase_zoom_scale)
 # has run. It is a *file* rather than a settings key so a stale settings writer
 # cannot drop it and let the rebase halve every stored zoom a second time — so
@@ -92,16 +98,22 @@ TEMPLATES_DIRNAME = "templates"
 # image editor, and they are included in zip exports and backups.
 ASSETS_DIRNAME = "assets"
 
-# Names that can't be used as user folders (reserved by the app).
+# Names that can't be used as user folders (reserved by the app). Kept in sync
+# with what the tree hides and the README documents as reserved.
 RESERVED_FOLDER_NAMES = {
     PROJECT_META_FILENAME,
     STATS_DIRNAME,
     REORDER_TMP_DIRNAME,
     WIKI_DIRNAME,
     ASSETS_DIRNAME,
+    TEMPLATES_DIRNAME,
+    DICTIONARY_FILENAME,
 }
 
 _PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+# Data-root folder names a project slug must not collide with.
+_RESERVED_PROJECT_IDS = {AI_SESSIONS_DIRNAME}
 
 
 def is_safe_project_id(project_id: str) -> bool:
@@ -110,10 +122,15 @@ def is_safe_project_id(project_id: str) -> bool:
     The pattern allows letters/digits/``._-`` (so slugs and dotted names keep
     working) but rejects empty ids and anything that could escape the data
     root: ``.``, ``..``, hidden dot-prefixed names, and any path separator.
+    Names that collide with a reserved data-root folder (``ai-sessions``) are
+    rejected too — otherwise a project called "AI Sessions" would shadow Lain's
+    chat history.
     """
     if not _PROJECT_ID_RE.fullmatch(project_id or ""):
         return False
-    return not project_id.startswith(".")
+    if project_id.startswith("."):
+        return False
+    return project_id.lower() not in _RESERVED_PROJECT_IDS
 
 
 def _default_data_dir() -> Path:

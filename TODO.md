@@ -19,13 +19,16 @@ Legend for hooks: where the work would plug into the current code.
   `client/typewriter-math.js`, the ProseMirror plugin in `client/typewriter.js`).
   Both persist as `focusMode` / `typewriterMode` in `settings.json`.
 
-- [x] **Document tabs, recent documents, split view** `P2` `L` — shipped:
-  a tab strip over the warm-editor pool, a per-project collapsible **Recent**
-  list, and a two-pane split with a shared focus-following toolbar. (Was:
-  A tab strip over the already-existing warm-editor pool
-  (`static/js/editor-pool.js`), a recent list persisted per project, and
-  optionally two side-by-side editors.
-  Hooks: `renderEditorTab` / `openDocument` / `switchTab` in `project.js`.)
+- [x] **Document tabs & split view** `P2` `L` — shipped: a tab strip over the
+  warm-editor pool (`static/js/doc-tabs.js`, persisted per project in
+  `static/js/editor-workspace.js`) and a two-pane split with a shared
+  focus-following toolbar.
+
+- [ ] **Per-project Recent documents list** `P3` `S`
+  - A collapsible **Recent** list in the sidebar, persisted per project.
+  - Originally bundled into the "Document tabs, recent documents, split view"
+    item but never built — the `recent` field in the saved tabs payload was a
+    no-op. Hooks: `static/js/doc-tabs.js`, `persistTabs` / `renderSidebar`.
 
 - [ ] **In-editor writing targets & session pacing** `P1` `M`
   - Per-document/session word target with a live progress bar, and a sprint
@@ -57,7 +60,7 @@ Legend for hooks: where the work would plug into the current code.
   `setLink`/`unlink`/`insertLink` plus `run("code")`.
 
 - [ ] **Per-document language + native spellcheck control** `P2` `S`
-  - Grammar is hard-coded to `en-US` (`client/editor-entry.js:240`); expose a
+  - Grammar is hard-coded to `en-US` (`client/editor-entry.js:354`); expose a
     language per document/project and a toggle for the browser spellchecker.
 
 - [x] **Wikilink autocomplete** `P2` `M` — shipped: typing `[[` in the editor
@@ -182,7 +185,7 @@ Legend for hooks: where the work would plug into the current code.
   - No single-document / selection export; no Markdown / HTML / plain-text
     export; no page setup or cover options.
   - Hooks: `app/services/projects.py` + `app/services/export.py`;
-    `build_export_html` (`export.py:194`) already exists but is dead code and
+    `build_export_html` (`export.py:271`) already exists but is dead code and
     can power an HTML export.
 
 - [ ] **Autosave recovery UI** `P2` `S`
@@ -210,15 +213,13 @@ Legend for hooks: where the work would plug into the current code.
 
 ## Quick wins / loose ends
 
-- [ ] Toolbar buttons for `horizontalRule`, `link`, and inline `code`
-  (capabilities exist, unreachable from the ribbon).
 - [ ] `CharacterCount` extension is loaded but unused (word counts recompute
   from `getText()` each edit).
 - [ ] Dead `.wiki-view` / `.wiki-grid` / `.broken-item` CSS in
   `static/css/app.css`.
-- [ ] `build_export_html` is dead code (`app/services/export.py:194`).
+- [ ] `build_export_html` is dead code (`app/services/export.py:271`).
 - [ ] `set_goal` clamps `wordsPerDay` to `>= 1`, so a goal cannot be 0 except
-  via `enabled` (`app/services/projects.py:221`).
+  via `enabled` (`app/services/projects.py:236`).
 - [ ] No asset list/delete endpoint (see Asset management above).
 
 ---
@@ -337,29 +338,34 @@ project rename carries its snapshots/comments/trash.
 
 ### Docs / TODO hygiene
 
-- [ ] **README packaging claims contradict the installer section** `P2` `S` —
-  `README.md:500` says packaging is "still open" while `:507` documents a shipped
-  installer; `:543`'s frozen-server path is wrong (real output is
-  `scripts\build\_bundle\server\`).
-- [ ] **Reserved paths not enforced** `P2` `S` — `README.md:251` calls
-  `templates/` and `dictionary.json` reserved, but `_validate_folder_name` does
-  not reject them; a project named "AI Sessions" collides with
-  `data/ai-sessions/`.
-- [ ] **`.comments/` missing from the data-layout diagram** `P3` `S` —
-  `README.md:205-225` omits it even though it holds comment bodies.
-- [ ] **Stale TODO / review references** `P3` `S` — Quick-win #1
-  (link/code/divider buttons) is already shipped; the "Recent list" marked
-  shipped never existed; `TODO.md:60,219-221` and `docs/ai-review.md:23` point at
-  the wrong lines/symbols.
+- [x] **README packaging claims contradict the installer section** `P2` `S` —
+  shipped: the Electron dev-mode note no longer says packaging is "still open"
+  (it points at **Distribution**), and the frozen-server smoke-test path is now
+  `scripts\build\_bundle\server\Iwakura-Memoria-server.exe` (the `app.spec`
+  docstring exe name was fixed too).
+- [x] **Reserved paths not enforced** `P2` `S` — shipped: `templates/` and
+  `dictionary.json` joined `config.RESERVED_FOLDER_NAMES` (so
+  `_validate_folder_name` rejects them), and `is_safe_project_id` now rejects
+  the data-root `ai-sessions` slug. `DICTIONARY_FILENAME` moved to `config`.
+  Covered in `tests/test_ids.py`.
+- [x] **`.comments/` missing from the data-layout diagram** `P3` `S` — shipped:
+  the README diagram now lists `.comments/<project>/` beside the trash and
+  snapshots.
+- [x] **Stale TODO / review references** `P3` `S` — shipped: removed the
+  duplicated Quick-win toolbar-buttons entry; split the "Recent list" out of the
+  shipped tabs item (it was never built) into an open item and dropped the stale
+  `recent` no-op, comments included; corrected the grammar/export/set_goal line
+  refs in `TODO.md` and `_limit_body_size` → `BodySizeLimitMiddleware` in
+  `docs/ai-review.md`.
 
 ### Tests
 
 - [ ] **Wiki resolution + backlinks** `P2` `M` — `app/services/wiki.py` /
   `app/routes/wiki.py` have no real coverage.
 - [ ] **Templates service + route** `P2` `S` — zero tests.
-- [ ] **Reserved-name enforcement** `P3` `S` — mirror
-  `tests/test_assets.py:162` for `templates`/`dictionary.json`, and reject
-  `ai-sessions` as a project id.
+- [x] **Reserved-name enforcement** `P3` `S` — shipped with the "Reserved paths
+  not enforced" fix: `tests/test_ids.py` covers `templates`/`dictionary.json` as
+  user folder names and `ai-sessions` as a project id (pure + HTTP).
 - [ ] **Electron shell contract** `P3` `M` — `electron/preload.js` vs
   `main.py::_WindowApi`, plus port selection / tree-kill.
 - [ ] **Grammar route** `P3` `S` — `POST /api/grammar/check` has no HTTP test.

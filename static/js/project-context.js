@@ -50,8 +50,8 @@ export const state = {
 // switch. See editor-pool.js; the active document is pinned against eviction.
 export const editorPool = createEditorPool({ max: 10 });
 
-// Which documents are open (the tab strip) and the cross-session recent list.
-// Pure state lives in doc-tabs.js; persistence lives in editor-workspace.js.
+// Which documents are open (the tab strip). Pure state lives in doc-tabs.js;
+// persistence lives in editor-workspace.js.
 export const docTabs = createDocTabs();
 
 // Two independent editor panes. The primary always follows the tab strip; the

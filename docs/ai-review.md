@@ -20,7 +20,7 @@ directory behind forever, slowly accumulating files (including potentially large
 and cleans up the empty per-project dir. Test added (`tests/test_sessions.py`).
 
 ### 2. The 25 MB attachment cap was unreachable (10 MB body limit wins) **[FIXED]**
-`app/main.py::_limit_body_size` rejected every request with `Content-Length`
+`app/main.py::BodySizeLimitMiddleware` rejected every request with `Content-Length`
 over **10 MB** (`MAX_REQUEST_BYTES`), while `app/ai/attachments.py` documented a
 **25 MB** max. In practice an upload over 10 MB was 413'd by the global
 middleware before the route's own `MAX_FILE_BYTES` (25 MB) check could ever run —
