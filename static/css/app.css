@@ -2359,10 +2359,26 @@ a {
   color: var(--text);
 }
 
+/* The category · rule-description line, with the rule's docs URL on hover. */
+.grammar-tooltip-meta {
+  margin-bottom: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.grammar-tooltip.severity-style {
+  border-left: 3px solid var(--warn);
+}
+
 .grammar-tooltip-reps {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  /* A misspelling can carry dozens of suggestions; cap the height and scroll
+     rather than letting the tooltip run off the screen. */
+  max-height: 144px;
+  overflow-y: auto;
 }
 
 .grammar-rep-chip {

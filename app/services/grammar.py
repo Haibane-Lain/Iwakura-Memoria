@@ -149,23 +149,110 @@ def is_available() -> bool:
     return _client is not None and (_lt_process is None or _lt_process.poll() is None)
 
 
-def check(text: str, language: str = "en-US", dictionary_words: list[str] | None = None) -> list[dict[str, Any]] | None:
+# LanguageTool's ``rule.issueType`` is finer grained (misspelling, grammar,
+# style, typographical, duplication, inconsistency, uncategorized). The UI only
+# needs three buckets: red errors, amber warnings, and the style suggestions
+# that the Language panel groups but the editor does not underline.
+_STYLE_ISSUES = {"style"}
+_ERROR_ISSUES = {"misspelling", "grammar", "duplication", "inconsistency"}
+_RULE_DOCS_URL = "https://community.languagetool.org/rule/show/{rule_id}"
+
+
+def _severity(issue_type: str) -> str:
+    """Map a LanguageTool issue type onto the UI's error/warning/style bucket."""
+    value = (issue_type or "").lower()
+    if value in _STYLE_ISSUES:
+        return "style"
+    if value in _ERROR_ISSUES:
+        return "error"
+    return "warning"
+
+
+def _match_payload(match: dict[str, Any]) -> dict[str, Any]:
+    """Flatten one LanguageTool match into the shape the editor/panel consume.
+
+    Everything the panel needs to filter, group and explain an issue is kept:
+    the short and long message, the rule identity and docs link, the category,
+    the issue type and its severity bucket, and the sentence it sits in. The
+    client derives the flagged text from ``context_text``/``context_offset``,
+    which is what keeps it valid when the writer edits before clicking.
+    """
+    rule = match.get("rule") or {}
+    category = rule.get("category") or {}
+    context = match.get("context") or {}
+    rule_id = rule.get("id", "")
+    urls = rule.get("urls") or []
+    rule_url = urls[0].get("value", "") if urls else ""
+    if not rule_url and rule_id:
+        rule_url = _RULE_DOCS_URL.format(rule_id=rule_id)
+    issue_type = rule.get("issueType", "")
+    return {
+        "offset": match.get("offset", 0),
+        "length": match.get("length", 0),
+        "message": match.get("message", ""),
+        "short_message": match.get("shortMessage", ""),
+        "replacements": [r.get("value", "") for r in match.get("replacements", [])],
+        "rule_id": rule_id,
+        "rule_description": rule.get("description", ""),
+        "rule_url": rule_url,
+        "category_id": category.get("id", ""),
+        "category": category.get("name", ""),
+        "issue_type": issue_type,
+        "severity": _severity(issue_type),
+        "tags": list(rule.get("tags") or []),
+        "is_premium": bool(rule.get("isPremium")),
+        "sentence": match.get("sentence", ""),
+        "context_text": context.get("text", ""),
+        "context_offset": context.get("offset", 0),
+    }
+
+
+def check(
+    text: str,
+    language: str = "en-US",
+    dictionary_words: list[str] | None = None,
+    *,
+    level: str | None = None,
+    mother_tongue: str | None = None,
+    preferred_variants: str | None = None,
+    enabled_categories: list[str] | None = None,
+    disabled_categories: list[str] | None = None,
+    enabled_rules: list[str] | None = None,
+    disabled_rules: list[str] | None = None,
+) -> list[dict[str, Any]] | None:
     """Run grammar check. Returns list of match dicts, or None if unavailable.
 
     If *dictionary_words* is provided, any match whose matched text
     (case-insensitive) appears in the list is excluded from results.
+
+    The optional keyword arguments are forwarded to LanguageTool's ``/v2/check``
+    endpoint. ``level="picky"`` turns on the style rules (passive voice and
+    friends) that the default level leaves out; the category/rule lists let a
+    caller widen or narrow the rule set without a second round trip.
     """
     if not is_available():
         return None
     if not _concurrency.acquire(blocking=False):
         return None
     try:
-        resp = _client.post(
-            f"{_LT_URL}/v2/check",
-            data={"language": language, "text": text},
-        )
+        data: dict[str, str] = {"language": language, "text": text}
+        if level:
+            data["level"] = level
+        if mother_tongue:
+            data["motherTongue"] = mother_tongue
+        if preferred_variants:
+            data["preferredVariants"] = preferred_variants
+        if enabled_categories:
+            data["enabledCategories"] = ",".join(enabled_categories)
+        if disabled_categories:
+            data["disabledCategories"] = ",".join(disabled_categories)
+        if enabled_rules:
+            data["enabledRules"] = ",".join(enabled_rules)
+        if disabled_rules:
+            data["disabledRules"] = ",".join(disabled_rules)
+        resp = _client.post(f"{_LT_URL}/v2/check", data=data)
         resp.raise_for_status()
-        data = resp.json()
+        payload = resp.json()
     except Exception:
         return None
     finally:
@@ -174,20 +261,11 @@ def check(text: str, language: str = "en-US", dictionary_words: list[str] | None
     ignore = {w.strip().lower() for w in (dictionary_words or []) if w.strip()}
 
     matches: list[dict[str, Any]] = []
-    for m in data.get("matches", []):
+    for m in payload.get("matches", []):
         offset = m.get("offset", 0)
         length = m.get("length", 0)
         matched_text = text[offset : offset + length]
         if ignore and matched_text.lower() in ignore:
             continue
-        matches.append({
-            "offset": offset,
-            "length": length,
-            "message": m.get("message", ""),
-            "replacements": [r.get("value", "") for r in m.get("replacements", [])],
-            "rule_id": (m.get("rule") or {}).get("id", ""),
-            "category": (m.get("rule") or {}).get("category", {}).get("name", ""),
-            "context_text": (m.get("context") or {}).get("text", ""),
-            "context_offset": (m.get("context") or {}).get("offset", 0),
-        })
+        matches.append(_match_payload(m))
     return matches

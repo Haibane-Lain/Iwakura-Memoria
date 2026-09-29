@@ -31,9 +31,11 @@ dom.window.cancelAnimationFrame = (id) => clearTimeout(id);
 // single "teh" -> "the" typo wherever it appears, using the LT text offsets the
 // real server would report.
 let lastCheckedText = "";
+let lastBody = null;
 dom.window.fetch = async (_url, opts) => {
   const body = JSON.parse(opts.body);
   lastCheckedText = body.text;
+  lastBody = body;
   const idx = body.text.indexOf("teh");
   const matches = idx < 0
     ? []
@@ -148,6 +150,18 @@ await check("clicking a suggestion after an inline image keeps the image", async
     assert.ok(md.includes("assets/x.png"), `the picture survived: ${md}`);
     assert.ok(md.includes("the end"), `the word was replaced: ${md}`);
     assert.ok(!md.includes("teh"), `the typo is gone: ${md}`);
+  } finally {
+    s.close();
+  }
+});
+
+await check("the check asks for picky style rules and honours setGrammarOptions", async () => {
+  const s = open("teh end");
+  try {
+    s.ctrl.setGrammarOptions({ language: "en-GB" });
+    await runCheck(s.ctrl);
+    assert.equal(lastBody.level, "picky", "picky is the default level");
+    assert.equal(lastBody.language, "en-GB", "the language option is forwarded");
   } finally {
     s.close();
   }

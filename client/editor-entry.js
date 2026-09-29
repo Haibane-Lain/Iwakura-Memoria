@@ -273,6 +273,10 @@ let _grammarDictionaryWords = [];
 let _grammarAddToDictCallback = null;
 let _onLookupWord = null;
 let _grammarBusy = false;
+// Options forwarded to /api/grammar/check. "picky" is on by default: the style
+// rules (passive voice and friends) are the point of the Language panel, which
+// reports them without underlining them inline.
+let _grammarOptions = { level: "picky", language: "en-US" };
 // Typewriter mode is a view preference shared by every editor in the window,
 // read live by the plugin so flipping it never rebuilds an editor.
 let _typewriterEnabled = false;
@@ -351,7 +355,12 @@ async function _grammarFetch(text) {
     const resp = await fetch("/api/grammar/check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, language: "en-US", dictionaryWords: _grammarDictionaryWords }),
+      body: JSON.stringify({
+        text,
+        language: _grammarOptions.language || "en-US",
+        level: _grammarOptions.level || "picky",
+        dictionaryWords: _grammarDictionaryWords,
+      }),
       signal: controller.signal,
     });
     if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
@@ -370,23 +379,33 @@ async function _grammarFetch(text) {
 function _grammarUpdate(view, docText, matches) {
   const offsets = docText.offsets;
   const decos = [];
+  const reported = [];
   for (const m of matches) {
     if (m.length <= 0) continue;
     const from = _ltToDocPos(offsets, m.offset);
     const to = _ltToDocPos(offsets, m.offset + m.length);
     if (from < 0 || to <= from || to > view.state.doc.content.size) continue;
-    decos.push(
-      Decoration.inline(from, to, {
-        class: "grammar-error",
-        "data-grammar": JSON.stringify(m),
-      })
-    );
+    // Style matches are handed to the Language panel but never underlined:
+    // picky turns on enough of them that the page would drown in squiggles.
+    if (m.severity !== "style") {
+      decos.push(
+        Decoration.inline(from, to, {
+          class: "grammar-error",
+          "data-grammar": JSON.stringify(m),
+        })
+      );
+    }
+    reported.push({ from, to, match: m });
   }
   const set = DecorationSet.create(view.state.doc, decos);
   const textHash = _grammarHash(docText.text);
   _grammarSkipping = true;
   view.dispatch(view.state.tr.setMeta("grammarDecorations", { set, textHash }));
   _grammarSkipping = false;
+  // Publish the same set to whoever is listening (the Language panel), so the
+  // list and the squiggles can never disagree about what was found.
+  const onResults = view._grammarResultsCb;
+  if (onResults) onResults({ matches: reported, textHash });
 }
 
 function _grammarSchedule(view) {
@@ -627,16 +646,28 @@ function _grammarShowTooltip(errorEl) {
   try { match = JSON.parse(raw); } catch { return; }
 
   const tip = document.createElement("div");
-  tip.className = "grammar-tooltip";
+  tip.className = "grammar-tooltip severity-" + (match.severity || "error");
   const msg = document.createElement("div");
   msg.className = "grammar-tooltip-msg";
   msg.textContent = match.message;
   tip.appendChild(msg);
 
+  // Where the flag comes from: the category and the rule's own description,
+  // with the rule's docs URL on hover. Plain text rather than a live link so a
+  // click can never spawn a stray window in the desktop shell.
+  const metaBits = [match.category, match.rule_description].filter(Boolean);
+  if (metaBits.length || match.rule_url) {
+    const meta = document.createElement("div");
+    meta.className = "grammar-tooltip-meta";
+    if (metaBits.length) meta.textContent = metaBits.join(" · ");
+    if (match.rule_url) meta.title = match.rule_url;
+    tip.appendChild(meta);
+  }
+
   if (match.replacements && match.replacements.length) {
     const rl = document.createElement("div");
     rl.className = "grammar-tooltip-reps";
-    for (const r of match.replacements.slice(0, 6)) {
+    for (const r of match.replacements.slice(0, 12)) {
       const chip = document.createElement("button");
       chip.className = "grammar-rep-chip";
       chip.textContent = r;
@@ -1419,6 +1450,19 @@ window.LainEditor = {
       setGrammarEnabled(enabled) {
         editor.view.dispatch(editor.state.tr.setMeta("grammarEnabled", !!enabled));
         if (enabled) _grammarSchedule(editor.view);
+      },
+      // Options for the next check (level, language, …). Changing them re-checks
+      // the active view right away rather than waiting for the next keystroke.
+      setGrammarOptions(options) {
+        _grammarOptions = { ..._grammarOptions, ...(options || {}) };
+        if (_grammarView === editor.view && !editor.view.isDestroyed) {
+          editor.view.dispatch(editor.view.state.tr.setMeta("forceGrammar", true));
+        }
+      },
+      // Per-view (not module-level) so a split view's two panes each hear their
+      // own results; the active view is the only one that checks.
+      setOnGrammarResults(callback) {
+        editor.view._grammarResultsCb = typeof callback === "function" ? callback : null;
       },
       // Typewriter mode: keep the caret near the middle. Enabling it recenters
       // right away so the current line snaps into place without waiting for a

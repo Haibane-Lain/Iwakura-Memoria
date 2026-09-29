@@ -179,8 +179,8 @@ def test_status_reports_availability(client, monkeypatch):
 def test_check_forwards_arguments_and_returns_matches(client, monkeypatch):
     seen = {}
 
-    def fake_check(text, language="en-US", dictionary_words=None):
-        seen.update(text=text, language=language, dictionary_words=dictionary_words)
+    def fake_check(text, language="en-US", dictionary_words=None, **kwargs):
+        seen.update(text=text, language=language, dictionary_words=dictionary_words, **kwargs)
         return [
             {
                 "offset": 0,
@@ -202,19 +202,183 @@ def test_check_forwards_arguments_and_returns_matches(client, monkeypatch):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["matches"][0]["rule_id"] == "MORFOLOGIK_RULE_EN_GB"
-    assert seen == {"text": "teh cat", "language": "en-GB", "dictionary_words": ["cat"]}
+    assert seen == {
+        "text": "teh cat",
+        "language": "en-GB",
+        "dictionary_words": ["cat"],
+        "level": None,
+        "mother_tongue": None,
+        "preferred_variants": None,
+        "enabled_categories": None,
+        "disabled_categories": None,
+        "enabled_rules": None,
+        "disabled_rules": None,
+    }
+
+
+def test_check_forwards_the_new_options(client, monkeypatch):
+    seen = {}
+
+    def fake_check(text, language="en-US", dictionary_words=None, **kwargs):
+        seen.update(text=text, language=language, **kwargs)
+        return []
+
+    monkeypatch.setattr(grammar_service, "check", fake_check)
+    resp = client.post(
+        "/api/grammar/check",
+        json={
+            "text": "hi",
+            "level": "picky",
+            "motherTongue": "de",
+            "preferredVariants": "en-GB",
+            "enabledCategories": ["STYLE"],
+            "disabledCategories": ["TYPOS"],
+            "enabledRules": ["PASSIVE_VOICE_SIMPLE"],
+            "disabledRules": ["UPPERCASE_SENTENCE_START"],
+        },
+        headers=_H,
+    )
+    assert resp.status_code == 200, resp.text
+    assert seen == {
+        "text": "hi",
+        "language": "en-US",
+        "level": "picky",
+        "mother_tongue": "de",
+        "preferred_variants": "en-GB",
+        "enabled_categories": ["STYLE"],
+        "disabled_categories": ["TYPOS"],
+        "enabled_rules": ["PASSIVE_VOICE_SIMPLE"],
+        "disabled_rules": ["UPPERCASE_SENTENCE_START"],
+    }
 
 
 def test_check_defaults_language_and_dictionary(client, monkeypatch):
     seen = {}
 
-    def fake_check(text, language="en-US", dictionary_words=None):
+    def fake_check(text, language="en-US", dictionary_words=None, **kwargs):
         seen.update(text=text, language=language, dictionary_words=dictionary_words)
         return []
 
     monkeypatch.setattr(grammar_service, "check", fake_check)
     assert client.post("/api/grammar/check", json={"text": "hi"}, headers=_H).status_code == 200
     assert seen == {"text": "hi", "language": "en-US", "dictionary_words": None}
+
+
+# --- service: options + rich match parsing ----------------------------------
+
+
+class _FakeCheckResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+class _FakeCheckClient:
+    def __init__(self, payload):
+        self._payload = payload
+        self.posted = None
+
+    def post(self, url, data=None):
+        self.posted = (url, data)
+        return _FakeCheckResponse(self._payload)
+
+
+def _lt_match(**overrides):
+    match = {
+        "message": "For a more expressive style, consider rephrasing.",
+        "shortMessage": "Passive voice",
+        "replacements": [{"value": "the committee wrote the report"}],
+        "offset": 0,
+        "length": 39,
+        "context": {"text": "The report was written.", "offset": 0, "length": 39},
+        "sentence": "The report was written.",
+        "rule": {
+            "id": "PASSIVE_VOICE_SIMPLE",
+            "description": "simple cases of passive voice",
+            "issueType": "style",
+            "urls": [{"value": "https://languagetool.org/insights/post/what-is-passive-voice/"}],
+            "category": {"id": "STYLE", "name": "Style"},
+            "tags": ["picky"],
+        },
+    }
+    match.update(overrides)
+    return match
+
+
+def test_service_forwards_options_and_omits_empty_ones(monkeypatch):
+    fake = _FakeCheckClient({"matches": []})
+    monkeypatch.setattr(grammar_service, "_client", fake)
+    monkeypatch.setattr(grammar_service, "_lt_process", None)
+
+    grammar_service.check(
+        "hi",
+        "en-US",
+        None,
+        level="picky",
+        disabled_rules=["A"],
+        enabled_categories=["STYLE"],
+        mother_tongue=None,
+    )
+
+    _url, data = fake.posted
+    assert data["level"] == "picky"
+    assert data["disabledRules"] == "A"
+    assert data["enabledCategories"] == "STYLE"
+    assert "motherTongue" not in data
+    assert "disabledCategories" not in data
+
+
+def test_service_parses_the_rich_match_shape(monkeypatch):
+    fake = _FakeCheckClient({"matches": [_lt_match()]})
+    monkeypatch.setattr(grammar_service, "_client", fake)
+    monkeypatch.setattr(grammar_service, "_lt_process", None)
+
+    [match] = grammar_service.check("The report was written.", "en-US", None)
+    assert match["short_message"] == "Passive voice"
+    assert match["rule_id"] == "PASSIVE_VOICE_SIMPLE"
+    assert match["rule_description"] == "simple cases of passive voice"
+    assert match["rule_url"].endswith("what-is-passive-voice/")
+    assert match["category_id"] == "STYLE"
+    assert match["category"] == "Style"
+    assert match["issue_type"] == "style"
+    assert match["severity"] == "style"
+    assert match["tags"] == ["picky"]
+    assert match["replacements"] == ["the committee wrote the report"]
+    assert match["sentence"] == "The report was written."
+
+
+def test_service_derives_a_docs_url_when_the_rule_has_none(monkeypatch):
+    rule = _lt_match()["rule"]
+    rule.pop("urls")
+    fake = _FakeCheckClient({"matches": [_lt_match(rule=rule)]})
+    monkeypatch.setattr(grammar_service, "_client", fake)
+    monkeypatch.setattr(grammar_service, "_lt_process", None)
+
+    [match] = grammar_service.check("The report was written.", "en-US", None)
+    assert match["rule_url"] == (
+        "https://community.languagetool.org/rule/show/PASSIVE_VOICE_SIMPLE"
+    )
+
+
+def test_service_maps_severity_and_keeps_spelling_filter(monkeypatch):
+    miss = _lt_match(
+        rule={"id": "MORFOLOGIK_RULE_EN_US", "issueType": "misspelling", "category": {}},
+        offset=0,
+        length=3,
+        context={"text": "teh cat", "offset": 0, "length": 3},
+    )
+    fake = _FakeCheckClient({"matches": [miss]})
+    monkeypatch.setattr(grammar_service, "_client", fake)
+    monkeypatch.setattr(grammar_service, "_lt_process", None)
+
+    assert grammar_service.check("teh cat", "en-US", None)[0]["severity"] == "error"
+    # The project spelling list still wins over the richer payload.
+    assert grammar_service.check("teh cat", "en-US", ["teh"]) == []
 
 
 def test_check_returns_503_when_unavailable(client, monkeypatch):
