@@ -346,6 +346,25 @@ function _grammarDomRange(view, errorEl) {
   }
 }
 
+// Replace [from, to) with `value`, dropping the decoration for the replaced
+// range so a stale squiggle cannot linger, and keeping the re-check out of the
+// dispatch it triggers. Shared by the tooltip chips and the Language panel.
+function _grammarApplyReplacement(view, from, to, value) {
+  if (!view || view.isDestroyed) return false;
+  const size = view.state.doc.content.size;
+  if (from < 0 || to > size || to <= from) return false;
+  const tr = view.state.tr;
+  try {
+    _grammarSkipping = true;
+    _grammarReplaceRange = { from, to };
+    tr.replaceWith(from, to, view.state.schema.text(value));
+    view.dispatch(tr);
+  } finally {
+    _grammarSkipping = false;
+  }
+  return true;
+}
+
 const GRAMMAR_FETCH_TIMEOUT_MS = 30000;
 
 async function _grammarFetch(text) {
@@ -403,9 +422,13 @@ function _grammarUpdate(view, docText, matches) {
   view.dispatch(view.state.tr.setMeta("grammarDecorations", { set, textHash }));
   _grammarSkipping = false;
   // Publish the same set to whoever is listening (the Language panel), so the
-  // list and the squiggles can never disagree about what was found.
+  // list and the squiggles can never disagree about what was found. Keep it on
+  // the view too: a re-mounted editor already holds its decorations, so a panel
+  // built after the last check can replay the list instead of waiting.
+  const payload = { matches: reported, textHash };
+  view._grammarResultsLast = payload;
   const onResults = view._grammarResultsCb;
-  if (onResults) onResults({ matches: reported, textHash });
+  if (onResults) onResults(payload);
 }
 
 function _grammarSchedule(view) {
@@ -677,18 +700,10 @@ function _grammarShowTooltip(errorEl) {
         if (!view || view.isDestroyed) return;
         const range = _grammarDomRange(view, errorEl);
         if (!range) return;
-        const { from, to } = range;
-        const tr = view.state.tr;
-        try {
-          _grammarSkipping = true;
-          _grammarReplaceRange = { from, to };
-          tr.replaceWith(from, to, view.state.schema.text(r));
-          view.dispatch(tr);
-        } finally {
-          _grammarSkipping = false;
+        if (_grammarApplyReplacement(view, range.from, range.to, r)) {
+          _grammarHideTooltip();
+          _grammarSchedule(view);
         }
-        _grammarHideTooltip();
-        _grammarSchedule(view);
       });
       rl.appendChild(chip);
     }
@@ -1463,6 +1478,18 @@ window.LainEditor = {
       // own results; the active view is the only one that checks.
       setOnGrammarResults(callback) {
         editor.view._grammarResultsCb = typeof callback === "function" ? callback : null;
+      },
+      // The last published check (see _grammarUpdate) so a freshly built panel
+      // can show the current list without forcing another round trip.
+      getGrammarResults() {
+        return editor.view._grammarResultsLast || null;
+      },
+      // Used by the Language panel: apply a suggestion at a document range and
+      // re-check once the edit settles.
+      applyGrammarReplacement(from, to, value) {
+        if (!_grammarApplyReplacement(editor.view, from, to, value)) return false;
+        _grammarSchedule(editor.view);
+        return true;
       },
       // Typewriter mode: keep the caret near the middle. Enabling it recenters
       // right away so the current line snaps into place without waiting for a

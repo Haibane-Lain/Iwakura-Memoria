@@ -2085,6 +2085,208 @@ a {
   border-color: var(--accent);
 }
 
+.icon-btn.has-issues {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---------- Language panel ---------- */
+
+/* Unlike the comments/backlinks panels this one is a column: a fixed head, a
+   filter row, and a scrolling list. It docks to the right of the editor and can
+   be undocked into a fixed, draggable window (see .floating below). */
+.language-panel {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--language-w, 320px);
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+}
+
+.language-panel.open {
+  display: flex;
+}
+
+.language-panel.floating {
+  position: fixed;
+  z-index: 150;
+  max-height: 72vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.language-resize {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.language-head {
+  flex: 0 0 auto;
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.language-panel.floating .language-head {
+  cursor: move;
+}
+
+.language-total {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.language-filters {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 12px 4px;
+}
+
+.language-filter {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border-radius: 12px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.language-filter.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.language-stale {
+  padding: 4px 12px 0;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.language-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.language-item {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.language-item:hover {
+  background: var(--surface-2);
+}
+
+.language-item.active {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.language-item.severity-error {
+  border-left-color: var(--danger);
+}
+
+.language-item.severity-warning {
+  border-left-color: var(--warn);
+}
+
+.language-item.severity-style {
+  border-left-color: var(--accent);
+}
+
+.language-item-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.language-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.language-dot.severity-error {
+  background: var(--danger);
+}
+
+.language-dot.severity-warning {
+  background: var(--warn);
+}
+
+.language-dot.severity-style {
+  background: var(--accent);
+}
+
+.language-flag {
+  font-family: var(--font-editor);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.language-msg {
+  margin: 4px 0 3px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.language-item-meta {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.language-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.language-rep {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 12px;
+  padding: 1px 9px;
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.language-rep:hover {
+  opacity: 0.8;
+}
+
+.language-rep.ghost {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-faint);
+}
+
 /* ---------- Critique picker ---------- */
 
 .critique-hint {
@@ -3853,6 +4055,13 @@ a {
     top: 52px;
     bottom: 0;
     box-shadow: var(--shadow);
+  }
+
+  /* A panel the user has deliberately undocked keeps its own position rather
+     than being stretched across the viewport by the rule above. */
+  .language-panel.floating {
+    right: auto;
+    bottom: auto;
   }
 
   .lain-rail {

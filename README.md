@@ -54,8 +54,9 @@ install; see [Lookup](#lookup).
   and per-section fonts/sizes/alignment, and a default zoom per tab (100% for
   **Write**, 75% for **Wiki**).
 - **Grammar checking** — Bundled LanguageTool 6.9 Java server, with
-  ProseMirror inline underlines, replacement corrections, and a per-project
-  spelling list.
+  ProseMirror inline underlines, replacement corrections, a per-project
+  spelling list, and a dockable **Language** panel that lists every issue
+  (errors, warnings, and the picky style suggestions) with click-to-jump.
 - **Spelling list** — Words you add are filtered from grammar results across
   the entire project.
 - **Lookup** — Select a word (or right-click it) and open **🔎 Lookup** for
@@ -318,12 +319,32 @@ exit, and restarts are instant.
 - Enable or disable from the **toolbar toggle**; the choice is remembered
   across restarts (stored as `grammarEnabled` in `settings.json`).
 - Underlines appear inline in the editor with a 1.5s debounce.
-- Click an underline to see the error message and replacement suggestions.
+- Click an underline to see the error message, the rule it comes from, and
+  replacement suggestions.
 - Apply a replacement to automatically correct the text.
 - Click **Add … to spelling** to ignore a word across all documents in the
   project (stored in the project's `dictionary.json`).
 - Open the **Spelling** toolbar button to view, search, add, or remove those
   words.
+
+**Language panel.** The **Language** button in the editor's status bar opens a
+panel listing every issue in the focused document, so a chapter can be reviewed
+as a set instead of one underline at a time. It is fed by the same check the
+underlines use, so the two can never disagree.
+
+- Issues are grouped by severity — **Errors**, **Warnings**, and **Style** —
+  with a filter for each and a live count on the button. The style rules
+  (passive voice and friends) run at LanguageTool's *picky* level and are listed
+  in the panel but deliberately **not** underlined inline, so the page does not
+  fill with squiggles.
+- Click an issue to jump to it in the text; apply a suggested replacement, or
+  hand the flagged word to the project spelling list, straight from the row.
+- The panel **docks to the right** of the editor by default. The **⤢** button
+  undocks it into a floating, draggable window (**⤡** docks it again), and
+  dragging its edge resizes it. The mode, width and position are remembered on
+  this machine.
+- While the document is being edited the list shows **Document changed —
+  checking…**; it catches up as soon as the next check lands.
 
 Toggling grammar off hides the underlines; the bundled server still starts
 at boot (it's already running and shared, so there's nothing to save). You

@@ -167,6 +167,33 @@ await check("the check asks for picky style rules and honours setGrammarOptions"
   }
 });
 
+await check("the last results are cached so a rebuilt panel can replay them", async () => {
+  const s = open("teh end");
+  try {
+    await runCheck(s.ctrl);
+    const last = s.ctrl.getGrammarResults();
+    assert.ok(last, "a payload was stored");
+    assert.equal(last.matches.length, 1, "one match cached");
+    assert.deepEqual(last.matches[0].match.replacements, ["the"]);
+  } finally {
+    s.close();
+  }
+});
+
+await check("a panel callback receives the same set the editor underlined", async () => {
+  const s = open("teh end");
+  try {
+    const seen = [];
+    s.ctrl.setOnGrammarResults((payload) => seen.push(payload));
+    await runCheck(s.ctrl);
+    assert.equal(seen.length, 1, "the callback fired once");
+    assert.equal(seen[0].matches.length, 1);
+    assert.equal(seen[0].matches[0].from >= 0, true, "a mapped document range is included");
+  } finally {
+    s.close();
+  }
+});
+
 await check("disabling grammar clears the squiggles", async () => {
   const s = open("teh end");
   try {

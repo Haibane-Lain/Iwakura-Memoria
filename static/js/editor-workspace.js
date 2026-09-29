@@ -26,6 +26,7 @@ import { zoomFactor } from "./zoom.js";
 import { defaultZoomForScope as resolveDefaultZoom } from "./editor-prefs.js";
 import { prettyPath } from "./doc-tree.js";
 import { commentsPanel } from "./comments-panel.js";
+import { grammarPanel } from "./grammar-panel.js";
 import { createScrollMemory } from "./editor-scroll.js";
 import { createLatestTask } from "./latest-task.js";
 
@@ -130,6 +131,7 @@ export function setActivePane(name) {
     }
   }
   syncPaneFocus();
+  if (pane.grammarPanel) pane.grammarPanel._render();
   shell.refreshToolbar();
   shell.refreshEditorContext();
   shell.updateTargetIndicator();
@@ -574,8 +576,15 @@ function renderPane(pane, doc) {
     syncComments: (items) => syncPaneComments(pane, items),
     onCount: (items) => updateCommentsButton(pane, items),
   });
+  const language = grammarPanel({
+    pane,
+    isEnabled: () => !pane.revisionMode && state.settings.grammarEnabled,
+    onCount: (count) => updateGrammarButton(pane, count),
+    onAddWord: (word) => { if (pane.ctrl) addWordToDictionary(pane.ctrl, word); },
+    onClose: () => language.classList.remove("open"),
+  });
   const backlinks = backlinksPanel(pane);
-  const panels = [comments, backlinks];
+  const panels = [comments, language, backlinks];
   const wrap = el("div", { class: "editor-wrap" }, [host, ...panels]);
 
   // One side panel is open at a time; the buttons in the status bar switch it.
@@ -585,10 +594,16 @@ function renderPane(pane, doc) {
     if (!willOpen) return;
     target.classList.add("open");
     if (target === comments) comments._reload();
+    else if (target === language) language._render();
   };
 
   const wordsEl = el("span", { class: "st-words" }, "0 words");
   const saveEl = el("span", { class: "st-save status-save" }, "Ready");
+  const languageBtn = el("button", {
+    class: "icon-btn",
+    title: "Language issues in the focused document",
+    onclick: () => togglePanel(language),
+  }, "Language");
   const commentsBtn = el("button", {
     class: "icon-btn",
     title: "Comments on the focused document",
@@ -597,6 +612,7 @@ function renderPane(pane, doc) {
   const status = el("div", { class: "editor-status" }, [
     wordsEl,
     el("div", { class: "spacer" }),
+    languageBtn,
     commentsBtn,
     el("button", {
       class: "icon-btn",
@@ -625,6 +641,8 @@ function renderPane(pane, doc) {
   pane.panel = backlinks;
   pane.commentsPanel = comments;
   pane.commentsBtn = commentsBtn;
+  pane.grammarPanel = language;
+  pane.grammarBtn = languageBtn;
   pane.wordsEl = wordsEl;
   pane.saveEl = saveEl;
   return root;
@@ -653,6 +671,30 @@ function updateCommentsButton(pane, items) {
   const open = (items || []).filter((c) => !c.resolved).length;
   pane.commentsBtn.textContent = open ? `Comments (${open})` : "Comments";
   pane.commentsBtn.classList.toggle("has-comments", open > 0);
+}
+
+function updateGrammarButton(pane, count) {
+  if (!pane.grammarBtn) return;
+  const n = count || 0;
+  pane.grammarBtn.textContent = n ? `Language (${n})` : "Language";
+  pane.grammarBtn.classList.toggle("has-issues", n > 0);
+}
+
+// The grammar plugin publishes its matches (see editor-entry.js) so the
+// Language panel lists exactly what the editor underlined. The callback reads
+// `pane.grammarPanel` at call time, so a pane re-render swaps the panel under a
+// cached editor without re-subscribing.
+function wireGrammarResults(pane, ctrl) {
+  if (!ctrl || typeof ctrl.setOnGrammarResults !== "function") return;
+  ctrl.setOnGrammarResults((payload) => {
+    if (pane.grammarPanel) pane.grammarPanel.setResults(payload);
+  });
+  // A re-mounted editor still holds its decorations but will not re-check (the
+  // text is unchanged), so seed the panel from the last published list.
+  if (pane.grammarPanel && typeof ctrl.getGrammarResults === "function") {
+    const last = ctrl.getGrammarResults();
+    if (last) pane.grammarPanel.setResults(last);
+  }
 }
 
 // The ribbon's Comment button and Ctrl+Alt+M land here: capture the focused
@@ -711,6 +753,7 @@ function mountPaneEditor(pane, doc) {
     pane.mount.appendChild(cached.editor.view.dom);
     pane.ctrl = cached;
     editorPool.activate(doc.id);
+    wireGrammarResults(pane, cached);
     return true;
   }
   let ctrl = null;
@@ -748,6 +791,7 @@ function mountPaneEditor(pane, doc) {
     ]);
   });
   ctrl.setOnLookupWord((word) => shell.openLookup(word));
+  wireGrammarResults(pane, ctrl);
   ctrl.editor.on("transaction", () => { shell.refreshToolbar(); shell.refreshEditorContext(); });
   ctrl.editor.on("selectionUpdate", () => { shell.refreshToolbar(); shell.refreshEditorContext(); });
   return true;
@@ -891,6 +935,7 @@ export async function renderEditorView() {
   for (const { pane } of rendered) {
     if (pane.panel) pane.panel._render();
     if (pane.commentsPanel) pane.commentsPanel._reload();
+    if (pane.grammarPanel) pane.grammarPanel._render();
     updateLiveWords(pane);
   }
   if (active.ctrl) {
@@ -1108,6 +1153,9 @@ export function onEditorUpdate(ctrl, markdown) {
   if (state.split && state.activePane !== pane.name) setActivePane(pane.name);
   pane.dirty = true;
   if (pane === activePane()) state.dirty = true;
+  // The list is now out of date; it becomes current again when the debounced
+  // check publishes the next set of matches.
+  if (pane.grammarPanel) pane.grammarPanel.markStale();
   setPaneSaveStatus(pane, "pending", "Unsaved changes");
   updateLiveWords(pane);
   if (pane.wiki && pane === activePane()) updateContentsBox(markdown, docTitleAny(pane.docId));
