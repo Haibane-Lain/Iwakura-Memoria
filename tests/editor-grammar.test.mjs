@@ -155,6 +155,32 @@ await check("clicking a suggestion after an inline image keeps the image", async
   }
 });
 
+await check("a suggestion keeps the italic formatting of the word it replaces", async () => {
+  const s = open("*teh* end");
+  try {
+    await runCheck(s.ctrl);
+    const [hit] = errors(s.host);
+    assert.ok(hit, "the word is flagged");
+    click(hit);
+    const chip = [...dom.window.document.querySelectorAll(".grammar-rep-chip")].find(
+      (el) => el.textContent === "the"
+    );
+    assert.ok(chip, "the replacement chip is offered");
+    click(chip);
+
+    const marks = [];
+    s.ctrl.editor.state.doc.descendants((node) => {
+      if (node.isText && node.text === "the") {
+        marks.push(node.marks.map((m) => m.type.name));
+      }
+    });
+    assert.equal(marks.length, 1, "the typo was replaced");
+    assert.ok(marks[0].includes("italic"), `the replacement stayed italic, got ${JSON.stringify(marks[0])}`);
+  } finally {
+    s.close();
+  }
+});
+
 await check("the check asks for picky style rules and honours setGrammarOptions", async () => {
   const s = open("teh end");
   try {

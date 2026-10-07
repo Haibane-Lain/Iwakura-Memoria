@@ -357,7 +357,12 @@ function _grammarApplyReplacement(view, from, to, value) {
   try {
     _grammarSkipping = true;
     _grammarReplaceRange = { from, to };
-    tr.replaceWith(from, to, view.state.schema.text(value));
+    // Carry the formatting of the text being replaced (italic, bold, a link)
+    // onto the suggestion; a bare text node would drop it. Mirrors how typing
+    // over a selection inherits marks (Transaction.insertText).
+    const $from = view.state.doc.resolve(from);
+    const marks = $from.marksAcross(view.state.doc.resolve(to));
+    tr.replaceWith(from, to, view.state.schema.text(value, marks));
     view.dispatch(tr);
   } finally {
     _grammarSkipping = false;
