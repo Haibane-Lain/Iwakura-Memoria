@@ -441,6 +441,16 @@ def _doc_kind(raw: str) -> str:
     return kind if kind in ("chapter", "note") else "note"
 
 
+# The review marks a chapter can carry: red = slated for deletion, yellow =
+# needs a rewrite. Stored in frontmatter; anything else reads back as unset.
+_CHAPTER_COLORS = ("red", "yellow")
+
+
+def _chapter_color(meta: dict[str, Any]) -> str | None:
+    color = str(meta.get("color", "") or "").strip().lower()
+    return color if color in _CHAPTER_COLORS else None
+
+
 def _doc_summary(folder: Path, doc_id: str, mode: str = "auto") -> dict[str, Any]:
     path = _doc_path(folder, doc_id)
     if not path.exists():
@@ -455,6 +465,7 @@ def _doc_summary(folder: Path, doc_id: str, mode: str = "auto") -> dict[str, Any
         "title": str(merged.get("title", "")),
         "type": str(merged.get("type", "")),
         "kind": _doc_kind(raw),
+        "color": _chapter_color(meta),
         "words": count_words(body, mode),
         "updatedAt": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
     }
@@ -757,6 +768,7 @@ def get_document(project_id: str, doc_id: str, mode: str = "auto") -> dict[str, 
         "tags": merged.get("tags", []),
         "content": body,
         "style": _style_from_meta(meta),
+        "color": _chapter_color(meta),
         "words": count_words(body, mode),
         "updatedAt": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
     }
@@ -1356,6 +1368,36 @@ def update_style(
                 if zoom is not None:
                     meta["zoom"] = int(zoom)
 
+        config._write_atomic(path, build_frontmatter(meta) + body)
+    return get_document(project_id, doc_id, mode)
+
+
+def update_color(
+    project_id: str,
+    doc_id: str,
+    color: str | None,
+    mode: str = "auto",
+) -> dict[str, Any]:
+    """Set or clear a chapter's review color (``red`` / ``yellow``).
+
+    The mark is stored as a ``color`` key in frontmatter. An empty or unknown
+    value clears it; a real value is validated against ``_CHAPTER_COLORS``.
+    """
+    folder = _project_folder(project_id)
+    path = _doc_path(folder, doc_id)
+    requested = (color or "").strip().lower()
+    if requested and requested not in _CHAPTER_COLORS:
+        raise ValueError(f"Unknown color '{color}'")
+    # Serialize the frontmatter rewrite against an in-flight autosave.
+    with _save_lock_for(path):
+        if not path.exists():
+            raise FileNotFoundError(f"Document '{doc_id}' not found")
+        raw = path.read_text(encoding="utf-8")
+        meta, body = parse_frontmatter(raw)
+        if requested:
+            meta["color"] = requested
+        else:
+            meta.pop("color", None)
         config._write_atomic(path, build_frontmatter(meta) + body)
     return get_document(project_id, doc_id, mode)
 

@@ -221,3 +221,73 @@ def test_missing_document_is_404_not_503(client):
         client.get("/api/projects/ghost/documents/nope", headers=headers).status_code
         == 404
     )
+
+
+# --- Chapter review colors ---------------------------------------------------
+
+
+def test_chapter_color_round_trips(data_dir, make_project):
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Alpha", kind="chapter", content="x")
+    assert doc["color"] is None
+
+    updated = documents_service.update_color("proj", doc["id"], "red")
+    assert updated["color"] == "red"
+
+    # The tree summary carries it too, so the sidebar can render the mark.
+    tree = documents_service.get_tree("proj")
+    assert tree["documents"][0]["color"] == "red"
+
+    # It lives in frontmatter, not in memory.
+    raw = (data_dir / "proj" / f"{doc['id']}.md").read_text(encoding="utf-8")
+    assert "color: red" in raw
+
+
+def test_chapter_color_clears_and_rejects_unknown(data_dir, make_project):
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Alpha", kind="chapter")
+    documents_service.update_color("proj", doc["id"], "yellow")
+    assert documents_service.get_document("proj", doc["id"])["color"] == "yellow"
+
+    cleared = documents_service.update_color("proj", doc["id"], None)
+    assert cleared["color"] is None
+    raw = (data_dir / "proj" / f"{doc['id']}.md").read_text(encoding="utf-8")
+    assert "color" not in raw
+
+    with pytest.raises(ValueError):
+        documents_service.update_color("proj", doc["id"], "green")
+
+
+def test_chapter_color_survives_rename(data_dir, make_project):
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Alpha", kind="chapter")
+    documents_service.update_color("proj", doc["id"], "red")
+    renamed = documents_service.rename_document("proj", doc["id"], "Beta")
+    assert renamed["color"] == "red"
+
+
+def test_document_color_route(client):
+    headers = {"host": "127.0.0.1"}
+    client.post("/api/projects", json={"name": "Demo"}, headers=headers)
+    created = client.post(
+        "/api/projects/demo/documents",
+        json={"title": "Opening", "kind": "chapter"},
+        headers=headers,
+    )
+    assert created.status_code in (200, 201)
+    doc_id = created.json()["id"]
+
+    resp = client.put(
+        f"/api/projects/demo/documents/{doc_id}/color",
+        json={"color": "yellow"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["color"] == "yellow"
+
+    bad = client.put(
+        f"/api/projects/demo/documents/{doc_id}/color",
+        json={"color": "green"},
+        headers=headers,
+    )
+    assert bad.status_code == 400

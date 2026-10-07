@@ -184,6 +184,8 @@ export const api = {
       api.put(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}`, { content }),
     style: (pid, docId, payload) =>
       api.put(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}/style`, payload),
+    setColor: (pid, docId, color) =>
+      api.put(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}/color`, { color }),
     rename: (pid, docId, title) =>
       api.patch(`/api/projects/${encodePath(pid)}/documents/${encodePath(docId)}`, { title }),
     remove: (pid, docId) =>

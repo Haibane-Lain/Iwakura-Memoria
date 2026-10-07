@@ -40,6 +40,10 @@ class DocumentPatch(BaseModel):
     title: str | None = None
 
 
+class ColorPayload(BaseModel):
+    color: str | None = None
+
+
 class DocumentMove(BaseModel):
     docId: str
     folder: str | None = None
@@ -172,6 +176,16 @@ def update_document_style(project_id: str, doc_id: str, payload: StylePayload):
             zoom=payload.zoom,
             clear=payload.clear,
             mode=_mode(),
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise _http_error(exc) from exc
+
+
+@router.put("/{project_id}/documents/{doc_id:path}/color")
+def update_document_color(project_id: str, doc_id: str, payload: ColorPayload):
+    try:
+        return documents_service.update_color(
+            project_id, doc_id, payload.color, _mode()
         )
     except (FileNotFoundError, ValueError) as exc:
         raise _http_error(exc) from exc

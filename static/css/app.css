@@ -668,6 +668,33 @@ a {
   font-weight: 600;
 }
 
+/* Chapter review marks (red = slated for deletion, yellow = needs a rewrite).
+   The dot reads on any theme and stays visible when the row is active; the
+   border tint is declared after `.active` so a marked row keeps its color even
+   when selected. */
+.tree-item .chapter-mark {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chapter-mark.mark-red {
+  background: #c0392b;
+}
+
+.chapter-mark.mark-yellow {
+  background: #d4a017;
+}
+
+.tree-item.mark-red {
+  border-left-color: #c0392b;
+}
+
+.tree-item.mark-yellow {
+  border-left-color: #d4a017;
+}
+
 .tree-item .words {
   margin-left: auto;
   font-size: 11.5px;

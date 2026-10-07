@@ -1169,10 +1169,21 @@ function docItem(doc, folderId) {
   // Dragging a row that is currently an inline name field would fight the text
   // selection, so the new entry cannot be dragged until it is named.
   const naming = doc.id === namingDocId;
+  // A review color only means anything on a chapter (see CHAPTER_COLORS).
+  const color = doc.kind === "chapter" ? doc.color || null : null;
+  const children = [];
+  if (color) {
+    children.push(el("span", { class: `chapter-mark mark-${color}`, "aria-hidden": "true" }));
+  }
+  children.push(
+    el("span", { class: "grip" }, doc.kind === "chapter" ? "≣" : "◦"),
+    naming ? namingInput(doc) : el("span", { class: "name" }, doc.title),
+    el("span", { class: "words" }, formatNumber(doc.words))
+  );
   const node = el(
     "div",
     {
-      class: `tree-item ${isPrimary ? "active" : ""}${isSecondary ? " split-active" : ""}`,
+      class: `tree-item ${isPrimary ? "active" : ""}${isSecondary ? " split-active" : ""}${color ? ` mark-${color}` : ""}`,
       dataset: { docid: doc.id, folder: folderId, kind: doc.kind },
       title: prettyPath(doc),
       draggable: naming ? "false" : "true",
@@ -1185,20 +1196,51 @@ function docItem(doc, folderId) {
       oncontextmenu: (e) => {
         e.preventDefault();
         e.stopPropagation();
-        showContextMenu(e.clientX, e.clientY, [
-          { label: "Open", action: () => openDocument(doc.id) },
-          { label: "Open in split", action: () => openInSplit(doc.id) },
-        ]);
+        showContextMenu(e.clientX, e.clientY, docMenuItems(doc));
       },
     },
-    [
-      el("span", { class: "grip" }, doc.kind === "chapter" ? "≣" : "◦"),
-      naming ? namingInput(doc) : el("span", { class: "name" }, doc.title),
-      el("span", { class: "words" }, formatNumber(doc.words)),
-    ]
+    children
   );
   if (!naming) setupDocDrag(node);
   return node;
+}
+
+// The review marks a chapter can carry. The values match the server's
+// `_CHAPTER_COLORS`; the labels are what the right-click menu shows.
+const CHAPTER_COLORS = [
+  { value: "red", label: "Mark for deletion" },
+  { value: "yellow", label: "Mark for rewrite" },
+];
+
+// Everything a document offers in the sidebar. Chapters also get the color
+// marks; the one already applied is omitted so a click always changes state.
+function docMenuItems(doc) {
+  const items = [
+    { label: "Open", action: () => openDocument(doc.id) },
+    { label: "Open in split", action: () => openInSplit(doc.id) },
+  ];
+  if (doc.kind !== "chapter") return items;
+  items.push(null);
+  for (const { value, label } of CHAPTER_COLORS) {
+    if (doc.color === value) continue;
+    items.push({ label, action: () => setChapterColor(doc.id, value) });
+  }
+  if (doc.color) {
+    items.push({ label: "Clear mark", action: () => setChapterColor(doc.id, null) });
+  }
+  return items;
+}
+
+// Persist a chapter's color, then rebuild the tree so the row repaints. Like a
+// rename, this only changes a row, so the list must not jump.
+async function setChapterColor(docId, color) {
+  try {
+    await api.docs.setColor(state.project.id, docId, color);
+    await refreshTree();
+    renderSidebar({ keepScroll: true });
+  } catch (err) {
+    toast(err.message || "Could not set the color", "error");
+  }
 }
 
 function toggleFolder(id) {
