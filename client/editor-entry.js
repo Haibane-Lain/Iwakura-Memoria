@@ -54,6 +54,7 @@ import {
   setCommentPreserving,
 } from "./comments.js";
 import { PendingPos, setPendingPos, pendingPos, clearPendingPos } from "./pending-pos.js";
+import { makeSmartQuotesExtension } from "./smart-quotes.js";
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
@@ -1108,6 +1109,7 @@ function makeEditor({ element, content, placeholder, onChange, onWikilinkClick, 
       makeCommentsExtension(),
       makeFindHighlightExtension(),
       PendingPos,
+      makeSmartQuotesExtension(),
       ...makeCharacterTableNodes(imageOpts),
       ...makeTimelineNodes(),
     ],
