@@ -318,7 +318,8 @@ const PROJECT_ROUTES = [
   [/\/api\/projects\/demo\/trash$/, () => []],
   [/\/api\/projects\/demo\/snapshots/, () => []],
   [/\/api\/projects\/demo\/comments/, () => []],
-  // The library lists projects; used when leaving a project for `#/`.
+  // The worlds list; used when leaving a project for `#/`.
+  [/\/api\/worlds$/, () => []],
   [/\/api\/projects$/, () => [PROJECT]],
   [/\/api\/projects\/demo$/, () => PROJECT],
   [/\/api\/backups$/, () => []],
@@ -829,7 +830,7 @@ await check("app.js boots into the library route", async () => {
   const dom = makeDom();
   const { unmatched } = installFetch([
     [/\/api\/settings$/, () => SETTINGS],
-    [/\/api\/projects$/, () => []],
+    [/\/api\/worlds$/, () => []],
   ]);
   const capture = captureErrors(dom);
 
@@ -838,8 +839,8 @@ await check("app.js boots into the library route", async () => {
   await waitFor(() => doc.querySelector("#app .library"));
 
   assert.ok(doc.querySelector("#app .topbar"), "library topbar rendered");
-  assert.ok(doc.querySelector("#app .library"), "project library rendered");
-  assert.match(doc.querySelector("#app .library").textContent, /No projects yet/);
+  assert.ok(doc.querySelector("#app .library"), "worlds library rendered");
+  assert.match(doc.querySelector("#app .library").textContent, /No worlds yet/);
 
   // Import from the library builds a whole new project: the dialog asks for the
   // project name and needs no existing project to list folders for.

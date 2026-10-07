@@ -64,6 +64,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 PROJECT_META_FILENAME = "project.json"
+# The library manifest: worlds, their series, and the books (project ids) in
+# each. One file at the data root so project folders stay flat.
+WORLDS_FILENAME = "worlds.json"
 # Per-project spelling list (the grammar ignore list).
 DICTIONARY_FILENAME = "dictionary.json"
 STATS_DIRNAME = "stats"
@@ -82,6 +85,9 @@ SNAPSHOTS_DIRNAME = ".snapshots"
 # At the data root for the same reason as the trash and snapshots; unlike
 # those, it is content, so backups keep it.
 COMMENTS_DIRNAME = ".comments"
+# Cover images for worlds and books. At the data root (a world is not a
+# project), and content rather than transient state, so backups keep it.
+COVERS_DIRNAME = ".covers"
 # Lain chat sessions, keyed by project id. At the data root like the trash and
 # snapshots. A project slug that lands on this name would shadow them, so
 # ``is_safe_project_id`` rejects it.

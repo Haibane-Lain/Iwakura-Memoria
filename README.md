@@ -49,6 +49,12 @@ install; see [Lookup](#lookup).
   server as a child process, frameless with a custom-themed title bar,
   maximize/restore/fullscreen, and a single-instance lock. The legacy
   pywebview path is kept behind `run.bat --pywebview`.
+- **Worlds library** — The landing page is a shelf of **worlds**. A world holds
+  **series** (big containers that grow to fit their books) and an **Unsorted**
+  shelf; a **book** is a project you open in the editor directly. Create,
+  rename, delete, drag to reorder, and move books between series, and give
+  worlds and books an uploaded cover (a plain white one until you do). It is a
+  grouping layer only — a book's folder, prose and wiki are untouched.
 - **WYSIWYG editor** — TipTap-based ProseMirror editor with markdown
   round-tripping, wikilinks (`[[Target]]` / `[[Target|alias]]`), per-document
   and per-section fonts/sizes/alignment, and a default zoom per tab (100% for
@@ -206,6 +212,8 @@ Each project is a free-form scaffolding tree of **folders** and **documents**:
 ```
 data/
   settings.json                    # global settings (theme, word count mode, zoom per tab, grammar toggle, focus & typewriter modes, AI config)
+  worlds.json                      # the library: worlds, their series, and the books in each
+  .covers/                         # uploaded covers for worlds and books
   .zoom-rebased                    # marker: stored zoom values use the current 100% scale
   ai-sessions/<project>/           # Lain chat session history
   .trash/<project>/                # deleted entries, restorable from Settings -> Trash
@@ -225,6 +233,15 @@ data/
       character-notes.md           # a note (type: note)
     prologue.md                    # root-level documents are allowed
 ```
+
+The **library** above the projects lives in `worlds.json`: a list of worlds,
+each with its series and the project ids they contain. A project that is not in
+any world (a fresh import, a folder restored by hand) is adopted by the first
+world's **Unsorted** shelf on the next read, so a stale manifest can only
+shuffle books, never lose them. Book covers are recorded in the project's own
+`project.json` (`cover`), world covers in `worlds.json`, and the image files
+sit in `.covers/` at the data root. The grouping is only references — deleting
+a world or series never deletes a book.
 
 Folders are directories, documents are Markdown files. The document's kind
 (chapter vs note) lives in YAML frontmatter (`type:`); `title` is the display
@@ -702,9 +719,9 @@ static/
   lib/marked.js            # Markdown renderer for Lain chat
   css/themes.css           # CSS-variable palettes (7 themes)
   css/app.css
-  js/                      # api, router, ui, themes, library, project, lain,
-                           # sanitize, tree-search, image-utils, fonts, zoom,
-                           # scroll-keep
+  js/                      # api, router, ui, themes, library (worlds), world,
+                           # project, lain, drag-order, context-menu, sanitize,
+                           # tree-search, image-utils, fonts, zoom, scroll-keep
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
 client/character-table.js  # the wiki info box's TipTap nodes + Markdown form

@@ -63,6 +63,28 @@ async function request(method, url, body, timeoutMs = REQUEST_TIMEOUT_MS) {
   return res.json();
 }
 
+// Multipart uploads (covers, assets) bypass the JSON helper but share its
+// error extraction.
+async function jsonFrom(res) {
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const data = await res.json();
+      if (data.detail) detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+function uploadImage(url, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return fetch(url, { method: "POST", body: fd }).then(jsonFrom);
+}
+
 export const api = {
   get: (url) => request("GET", url),
   post: (url, body, timeoutMs) => request("POST", url, body, timeoutMs),
@@ -86,6 +108,8 @@ export const api = {
     get: (id) => api.get(`/api/projects/${encodePath(id)}`),
     rename: (id, title) => api.patch(`/api/projects/${encodePath(id)}`, { title }),
     remove: (id) => api.del(`/api/projects/${encodePath(id)}`),
+    setCover: (id, file) => uploadImage(`/api/projects/${encodePath(id)}/cover`, file),
+    removeCover: (id) => api.del(`/api/projects/${encodePath(id)}/cover`),
     tree: (id, scope) =>
       api.get(`/api/projects/${encodePath(id)}/tree${scope ? `?scope=${scope}` : ""}`),
     setGoal: (id, wordsPerDay, enabled) =>
@@ -173,6 +197,35 @@ export const api = {
         });
       },
     },
+  },
+
+  worlds: {
+    list: () => api.get("/api/worlds"),
+    get: (id) => api.get(`/api/worlds/${encodePath(id)}`),
+    create: (title) => api.post("/api/worlds", { title }),
+    rename: (id, title) => api.patch(`/api/worlds/${encodePath(id)}`, { title }),
+    remove: (id) => api.del(`/api/worlds/${encodePath(id)}`),
+    addSeries: (id, title) => api.post(`/api/worlds/${encodePath(id)}/series`, { title }),
+    renameSeries: (id, seriesId, title) =>
+      api.patch(`/api/worlds/${encodePath(id)}/series/${encodePath(seriesId)}`, { title }),
+    removeSeries: (id, seriesId) =>
+      api.del(`/api/worlds/${encodePath(id)}/series/${encodePath(seriesId)}`),
+    addBook: (id, title, seriesId) =>
+      api.post(`/api/worlds/${encodePath(id)}/books`, { title, seriesId: seriesId || null }),
+    moveBook: (id, projectId, seriesId) =>
+      api.put(`/api/worlds/${encodePath(id)}/books/${encodePath(projectId)}`, {
+        seriesId: seriesId || null,
+      }),
+    reorderWorlds: (orderedIds) => api.put("/api/worlds/reorder", { orderedIds }),
+    reorderSeries: (id, orderedIds) =>
+      api.put(`/api/worlds/${encodePath(id)}/series/reorder`, { orderedIds }),
+    reorderBooks: (id, orderedIds, seriesId) =>
+      api.put(`/api/worlds/${encodePath(id)}/books/reorder`, {
+        orderedIds,
+        seriesId: seriesId || null,
+      }),
+    setCover: (id, file) => uploadImage(`/api/worlds/${encodePath(id)}/cover`, file),
+    removeCover: (id) => api.del(`/api/worlds/${encodePath(id)}/cover`),
   },
 
   docs: {

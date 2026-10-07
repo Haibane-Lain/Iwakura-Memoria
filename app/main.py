@@ -29,6 +29,7 @@ from app.routes import snapshots as snapshot_routes
 from app.routes import templates as templates_routes
 from app.routes import trash as trash_routes
 from app.routes import wiki as wiki_routes
+from app.routes import worlds as worlds_routes
 from app.security import check_local_request
 from app.services import documents as documents_service
 
@@ -206,6 +207,8 @@ def create_app() -> FastAPI:
     app.include_router(trash_routes.router)
     app.include_router(snapshot_routes.router)
     app.include_router(comments_routes.router)
+    app.include_router(worlds_routes.router)
+    app.include_router(worlds_routes.covers_router)
     app.include_router(backup_routes.router)
 
     config.STATIC_DIR.mkdir(parents=True, exist_ok=True)

@@ -20,6 +20,7 @@ from pathlib import Path
 
 CSS_PATH = Path(__file__).resolve().parent.parent / "static" / "css" / "app.css"
 PROJECT_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "project.js"
+CONTEXT_MENU_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "context-menu.js"
 LAIN_JS = Path(__file__).resolve().parent.parent / "static" / "js" / "lain.js"
 EDITOR_WORKSPACE_JS = (
     Path(__file__).resolve().parent.parent / "static" / "js" / "editor-workspace.js"
@@ -210,9 +211,11 @@ def test_a_folder_offers_its_actions_on_right_click():
         assert f'label: "{label}"' in js, f"the folder menu must offer {label!r}"
 
     # A row near the bottom of a long tree must not open the menu off screen.
+    # The clamping lives in the shared menu module now.
+    menu_js = CONTEXT_MENU_JS.read_text(encoding="utf-8")
     assert re.search(
         r"menu\.style\.top = `\$\{Math\.max\(4, Math\.min\(y, window\.innerHeight",
-        js,
+        menu_js,
     ), (
         "showContextMenu must keep the menu inside the viewport"
     )

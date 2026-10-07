@@ -1,6 +1,7 @@
 import * as theme from "./themes.js";
 import * as router from "./router.js";
 import * as library from "./library.js";
+import * as world from "./world.js";
 import * as project from "./project.js";
 import { toast } from "./ui.js";
 
@@ -18,6 +19,7 @@ window.addEventListener("unhandledrejection", function (e) {
 async function boot() {
   await theme.load();
   library.init();
+  world.init();
   project.register();
   router.start();
   setupTitleBar();

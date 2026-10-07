@@ -1,11 +1,12 @@
 """Projects API."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.services import projects as projects_service
+from app.services.assets import MAX_IMAGE_BYTES, AssetError
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -82,6 +83,44 @@ def get_tree(project_id: str, scope: str = "write"):
 def put_goal(project_id: str, payload: GoalPatch):
     try:
         return projects_service.set_goal(project_id, payload.wordsPerDay, payload.enabled)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _read_cover_upload(file: UploadFile) -> bytes:
+    raw = b""
+    while True:
+        chunk = file.file.read(1024 * 1024)
+        if not chunk:
+            break
+        raw += chunk
+        if len(raw) > MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Image exceeds the {MAX_IMAGE_BYTES // (1024 * 1024)} MB limit",
+            )
+    return raw
+
+
+@router.post("/{project_id}/cover")
+def upload_cover(project_id: str, file: UploadFile = File(...)):
+    raw = _read_cover_upload(file)
+    try:
+        return projects_service.set_cover(project_id, raw)
+    except AssetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/{project_id}/cover")
+def delete_cover(project_id: str):
+    try:
+        return projects_service.clear_cover(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except ValueError as exc:

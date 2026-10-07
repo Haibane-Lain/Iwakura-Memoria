@@ -52,6 +52,7 @@ import { keepScrollTop, alignTop } from "./scroll-keep.js";
 import { createLatestTask } from "./latest-task.js";
 import { UNTITLED, renameTarget } from "./entry-naming.js";
 import { TEXT_COLORS } from "./text-colors.js";
+import { showContextMenu } from "./context-menu.js";
 import {
   el,
   toast,
@@ -1252,57 +1253,6 @@ function toggleFolder(id) {
 
 /* ---------------- context menu ---------------- */
 
-let menuCleanup = null;
-
-function closeContextMenu() {
-  if (menuCleanup) {
-    menuCleanup();
-    menuCleanup = null;
-  }
-}
-
-function showContextMenu(x, y, items) {
-  closeContextMenu();
-  const menu = el("div", { class: "context-menu", style: { left: `${x}px`, top: `${y}px` } });
-  for (const item of items) {
-    if (item === null) {
-      menu.append(el("div", { class: "context-sep" }));
-    } else {
-      menu.append(
-        el("div", {
-          class: "context-item",
-          onclick: () => {
-            closeContextMenu();
-            item.action();
-          },
-        }, item.label)
-      );
-    }
-  }
-  document.body.append(menu);
-  // Keep the menu on screen: a row near the bottom of a long tree would
-  // otherwise open it past the viewport edge, where it cannot be reached.
-  const box = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - box.width - 4))}px`;
-  menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - box.height - 4))}px`;
-  const onDocClick = (e) => {
-    if (!menu.contains(e.target)) closeContextMenu();
-  };
-  const onKey = (e) => {
-    if (e.key === "Escape") closeContextMenu();
-  };
-  // The click listener waits a tick so the opening click does not close the
-  // menu; clear the timer on dismiss so a menu closed before it fires cannot
-  // leave a stray listener that closes the *next* menu.
-  const timer = setTimeout(() => document.addEventListener("click", onDocClick), 0);
-  document.addEventListener("keydown", onKey);
-  menuCleanup = () => {
-    clearTimeout(timer);
-    document.removeEventListener("click", onDocClick);
-    document.removeEventListener("keydown", onKey);
-    menu.remove();
-  };
-}
 
 /* ---------------- drag & drop ---------------- */
 

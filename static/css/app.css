@@ -300,40 +300,280 @@ a {
   font-weight: 700;
 }
 
-.project-grid {
+.world-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 22px;
 }
 
-.project-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  cursor: pointer;
-  transition: transform var(--transition), box-shadow var(--transition);
+.world-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  cursor: pointer;
+  transition: transform var(--transition);
 }
 
-.project-card:hover {
-  transform: translateY(-2px);
+.world-card:hover {
+  transform: translateY(-3px);
+}
+
+.world-cover-frame {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
   box-shadow: var(--shadow);
+  background: #ffffff;
 }
 
-.project-card h3 {
-  font-size: 17px;
+.world-cover,
+.book-cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A plain white cover until one is uploaded. */
+.cover-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+}
+
+.world-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.world-card:hover .world-card-actions {
+  opacity: 1;
+}
+
+.world-card-actions .icon-btn {
+  background: rgba(20, 20, 24, 0.62);
+  border: none;
+  color: #fff;
+  font-size: 11.5px;
+  padding: 4px 8px;
+}
+
+.world-card-actions .icon-btn.danger {
+  background: rgba(150, 26, 26, 0.82);
+}
+
+.world-card-info {
+  padding: 10px 2px 0;
+}
+
+.world-title {
+  font-size: 16px;
   font-weight: 650;
 }
 
-.project-meta {
+.world-counts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.dot-sep {
+  color: var(--text-dim);
+}
+
+/* ---------- A world's page ---------- */
+
+.world-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 20px 80px;
+}
+
+.world-hero {
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+  margin-bottom: 28px;
+}
+
+.world-hero-cover {
+  flex: 0 0 auto;
+  width: 150px;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.world-hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.world-back {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.world-back:hover {
+  color: var(--text);
+}
+
+.world-hero-title {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.world-hero-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* A series is a container that grows to fit its books; it never scrolls. */
+.series-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.series-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  padding: 16px 18px 20px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.series-panel.unsorted {
+  border-style: dashed;
+  background: transparent;
+}
+
+.series-panel.drop-before {
+  box-shadow: 0 -3px 0 var(--accent);
+}
+
+.series-panel.drop-after {
+  box-shadow: 0 3px 0 var(--accent);
+}
+
+.series-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.series-grip {
+  cursor: grab;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.series-title {
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.series-count {
   font-size: 12.5px;
   color: var(--text-dim);
+}
+
+.series-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.series-panel:hover .series-actions {
+  opacity: 1;
+}
+
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 16px;
+  min-height: 40px;
+  border-radius: var(--radius);
+}
+
+.book-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform var(--transition), opacity var(--transition);
+}
+
+.book-card:hover {
+  transform: translateY(-2px);
+}
+
+.book-card.dragging {
+  opacity: 0.45;
+}
+
+.book-cover-frame {
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  background: #ffffff;
+}
+
+.book-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.book-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.book-empty {
+  grid-column: 1 / -1;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* "Move to…" destination list */
+.chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  margin: 10px 0;
+  overflow: auto;
+}
+
+.chooser-item {
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .chip {
@@ -341,18 +581,6 @@ a {
   border: 1px solid var(--border);
   padding: 2px 8px;
   border-radius: 999px;
-}
-
-.project-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: auto;
-}
-
-.project-actions .icon-btn {
-  flex: 1;
-  border-color: var(--border);
-  justify-content: center;
 }
 
 /* ---------- Project workspace ---------- */

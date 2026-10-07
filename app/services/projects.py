@@ -12,6 +12,7 @@ from typing import Any
 
 from app import config
 from app.services import comments as comments_service
+from app.services import covers as covers_service
 from app.services import documents as documents_service
 from app.services import snapshots as snapshots_service
 from app.services import trash as trash_service
@@ -137,6 +138,7 @@ def list_projects() -> list[dict[str, Any]]:
                 "updatedAt": meta["updatedAt"],
                 "words": stats["words"],
                 "documents": stats["documents"],
+                "cover": meta.get("cover") or None,
             }
         )
     return results
@@ -158,6 +160,7 @@ def get_project(project_id: str) -> dict[str, Any]:
         "updatedAt": meta["updatedAt"],
         "words": stats["words"],
         "documents": stats["documents"],
+        "cover": meta.get("cover") or None,
     }
 
 
@@ -245,9 +248,39 @@ def delete_project(project_id: str) -> None:
     if not folder.exists():
         raise FileNotFoundError(f"Project '{project_id}' not found")
     shutil.rmtree(folder)
+    covers_service.remove(covers_service.KIND_BOOK, pid)
     trash_service.delete_project_trash(pid)
     snapshots_service.delete_project_snapshots(pid)
     comments_service.delete_project_comments(pid)
+
+
+def set_cover(project_id: str, raw: bytes) -> dict[str, Any]:
+    """Store a book cover and record its file name in ``project.json``."""
+    pid = _safe_id(project_id)
+    folder = project_dir(pid)
+    meta_path = folder / config.PROJECT_META_FILENAME
+    if not meta_path.exists():
+        raise FileNotFoundError(f"Project '{project_id}' not found")
+    filename = covers_service.save(covers_service.KIND_BOOK, pid, raw)
+    meta = _read_meta(meta_path)
+    meta["cover"] = filename
+    meta["updatedAt"] = _now()
+    _write_meta(folder, meta)
+    return get_project(pid)
+
+
+def clear_cover(project_id: str) -> dict[str, Any]:
+    pid = _safe_id(project_id)
+    folder = project_dir(pid)
+    meta_path = folder / config.PROJECT_META_FILENAME
+    if not meta_path.exists():
+        raise FileNotFoundError(f"Project '{project_id}' not found")
+    meta = _read_meta(meta_path)
+    meta.pop("cover", None)
+    meta["updatedAt"] = _now()
+    _write_meta(folder, meta)
+    covers_service.remove(covers_service.KIND_BOOK, pid)
+    return get_project(pid)
 
 
 def get_document_tree(project_id: str, scope: str = "write") -> dict[str, Any]:

@@ -130,11 +130,14 @@ Legend for hooks: where the work would plug into the current code.
     (`app/services/projects.py`); new tab in `project.js`.
 
 - [ ] **Series / books, cross-project lore, copying between projects** `P3` `L`
-  - No grouping or ordering of projects; no shared worldbuilding; documents and
-    `assets/` cannot be copied between projects.
-  - Hooks: a `series.json` at the data root, `app/services/projects.py`, and a
-    "move/copy" path that also carries referenced assets (the README notes
-    images do not travel today).
+  - **Grouping shipped**: the landing page is now a worlds library — worlds,
+    series and books (a book is a project), with create/rename/delete,
+    drag-to-reorder, move between series, and uploaded covers. Stored in
+    `worlds.json` at the data root (`app/services/worlds.py`,
+    `app/services/covers.py`, `static/js/world.js`).
+  - Still to come: cross-project reference (shared worldbuilding) and
+    copying documents / `assets/` between projects (the README notes images do
+    not travel today).
 
 - [x] **Thesaurus / dictionary lookup** `P3` `M` — shipped: offline WordNet
   (`app/services/lookup.py`, `app/routes/lookup.py`) behind a **🔎 Lookup**

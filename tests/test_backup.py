@@ -50,6 +50,10 @@ def test_create_backup_zips_data_and_skips_junk(data_dir, make_project):
     # Durable hidden markers at the data root must travel with the backup.
     (data_dir / ".zoom-rebased").write_text("rebased\n", encoding="utf-8")
     (data_dir / ".migration-done").write_text("migrated\n", encoding="utf-8")
+    # The library manifest and its covers are content, not transient junk.
+    (data_dir / "worlds.json").write_text('{"version": 1, "worlds": []}', encoding="utf-8")
+    (data_dir / ".covers").mkdir()
+    (data_dir / ".covers" / "world-proj-1234abcd.png").write_bytes(b"png")
 
     res = backup_service.create_backup()
 
@@ -60,6 +64,8 @@ def test_create_backup_zips_data_and_skips_junk(data_dir, make_project):
     assert "data/proj/project.json" in names
     assert "data/proj/01-a.md" in names
     assert "data/settings.json" in names
+    assert "data/worlds.json" in names
+    assert "data/.covers/world-proj-1234abcd.png" in names
     assert "data/.zoom-rebased" in names
     assert "data/.migration-done" in names
     assert not any("hidden" in n for n in names)

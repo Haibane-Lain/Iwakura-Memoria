@@ -18,12 +18,17 @@ function parse() {
   if (parts[0] === "p" && parts[1]) {
     return { name: "project", params: { id: decodeURIComponent(parts[1]) } };
   }
+  if (parts[0] === "w" && parts[1]) {
+    return { name: "world", params: { id: decodeURIComponent(parts[1]) } };
+  }
   return { name: "library", params: {} };
 }
 
 export function navigate(name, params) {
   if (name === "project") {
     location.hash = `#/p/${encodeURIComponent(params.id)}`;
+  } else if (name === "world") {
+    location.hash = `#/w/${encodeURIComponent(params.id)}`;
   } else {
     location.hash = "#/";
   }

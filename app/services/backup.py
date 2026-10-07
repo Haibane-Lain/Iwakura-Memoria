@@ -51,6 +51,7 @@ def _iter_backup_paths() -> list[Path]:
 # stale code-adjacent `data/` folder over the restored one).
 _KEEP_HIDDEN_ROOT = {
     config.COMMENTS_DIRNAME,
+    config.COVERS_DIRNAME,
     config.ZOOM_MARKER_FILENAME,
     config._MIGRATION_MARKER,
 }
