@@ -55,8 +55,8 @@ def _css_theme_ids() -> set[str]:
 
 def test_every_registered_theme_has_a_palette_and_vice_versa():
     assert _js_theme_ids() == _css_theme_ids()
-    # The four expressive themes are present alongside the original seven.
-    assert {"sepia", "vellum", "terminal", "noir"} <= _js_theme_ids()
+    # The expressive themes are present alongside the original seven.
+    assert {"sepia", "vellum", "terminal", "noir", "amber"} <= _js_theme_ids()
 
 
 def test_default_theme_is_still_gothic():

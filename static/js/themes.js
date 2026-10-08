@@ -20,6 +20,7 @@ export const themes = [
   { id: "vellum", label: "Vellum", kind: "light" },
   { id: "terminal", label: "Terminal", kind: "dark" },
   { id: "noir", label: "Noir", kind: "dark" },
+  { id: "amber", label: "Amber", kind: "dark" },
 ];
 
 // First launch only — a stored theme always wins. Kept in step with

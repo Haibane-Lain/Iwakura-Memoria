@@ -289,6 +289,38 @@
   );
 }
 
+/* Amber CRT: a Fallout-era terminal. Monospace everywhere, warm phosphor
+   glow, blocky corners and scanlines over the whole surface. */
+[data-theme="amber"] {
+  --bg: #14100a;
+  --bg-alt: #1a1509;
+  --surface: #211a0d;
+  --surface-2: #2a2211;
+  --surface-3: #352b16;
+  --text: #f2c76b;
+  --text-dim: #c39a4e;
+  --text-faint: #7d6636;
+  --accent: #ffb000;
+  --accent-soft: #3a2c11;
+  --editor-bg: #120e08;
+  --border: #463819;
+  --shadow: 0 2px 16px rgba(255, 176, 0, 0.08);
+  --ok: #b6c95a;
+  --warn: #e0a13a;
+  --danger: #d95b3a;
+  --selection: rgba(255, 176, 0, 0.26);
+  --font-ui: "Cascadia Code", Consolas, "Courier New", monospace;
+  --font-editor: "Cascadia Code", Consolas, "Courier New", monospace;
+  --radius: 3px;
+  --radius-sm: 2px;
+  --app-bg-image:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 176, 0, 0.025), transparent 62%),
+    repeating-linear-gradient(0deg, rgba(255, 176, 0, 0.035) 0 1px, transparent 1px 3px);
+  --editor-texture:
+    radial-gradient(ellipse at 50% 42%, rgba(255, 176, 0, 0.03), transparent 66%),
+    repeating-linear-gradient(0deg, rgba(255, 176, 0, 0.05) 0 1px, transparent 1px 3px);
+}
+
 /* --- user overrides (Settings -> Appearance) ------------------------------ */
 
 /* A custom accent derives the soft/selected tints from it, so one color

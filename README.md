@@ -81,13 +81,14 @@ install; see [Lookup](#lookup).
 - **Wiki system** — Dedicated `worldbuilding/` tree with templates (Character,
   Location, Organization, Nation, Lore Concept), wikilink auto-resolution,
   backlinks, and a Fandom-style navigation box.
-- **Themes & appearance** — Eleven themes: Paper, Ink, Typewriter, Gothic,
+- **Themes & appearance** — Twelve themes: Paper, Ink, Typewriter, Gothic,
   Horror, Fantasy and Sci-Fi, plus the expressive **Sepia**, **Vellum**,
-  **Terminal** and **Noir**, which vary shape, type and texture as well as
-  color. **Settings → Appearance** shows them as swatch cards and layers your
-  own overrides on top — an accent color, corner style, interface font,
-  background texture on/off, reduced motion, and the editor column width.
-  First launch starts on **Gothic**; every choice is remembered.
+  **Terminal**, **Noir** and **Amber** (a Fallout-style amber CRT), which vary
+  shape, type and texture as well as color. **Settings → Appearance** shows
+  them as swatch cards and layers your own overrides on top — an accent color,
+  corner style, interface font, background texture on/off, reduced motion, and
+  the editor column width. First launch starts on **Gothic**; every choice is
+  remembered.
 - **Stats** — Daily word counts, streak tracking, and configurable goals with
   a progress bar, a 30-day bar chart, and an optional scrollable **full daily
   history** (every day back to the project's creation, zero days shown dimmed).
@@ -744,7 +745,7 @@ attachment cap being unreachable; plus an HTML sanitizer for chat rendering).
 static/
   index.html
   lib/marked.js            # Markdown renderer for Lain chat
-  css/themes.css           # CSS-variable palettes + visual identity (11 themes)
+  css/themes.css           # CSS-variable palettes + visual identity (12 themes)
   css/app.css
   js/                      # api, router, ui, themes, appearance, library (worlds),
                            # world, project, lain, drag-order, context-menu,
