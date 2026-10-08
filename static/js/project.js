@@ -3537,7 +3537,9 @@ async function init(params) {
       focusMode: settings.focusMode === true,
       typewriterMode: settings.typewriterMode === true,
       commentHighlights: settings.commentHighlights !== false,
+      ...theme.getAppearance(),
     };
+    theme.applySettings(settings);
   } catch (err) {
     console.warn("settings unavailable", err);
   }
