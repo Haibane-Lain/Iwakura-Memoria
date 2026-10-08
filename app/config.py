@@ -60,6 +60,14 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # Comment anchor highlights (the accent underline/background on commented
     # text). Hiding them is a reading aid; the comments themselves stay put.
     "commentHighlights": True,
+    # Appearance overrides applied on top of the theme (Settings -> Appearance).
+    # Empty / default values mean "let the theme decide".
+    "accentColor": "",
+    "cornerStyle": "default",
+    "uiFont": "",
+    "texturesEnabled": True,
+    "reducedMotion": False,
+    "editorWidth": "medium",
     "ai": {},
 }
 

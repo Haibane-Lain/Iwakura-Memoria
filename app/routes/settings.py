@@ -28,6 +28,12 @@ class SettingsPatch(BaseModel):
     focusMode: bool | None = None
     typewriterMode: bool | None = None
     commentHighlights: bool | None = None
+    accentColor: str | None = None
+    cornerStyle: str | None = None
+    uiFont: str | None = None
+    texturesEnabled: bool | None = None
+    reducedMotion: bool | None = None
+    editorWidth: str | None = None
     ai: dict | None = None
 
 
