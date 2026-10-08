@@ -12,6 +12,7 @@ import * as router from "./router.js";
 import * as theme from "./themes.js";
 import * as lain from "./lain.js";
 import { FONTS, CUSTOM_ID, fontStack } from "./fonts.js";
+import { CORNER_STYLES, EDITOR_WIDTHS, UI_FONTS } from "./appearance.js";
 import { filterTree } from "./tree-search.js";
 import {
   state,
@@ -3207,6 +3208,77 @@ async function renderSettingsTab() {
     }
   };
 
+  /* --- Appearance controls -------------------------------------------- */
+
+  // A theme sets the whole palette; these override individual pieces on top of
+  // it. Each change applies live and is persisted immediately.
+  const buildAppearanceControls = () => {
+    const a = theme.getAppearance();
+
+    const accentInput = el("input", {
+      type: "color",
+      class: "color-input",
+      value: a.accentColor || "#7a4f2b",
+      title: "Accent color",
+    });
+    accentInput.addEventListener("input", () => {
+      state.settings.accentColor = accentInput.value;
+      theme.previewAppearance({ accentColor: accentInput.value });
+    });
+    accentInput.addEventListener("change", () => {
+      theme.setAppearance({ accentColor: accentInput.value });
+    });
+    const accentReset = el("button", {
+      class: "link-btn",
+      type: "button",
+      onclick: () => {
+        accentInput.value = "#7a4f2b";
+        state.settings.accentColor = "";
+        theme.setAppearance({ accentColor: "" });
+      },
+    }, "reset");
+
+    const picker = (options, value, onPick) => {
+      const select = el("select", { class: "select-mini" },
+        options.map((o) => el("option", { value: o.id, selected: value === o.id }, o.label)));
+      select.addEventListener("change", () => onPick(select.value));
+      return select;
+    };
+    const cornerSelect = picker(CORNER_STYLES, a.cornerStyle, (v) => {
+      state.settings.cornerStyle = v;
+      theme.setAppearance({ cornerStyle: v });
+    });
+    const fontSelect = picker(UI_FONTS, a.uiFont, (v) => {
+      state.settings.uiFont = v;
+      theme.setAppearance({ uiFont: v });
+    });
+    const widthSelect = picker(EDITOR_WIDTHS, a.editorWidth, (v) => {
+      state.settings.editorWidth = v;
+      theme.setAppearance({ editorWidth: v });
+    });
+
+    const switchRow = (on, title, onToggle) => {
+      const sw = el("button", { class: `switch ${on ? "on" : ""}`, type: "button", title });
+      sw.addEventListener("click", () => {
+        const next = !sw.classList.contains("on");
+        sw.classList.toggle("on", next);
+        onToggle(next);
+      });
+      return sw;
+    };
+    const textureToggle = switchRow(a.texturesEnabled !== false, "Show the theme's background texture", (on) => {
+      state.settings.texturesEnabled = on;
+      theme.setAppearance({ texturesEnabled: on });
+    });
+    const motionToggle = switchRow(a.reducedMotion === true, "Turn off transitions and animations", (on) => {
+      state.settings.reducedMotion = on;
+      theme.setAppearance({ reducedMotion: on });
+    });
+
+    return { accentInput, accentReset, cornerSelect, fontSelect, widthSelect, textureToggle, motionToggle };
+  };
+  const ap = buildAppearanceControls();
+
   main.replaceChildren(
     el("div", { class: "settings-view" }, [
       el("div", { class: "settings-section" }, [
@@ -3262,9 +3334,31 @@ async function renderSettingsTab() {
       ]),
       el("div", { class: "settings-section" }, [
         el("h2", {}, "Appearance"),
+        el("p", { class: "desc" }, "A theme sets the full palette, shape and type; the controls below override individual pieces on top of it."),
+        theme.themePicker(),
         el("div", { class: "field-row" }, [
-          el("label", {}, "Theme"),
-          theme.themeSelect(),
+          el("label", {}, "Accent color"),
+          el("span", { class: "inline-controls" }, [ap.accentInput, ap.accentReset]),
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "Corners"),
+          ap.cornerSelect,
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "Interface font"),
+          ap.fontSelect,
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "Background texture"),
+          ap.textureToggle,
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "Reduce motion"),
+          ap.motionToggle,
+        ]),
+        el("div", { class: "field-row" }, [
+          el("label", {}, "Editor column"),
+          ap.widthSelect,
         ]),
         el("div", { class: "field-row" }, [
           el("label", {}, "Word counting"),

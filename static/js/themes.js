@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { el } from "./ui.js";
 import {
   APPEARANCE_DEFAULTS,
   applyAppearance,
@@ -60,13 +61,18 @@ export function applySettings(settings) {
 }
 
 export async function setAppearance(patch) {
-  appearance = { ...appearance, ...pickAppearance(patch) };
-  applyAppearance(document.body, appearance);
+  previewAppearance(patch);
   try {
     await api.settings.update(appearance);
   } catch (err) {
     console.error("Failed to save appearance", err);
   }
+}
+
+// Apply without persisting — for live feedback while dragging a color picker.
+export function previewAppearance(patch) {
+  appearance = { ...appearance, ...pickAppearance(patch) };
+  applyAppearance(document.body, appearance);
 }
 
 export async function load() {
@@ -95,4 +101,45 @@ export function themeSelect(onChange) {
     if (onChange) onChange(select.value);
   });
   return select;
+}
+
+// A visual picker: one card per theme, each painting a miniature of the real
+// palette through the shared [data-theme] variables, labelled light/dark.
+export function themePicker(onChange) {
+  const grid = el("div", { class: "theme-grid", role: "radiogroup", "aria-label": "Theme" });
+
+  const pick = async (id) => {
+    await setTheme(id);
+    render();
+    if (onChange) onChange(id);
+  };
+
+  const card = (t) =>
+    el(
+      "button",
+      {
+        type: "button",
+        class: `theme-card${t.id === current ? " active" : ""}`,
+        dataset: { themeId: t.id },
+        role: "radio",
+        "aria-checked": t.id === current ? "true" : "false",
+        title: `${t.label} — ${t.kind}`,
+        onclick: () => pick(t.id),
+      },
+      [
+        el("span", { class: "theme-thumb", dataset: { theme: t.id } }, [
+          el("span", { class: "theme-thumb-bar" }),
+          el("span", { class: "theme-thumb-text" }),
+          el("span", { class: "theme-thumb-accent" }),
+        ]),
+        el("span", { class: "theme-card-name" }, t.label),
+        el("span", { class: "theme-card-kind" }, t.kind === "dark" ? "Dark" : "Light"),
+      ]
+    );
+
+  function render() {
+    grid.replaceChildren(...themes.map(card));
+  }
+  render();
+  return grid;
 }
