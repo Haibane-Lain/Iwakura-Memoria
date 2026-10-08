@@ -12,7 +12,7 @@ location. The migration is idempotent and never destructive: the legacy
 folder is only ever moved, never deleted in place, and is kept authoritative
 when the new location is already populated or the move fails.
 
-- ``settings.json``     global settings (theme, word-count mode)
+- ``settings.json``     global settings (theme, appearance, word-count mode)
 - ``<project>/``        one folder per project (see README for layout)
 """
 from __future__ import annotations

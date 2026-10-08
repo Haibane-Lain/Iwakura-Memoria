@@ -81,8 +81,13 @@ install; see [Lookup](#lookup).
 - **Wiki system** — Dedicated `worldbuilding/` tree with templates (Character,
   Location, Organization, Nation, Lore Concept), wikilink auto-resolution,
   backlinks, and a Fandom-style navigation box.
-- **Themes** — Paper, Ink, Typewriter, Gothic, Horror, Fantasy, Sci-Fi. First
-  launch starts on **Gothic**; whatever you pick is remembered.
+- **Themes & appearance** — Eleven themes: Paper, Ink, Typewriter, Gothic,
+  Horror, Fantasy and Sci-Fi, plus the expressive **Sepia**, **Vellum**,
+  **Terminal** and **Noir**, which vary shape, type and texture as well as
+  color. **Settings → Appearance** shows them as swatch cards and layers your
+  own overrides on top — an accent color, corner style, interface font,
+  background texture on/off, reduced motion, and the editor column width.
+  First launch starts on **Gothic**; every choice is remembered.
 - **Stats** — Daily word counts, streak tracking, and configurable goals with
   a progress bar, a 30-day bar chart, and an optional scrollable **full daily
   history** (every day back to the project's creation, zero days shown dimmed).
@@ -211,7 +216,7 @@ Each project is a free-form scaffolding tree of **folders** and **documents**:
 
 ```
 data/
-  settings.json                    # global settings (theme, word count mode, zoom per tab, grammar toggle, focus & typewriter modes, AI config)
+  settings.json                    # global settings (theme + appearance, word count mode, zoom per tab, grammar toggle, focus & typewriter modes, AI config)
   worlds.json                      # the library: worlds, their series, and the books in each
   .covers/                         # uploaded covers for worlds and books
   .zoom-rebased                    # marker: stored zoom values use the current 100% scale
@@ -739,11 +744,12 @@ attachment cap being unreachable; plus an HTML sanitizer for chat rendering).
 static/
   index.html
   lib/marked.js            # Markdown renderer for Lain chat
-  css/themes.css           # CSS-variable palettes (7 themes)
+  css/themes.css           # CSS-variable palettes + visual identity (11 themes)
   css/app.css
-  js/                      # api, router, ui, themes, library (worlds), world,
-                           # project, lain, drag-order, context-menu, sanitize,
-                           # tree-search, image-utils, fonts, zoom, scroll-keep
+  js/                      # api, router, ui, themes, appearance, library (worlds),
+                           # world, project, lain, drag-order, context-menu,
+                           # sanitize, tree-search, image-utils, fonts, zoom,
+                           # scroll-keep
   dist/editor.bundle.js    # TipTap bundle (built from client/)
 client/editor-entry.js     # TipTap source — edit, then `npm run build`
 client/character-table.js  # the wiki info box's TipTap nodes + Markdown form
