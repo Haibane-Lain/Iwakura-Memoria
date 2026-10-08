@@ -76,7 +76,7 @@ async function startServer() {
 
   // Tell the server where the bundled LanguageTool + JRE live so grammar works
   // without a system Java. Under dev these env vars are unset and the server
-  // falls back to its own `LanguageTool 6.9/` + system `java` (see grammar.py).
+  // falls back to its own `LanguageTool 6.8/` + system `java` (see grammar.py).
   // Same idea for Lookup: a packaged build may ship WordNet as
   // extraResources/wordnet; dev falls back to `WordNet 3.0/` (see lookup.py).
   const env = {

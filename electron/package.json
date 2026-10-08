@@ -32,12 +32,16 @@
         "to": "server"
       },
       {
-        "from": "../LanguageTool 6.9",
+        "from": "../LanguageTool 6.8",
         "to": "languagetool"
       },
       {
         "from": "../_jre",
         "to": "jre"
+      },
+      {
+        "from": "../WordNet-3.0/dict",
+        "to": "wordnet/dict"
       }
     ],
     "win": {

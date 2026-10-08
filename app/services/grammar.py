@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import atexit
+import os
 import subprocess
 import sys
 import threading
@@ -14,15 +15,28 @@ import httpx
 _LT_PORT = 8081
 _LT_URL = f"http://127.0.0.1:{_LT_PORT}"
 
+# Pinned LanguageTool fetched by scripts/build/prepare.ps1 (see
+# scripts/build/toolchain.json). Dev also accepts any other LanguageTool*/
+# folder that holds the server jar, so a local snapshot keeps working.
+_LT_DIRNAME = "LanguageTool 6.8"
+
 
 def _lt_dir() -> Path:
     """LanguageTool directory. A packaged build passes it via IWAKURA_LT_DIR
-    (Electron's extraResources/languagetool); dev falls back to the gitignored
-    LanguageTool 6.9/ next to the code."""
-    env = __import__("os").environ.get("IWAKURA_LT_DIR")
+    (Electron's extraResources/languagetool); dev falls back to the pinned
+    ``LanguageTool 6.8/`` next to the code, and then to any ``LanguageTool*/``
+    folder carrying the server jar."""
+    env = os.environ.get("IWAKURA_LT_DIR")
     if env and Path(env).is_dir():
         return Path(env)
-    return Path(__file__).resolve().parent.parent.parent / "LanguageTool 6.9"
+    root = Path(__file__).resolve().parent.parent.parent
+    pinned = root / _LT_DIRNAME
+    if pinned.is_dir():
+        return pinned
+    for candidate in sorted(root.glob("LanguageTool*")):
+        if (candidate / "languagetool-server.jar").is_file():
+            return candidate
+    return pinned
 
 
 _LT_DIR = _lt_dir()
@@ -42,7 +56,6 @@ _concurrency = threading.Semaphore(_LT_CONCURRENCY)
 
 
 def _find_java() -> str | None:
-    import os
     import shutil
     # A bundled JRE (packaged build) is the first choice — the end user likely
     # has no system Java. Electron passes IWAKURA_JRE_DIR = resources/jre.

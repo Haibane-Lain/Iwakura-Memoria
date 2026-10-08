@@ -8,7 +8,7 @@ pytest-cache-files-*/
 static/dist/
 __pycache__/
 *.pyc
-LanguageTool 6.9/
+LanguageTool 6.*/
 # WordNet 3.0 for offline Lookup — drop it next to the code (or set
 # IWAKURA_DICT_DIR); see the README's Lookup section. The official tarball
 # unpacks as `WordNet-3.0/`, so ignore both spellings.
@@ -18,6 +18,7 @@ WordNet-3.0/
 # Distribution build outputs (scripts/build/build.bat).
 scripts/build/_bundle/
 scripts/build/_pyinstaller-work/
+scripts/build/_cache/
 scripts/build/build-run.log
 dist/
 # Bundled JRE for the installer — drop it next to LanguageTool before building.

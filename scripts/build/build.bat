@@ -6,28 +6,78 @@ REM  Produces a Windows installer .exe (electron-builder NSIS) that bundles:
 REM    - the Electron shell
 REM    - the FastAPI server frozen with PyInstaller
 REM    - LanguageTool + a bundled JRE (grammar works with no Java install)
+REM    - WordNet 3.0 (offline Lookup works with no extra install)
 REM    - the static frontend (inside the server exe)
 REM
 REM  Single entry point:  scripts\build\build.bat
 REM
+REM  Everything the build needs is detected and, when missing, fetched
+REM  automatically by scripts\build\prepare.ps1:
+REM    - the .venv and its pip requirements, npm deps (root + electron)
+REM    - LanguageTool, WordNet and a Temurin JRE (pinned in toolchain.json)
+REM  Downloads are cached under scripts\build\_cache\ and checksum-verified.
+REM  Missing Python / Node are NOT installed; the build stops with a link.
+REM
+REM  Flags:
+REM    --force         re-download and re-extract every artifact
+REM    --no-download   never touch the network (fail if something is missing)
+REM    --only a,b      limit prep to a subset: python,node,languagetool,wordnet,jre
+REM    --nopause       skip the final pause (for CI / scripting)
+REM
 REM  Notes:
 REM   - Avoids multi-line parenthesized IF blocks on purpose: cmd.exe's parser
 REM     mishandles them in LF-only batch files ("was unexpected at this time").
-REM   - On success OR failure the window pauses so the outcome stays readable
-REM     (pass --nopause to skip the pause, for CI/scripting).
 REM   - Every step's output goes to scripts\build\build-run.log; on failure the
 REM     last 40 lines are printed.
 REM =====================================================================
 setlocal
-cd /d "%~dp0..\.."
+REM %~dp0 is only valid for %0; the argument parser below calls shift, which
+REM reassigns %0 and would corrupt %~dp0. Capture it once, up front.
+set "HERE=%~dp0"
+cd /d "%HERE%..\.."
 
-set "LOG=%~dp0build-run.log"
+set "LOG=%HERE%build-run.log"
+set "PAUSE=1"
+set "PREPARE_ARGS="
+
+:parse
+if "%~1"=="" goto :parsed
+if /I "%~1"=="--nopause" goto :arg_nopause
+if /I "%~1"=="--force" goto :arg_force
+if /I "%~1"=="--no-download" goto :arg_nodownload
+if /I "%~1"=="--only" goto :arg_only
+goto :arg_next
+
+:arg_nopause
+set "PAUSE=0"
+goto :arg_next
+
+:arg_force
+set "PREPARE_ARGS=%PREPARE_ARGS% -Force"
+goto :arg_next
+
+:arg_nodownload
+set "PREPARE_ARGS=%PREPARE_ARGS% -Offline"
+goto :arg_next
+
+:arg_only
+shift
+set "PREPARE_ARGS=%PREPARE_ARGS% -Only %~1"
+goto :arg_next
+
+:arg_next
+shift
+goto :parse
+
+:parsed
 if exist "%LOG%" del "%LOG%"
 echo [build] log: %LOG%
 
-echo [build] - Installing Python build deps (PyInstaller)...
-.venv\Scripts\python.exe -m pip install -r requirements-dev.txt > "%LOG%" 2>&1
-if errorlevel 1 goto :fail
+echo [build] - Preparing build dependencies (Python, Node, LanguageTool, WordNet, JRE)...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%prepare.ps1" %PREPARE_ARGS% -LogPath "%LOG%"
+REM A missing -File target exits with a negative code, which `if errorlevel 1`
+REM would miss; compare for exactly zero instead.
+if not "%ERRORLEVEL%"=="0" goto :fail
 
 echo [build] - Building the frontend bundle (static/dist/editor.bundle.js)...
 call npm run build > "%LOG%" 2>&1
@@ -53,7 +103,7 @@ if not %RESULT% equ 0 goto :fail
 echo.
 echo [build] SUCCESS - installer written to dist\electron\*.exe
 echo.
-if /I not "%~1"=="--nopause" pause
+if "%PAUSE%"=="1" pause
 exit /b 0
 
 :no_exe
@@ -75,5 +125,5 @@ goto :fail_end
 echo (no log file was produced)
 :fail_end
 echo.
-if /I not "%~1"=="--nopause" pause
+if "%PAUSE%"=="1" pause
 exit /b 1

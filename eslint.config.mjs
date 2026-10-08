@@ -11,7 +11,7 @@ export default [
       "electron/node_modules/**",
       ".venv/**",
       "_jre/**",
-      "LanguageTool 6.9/**",
+      "LanguageTool 6.*/**",
       "WordNet 3.0/**",
       "WordNet-3.0/**",
       "static/lib/**",

@@ -14,7 +14,7 @@ line-length = 120
 extend-exclude = [
     "node_modules",
     ".venv",
-    "LanguageTool 6.9",
+    "LanguageTool 6.*",
     "WordNet 3.0",
     "WordNet-3.0",
     "_jre",

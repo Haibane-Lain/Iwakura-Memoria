@@ -59,7 +59,7 @@ install; see [Lookup](#lookup).
   round-tripping, wikilinks (`[[Target]]` / `[[Target|alias]]`), per-document
   and per-section fonts/sizes/alignment, and a default zoom per tab (100% for
   **Write**, 75% for **Wiki**).
-- **Grammar checking** — Bundled LanguageTool 6.9 Java server, with
+- **Grammar checking** — Bundled LanguageTool 6.8 Java server, with
   ProseMirror inline underlines, replacement corrections, a per-project
   spelling list, and a dockable **Language** panel that lists every issue
   (errors, warnings, and the picky style suggestions) with click-to-jump.
@@ -326,7 +326,7 @@ kept automatically; older ones are deleted.
 
 ## Grammar checking
 
-A local LanguageTool 6.9 server runs on port 8081. Requires **Java 17+**.
+A local LanguageTool 6.8 server runs on port 8081. Requires **Java 17+**.
 The server starts automatically at launch and shuts down when the app closes.
 If a LanguageTool is already answering on 8081 when the app starts (e.g. an
 orphaned server left behind by a previous session), it is **reused** instead
@@ -391,8 +391,9 @@ WordNet-3.0/
 ```
 
 WordNet is free from https://wordnet.princeton.edu/ (the 3.0 database,
-`WordNet-3.0.tar.gz`). A packaged build can include it by adding the folder to
-`extraResources` (as `wordnet`), which the Electron shell already passes as
+`WordNet-3.0.tar.gz`), and the distribution build fetches it automatically (see
+[Distribution](#distribution-installer-exe)). The installer bundles the `dict/`
+folder as `extraResources/wordnet/dict`, which the Electron shell passes as
 `IWAKURA_DICT_DIR`. When the data is missing, Lookup says so instead of failing,
 and everything else keeps working.
 
@@ -546,35 +547,56 @@ resize natively. The legacy `run.bat --pywebview` path is kept for reference.
 ## Distribution (installer .exe)
 
 The app ships as a **Windows installer** (electron-builder → NSIS) that bundles
-the Electron shell, the Python server frozen with PyInstaller, LanguageTool,
-and a JRE — so an end user needs **no** Node.js, Python, or Java installed.
+the Electron shell, the Python server frozen with PyInstaller, LanguageTool, a
+JRE, and WordNet — so an end user needs **no** Node.js, Python, Java, or WordNet
+installed.
 
 ```
 scripts\build\build.bat
 ```
 
-The script, in order:
+The one entry point detects and, when missing, fetches everything the build
+needs. `scripts\build\prepare.ps1` (versions pinned in
+`scripts\build\toolchain.json`) runs first:
 
-1. Installs Python build deps (`pyinstaller` via `requirements-dev.txt`).
-2. Builds the frontend bundle (`npm run build` → `static/dist/editor.bundle.js`).
-3. Freezes the server with PyInstaller (`scripts\build\app.spec` → a single
+1. Ensures `.venv` exists and installs `requirements.txt` + `requirements-dev.txt`.
+2. Ensures Node.js is present and installs the npm deps for the repo root
+   (used to build the bundle) and for `electron/` (`npm ci`).
+3. Downloads **LanguageTool 6.8**, **WordNet 3.0**, and a **Temurin JRE 21** if
+   they are not already present next to the code, into `LanguageTool 6.8/`,
+   `WordNet-3.0/`, and `_jre/`. Archives are cached under
+   `scripts\build\_cache\` and verified against their pinned sha256.
+
+Then `build.bat` finishes the job:
+
+4. Builds the frontend bundle (`npm run build` → `static/dist/editor.bundle.js`).
+5. Freezes the server with PyInstaller (`scripts\build\app.spec` → a single
    `Iwakura-Memoria-server.exe`; the **PyInstaller config is in
    `scripts/build/`** and the package manifest is in `electron/package.json`’s
    `build` block).
-4. Runs electron-builder, bundling `server/`, `LanguageTool 6.9/` as
-   `languagetool/`, and a JRE as `jre/` into the installer. (Add
-   `WordNet 3.0/` as `wordnet/` too if you want offline Lookup in the
-   installer; the shell already passes its path.)
+6. Runs electron-builder, bundling `server/`, `LanguageTool 6.8/` as
+   `languagetool/`, `_jre/` as `jre/`, and `WordNet-3.0/dict/` as
+   `wordnet/dict/` into the installer. The shell passes their paths to the
+   server via `IWAKURA_LT_DIR` / `IWAKURA_JRE_DIR` / `IWAKURA_DICT_DIR`.
 
 The installer lands at `dist/electron/Iwakura Memoria Setup*.exe`.
 
-**Before you build**, drop a JRE folder at `_jre/` with `bin/java.exe` (e.g.
-Adoptium Temurin 21; the app prefers it via `IWAKURA_JRE_DIR`, falling back to a
-system Java). The first `electron-builder` run downloads its toolchain
-(~100 MB, one-time). A real `electron/build/icon.ico` gives the installer/app an
-icon — without one the default Electron icon is used. The installer is unsigned,
-so Windows SmartScreen shows a *"unrecognized app"* prompt on first run; that's
-expected without a code-signing certificate.
+Flags: **`--force`** re-downloads and re-extracts every artifact, **`--no-download`**
+never touches the network (it fails, naming what is missing), **`--only a,b`**
+limits prep to a subset (`python`, `node`, `languagetool`, `wordnet`, `jre`), and
+**`--nopause`** skips the final pause for CI. Missing **Python 3.10+** or
+**Node 22.22.2+ / 24.15+ / >= 26** are *not* auto-installed — the build stops and
+prints the download link.
+
+If you would rather place the artifacts by hand, drop a JRE at `_jre/` with
+`bin/java.exe` (the app prefers it via `IWAKURA_JRE_DIR`, falling back to a
+system Java), the LanguageTool standalone zip at `LanguageTool 6.8/`, and the
+WordNet tarball at `WordNet-3.0/`; the script then skips those downloads. The
+first `electron-builder` run downloads its toolchain (~100 MB, one-time). A real
+`electron/build/icon.ico` gives the installer/app an icon — without one the
+default Electron icon is used. The installer is unsigned, so Windows SmartScreen
+shows a *"unrecognized app"* prompt on first run; that's expected without a
+code-signing certificate.
 
 A frozen `--server-only` server can be smoked out on its own:
 

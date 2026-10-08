@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "Pinned third-party build artifacts for scripts/build/prepare.ps1.",
+    "Edit a version here (or override with the IWAKURA_* env vars) to bump",
+    "the toolchain; prepare.ps1 downloads only what is missing, verifies the",
+    "sha256, and extracts it into the directory the app / installer expects.",
+    "All sha256 values are lowercase hex."
+  ],
+
+  "languagetool": {
+    "version": "6.8",
+    "dir": "LanguageTool 6.8",
+    "url": "https://repo1.maven.org/maven2/org/languagetool/languagetool-standalone/6.8/languagetool-standalone-6.8.zip",
+    "sha256": "f04aecf37e35ef17d44b336da9668a5a3a871edd14bd83a766a7e110b9ebcd21",
+    "archive": "languagetool-standalone-6.8.zip",
+    "extractedRoot": "LanguageTool-6.8",
+    "markers": ["languagetool-server.jar"]
+  },
+
+  "wordnet": {
+    "version": "3.0",
+    "dir": "WordNet-3.0",
+    "url": "https://wordnetcode.princeton.edu/3.0/WordNet-3.0.tar.gz",
+    "sha256": "640db279c949a88f61f851dd54ebbb22d003f8b90b85267042ef85a3781d3a52",
+    "archive": "WordNet-3.0.tar.gz",
+    "extractedRoot": "WordNet-3.0",
+    "markers": ["dict/data.noun", "dict/index.noun"]
+  },
+
+  "jre": {
+    "version": "21.0.12.1+1",
+    "dir": "_jre",
+    "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
+    "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636",
+    "archive": "OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
+    "extractedRoot": "jdk-21.0.12.1+1",
+    "markers": ["bin/java.exe"],
+    "minMajor": 17
+  }
+}
