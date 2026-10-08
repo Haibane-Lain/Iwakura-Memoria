@@ -83,8 +83,8 @@ install; see [Lookup](#lookup).
   backlinks, and a Fandom-style navigation box.
 - **Themes & appearance** — Twelve themes: Paper, Ink, Typewriter, Gothic,
   Horror, Fantasy and Sci-Fi, plus the expressive **Sepia**, **Vellum**,
-  **Terminal**, **Noir** and **Amber** (a Fallout-style amber CRT), which vary
-  shape, type and texture as well as color. **Settings → Appearance** shows
+  **Terminal**, **Noir** and **Amber** (bright orange on flat black, a
+  Fallout-style CRT), which vary shape, type and texture as well as color. **Settings → Appearance** shows
   them as swatch cards and layers your own overrides on top — an accent color,
   corner style, interface font, background texture on/off, reduced motion, and
   the editor column width. First launch starts on **Gothic**; every choice is
