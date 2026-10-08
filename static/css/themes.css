@@ -1,14 +1,34 @@
-/* Themes: color palettes defined through CSS variables on body[data-theme]. */
+/* Themes: color palettes and visual identity defined through CSS variables.
+ *
+ * A theme is applied with a ``data-theme`` attribute. It is normally on
+ * <body>, but any element may carry it — the Settings picker paints each
+ * preview card by putting ``data-theme`` on the card, so a card uses the real
+ * variables rather than a duplicated swatch.
+ *
+ * On top of the color palette a theme may tune the shape/type tokens declared
+ * in :root (--radius, --font-ui, --font-editor, --font-mono) and the two
+ * texture layers (--app-bg-image / --editor-texture). User choices from
+ * Settings -> Appearance override those with the ``data-corners`` /
+ * ``data-accent`` attributes and the ``no-texture`` / ``reduced-motion``
+ * classes (see static/js/appearance.js). Those override rules deliberately
+ * out-specify the theme blocks (0,1,1 vs 0,1,0).
+ */
 
 :root {
   --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-editor: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+  --font-mono: "Cascadia Code", Consolas, "Courier New", monospace;
   --radius: 8px;
   --radius-sm: 6px;
   --transition: 0.15s ease;
+  /* Surface textures — none unless a theme opts in. */
+  --app-bg-image: none;
+  --editor-texture: none;
+  /* The Write tab's reading column (see .ProseMirror in app.css). */
+  --editor-max-width: 760px;
 }
 
-body[data-theme="paper"] {
+[data-theme="paper"] {
   --bg: #f4f1ea;
   --bg-alt: #e9e4d8;
   --surface: #fffdf7;
@@ -28,7 +48,7 @@ body[data-theme="paper"] {
   --selection: rgba(122, 79, 43, 0.22);
 }
 
-body[data-theme="ink"] {
+[data-theme="ink"] {
   --bg: #17181c;
   --bg-alt: #1e2026;
   --surface: #22242b;
@@ -48,7 +68,7 @@ body[data-theme="ink"] {
   --selection: rgba(201, 161, 95, 0.28);
 }
 
-body[data-theme="typewriter"] {
+[data-theme="typewriter"] {
   --bg: #efe6d4;
   --bg-alt: #e4d8c2;
   --surface: #f7efdf;
@@ -68,7 +88,7 @@ body[data-theme="typewriter"] {
   --selection: rgba(138, 90, 43, 0.22);
 }
 
-body[data-theme="gothic"] {
+[data-theme="gothic"] {
   --bg: #1a1719;
   --bg-alt: #1f1b1e;
   --surface: #242024;
@@ -88,7 +108,7 @@ body[data-theme="gothic"] {
   --selection: rgba(155, 74, 90, 0.28);
 }
 
-body[data-theme="horror"] {
+[data-theme="horror"] {
   --bg: #1c1816;
   --bg-alt: #211c19;
   --surface: #262118;
@@ -108,7 +128,7 @@ body[data-theme="horror"] {
   --selection: rgba(181, 68, 58, 0.28);
 }
 
-body[data-theme="fantasy"] {
+[data-theme="fantasy"] {
   --bg: #f5ecd7;
   --bg-alt: #ede0c4;
   --surface: #fdf6e8;
@@ -128,7 +148,7 @@ body[data-theme="fantasy"] {
   --selection: rgba(184, 134, 62, 0.22);
 }
 
-body[data-theme="sci-fi"] {
+[data-theme="sci-fi"] {
   --bg: #1a1f26;
   --bg-alt: #1e232b;
   --surface: #222832;
@@ -146,4 +166,160 @@ body[data-theme="sci-fi"] {
   --warn: #c4a060;
   --danger: #c86060;
   --selection: rgba(78, 168, 200, 0.28);
+}
+
+/* --- expressive themes: shape, type and texture carry as much as color --- */
+
+[data-theme="sepia"] {
+  --bg: #f0e7d5;
+  --bg-alt: #e7dcc6;
+  --surface: #fbf4e6;
+  --surface-2: #f3ead6;
+  --surface-3: #e9dcc2;
+  --text: #3a3024;
+  --text-dim: #756850;
+  --text-faint: #a2937a;
+  --accent: #94642f;
+  --accent-soft: #ecdcc0;
+  --editor-bg: #f7eeda;
+  --border: #d8c8a6;
+  --shadow: 0 2px 10px rgba(90, 70, 40, 0.16);
+  --ok: #5c7d43;
+  --warn: #a9762f;
+  --danger: #a3452f;
+  --selection: rgba(148, 100, 47, 0.22);
+  --font-editor: "EB Garamond", Garamond, Georgia, serif;
+  --editor-texture: repeating-linear-gradient(
+    0deg,
+    rgba(120, 90, 50, 0.035) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+[data-theme="vellum"] {
+  --bg: #e9dcc0;
+  --bg-alt: #e0d0af;
+  --surface: #f6ecd6;
+  --surface-2: #efe2c6;
+  --surface-3: #e5d5b3;
+  --text: #40341f;
+  --text-dim: #7d6b4a;
+  --text-faint: #a9997a;
+  --accent: #8a5a2b;
+  --accent-soft: #e9d6b0;
+  --editor-bg: #f3e7cc;
+  --border: #cdb98d;
+  --shadow: 0 2px 12px rgba(90, 70, 30, 0.22);
+  --ok: #5f7d3f;
+  --warn: #a8782e;
+  --danger: #9c4030;
+  --selection: rgba(138, 90, 43, 0.24);
+  --font-ui: Georgia, "Palatino Linotype", "Times New Roman", serif;
+  --font-editor: Garamond, "EB Garamond", Georgia, serif;
+  --app-bg-image:
+    radial-gradient(circle at 20% 30%, rgba(120, 90, 40, 0.06), transparent 60%),
+    radial-gradient(circle at 80% 70%, rgba(120, 90, 40, 0.05), transparent 55%),
+    repeating-linear-gradient(90deg, rgba(110, 85, 45, 0.04) 0 1px, transparent 1px 4px);
+  --editor-texture: repeating-linear-gradient(
+    0deg,
+    rgba(120, 90, 50, 0.03) 0 1px,
+    transparent 1px 4px
+  );
+}
+
+[data-theme="terminal"] {
+  --bg: #0b0f0b;
+  --bg-alt: #0f150f;
+  --surface: #121a12;
+  --surface-2: #182218;
+  --surface-3: #1f2c1f;
+  --text: #b8f5c0;
+  --text-dim: #6fae78;
+  --text-faint: #3f6b47;
+  --accent: #45d16a;
+  --accent-soft: #16301c;
+  --editor-bg: #0a0e0a;
+  --border: #1e3322;
+  --shadow: 0 2px 14px rgba(0, 0, 0, 0.7);
+  --ok: #45d16a;
+  --warn: #d1c145;
+  --danger: #ff6b6b;
+  --selection: rgba(69, 209, 106, 0.28);
+  --font-ui: "Cascadia Code", Consolas, "Courier New", monospace;
+  --font-editor: "Cascadia Code", Consolas, "Courier New", monospace;
+  --radius: 2px;
+  --radius-sm: 2px;
+  --app-bg-image: repeating-linear-gradient(
+    0deg,
+    rgba(69, 209, 106, 0.04) 0 1px,
+    transparent 1px 3px
+  );
+  --editor-texture: repeating-linear-gradient(
+    0deg,
+    rgba(69, 209, 106, 0.05) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+[data-theme="noir"] {
+  --bg: #0d0d0f;
+  --bg-alt: #121214;
+  --surface: #161618;
+  --surface-2: #1d1d20;
+  --surface-3: #26262a;
+  --text: #f2f0ec;
+  --text-dim: #b4b0a8;
+  --text-faint: #6c6963;
+  --accent: #d62839;
+  --accent-soft: #2b1417;
+  --editor-bg: #0f0f11;
+  --border: #2a2a2e;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.75);
+  --ok: #7fae7f;
+  --warn: #d6a05a;
+  --danger: #ff3b4e;
+  --selection: rgba(214, 40, 57, 0.32);
+  --font-ui: "Arial Narrow", "Segoe UI", system-ui, sans-serif;
+  --radius: 2px;
+  --radius-sm: 2px;
+  --editor-texture: radial-gradient(
+    ellipse at 50% 0%,
+    rgba(255, 255, 255, 0.05),
+    transparent 60%
+  );
+}
+
+/* --- user overrides (Settings -> Appearance) ------------------------------ */
+
+/* A custom accent derives the soft/selected tints from it, so one color
+   picker restyles every accent surface. JS sets --accent inline. */
+body[data-accent] {
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, var(--bg));
+  --selection: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+body[data-corners="rounded"] {
+  --radius: 12px;
+  --radius-sm: 9px;
+}
+
+body[data-corners="sharp"] {
+  --radius: 2px;
+  --radius-sm: 2px;
+}
+
+/* Textures off: a user toggle clears both layers, whatever the theme set. */
+body.no-texture {
+  --app-bg-image: none !important;
+  --editor-texture: none !important;
+}
+
+/* Reduce motion: collapse the UI's transitions and animations. */
+body.reduced-motion,
+body.reduced-motion * {
+  --transition: 0s;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }
