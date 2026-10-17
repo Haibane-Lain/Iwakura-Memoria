@@ -66,6 +66,22 @@ def test_empty_body_is_rejected(data_dir, make_project):
         raise AssertionError("expected ValueError")
 
 
+def test_general_comment_has_no_quote_or_flag_on_anchored(data_dir, make_project):
+    """A general note is document-level: no quote, and the flag marks it so."""
+    make_project("proj")
+    doc = _doc()
+    general = comments_service.create("proj", doc["id"], "Chapter note", general=True)
+    assert general["general"] is True
+    assert general["quote"] == ""
+
+    listed = comments_service.list_doc("proj", doc["id"])
+    assert listed[0]["general"] is True
+
+    # An ordinary anchored note carries no ``general`` key at all.
+    anchored = comments_service.create("proj", doc["id"], "Anchor", quote="hello")
+    assert "general" not in anchored
+
+
 def test_update_unknown_comment_raises(data_dir, make_project):
     make_project("proj")
     try:
@@ -321,3 +337,23 @@ def test_comment_routes(tmp_path, monkeypatch):
         ).json()
         == []
     )
+
+
+def test_general_comment_route_accepts_no_quote(tmp_path, monkeypatch):
+    client, headers = _project_client(tmp_path, monkeypatch)
+    client.post("/api/projects", json={"name": "Demo"}, headers=headers)
+    created = client.post(
+        "/api/projects/demo/documents",
+        json={"title": "Scene", "kind": "chapter", "content": "hello"},
+        headers=headers,
+    )
+    doc_id = created.json()["id"]
+
+    made = client.post(
+        "/api/projects/demo/comments",
+        json={"docId": doc_id, "body": "Document note", "general": True},
+        headers=headers,
+    )
+    assert made.status_code == 201
+    assert made.json()["general"] is True
+    assert made.json()["quote"] == ""

@@ -75,6 +75,7 @@ globalThis.fetch = async (url, opts = {}) => {
       docId: payload.docId,
       body: payload.body,
       quote: payload.quote,
+      general: payload.general,
       author: "you",
       createdAt: "2026-09-11T10:00:00.000",
       updatedAt: "2026-09-11T10:00:00.000",
@@ -429,6 +430,32 @@ await check("Re-anchor all re-links every recoverable note", async () => {
   );
   assert.ok(panel.querySelector(".comment-item.detached"), "the lost quote stays detached");
   pane.ctrl = ctrl;
+});
+
+await check("a general note is created without anchoring anything", async () => {
+  store = [];
+  rangesRef.value = [];
+  pane.ctrl = ctrl;
+  await panel._reload();
+  const before = ctrl.calls.setComment.length;
+
+  panel.beginComment({ general: true });
+  const box = panel.querySelector(".comment-composer");
+  assert.ok(box, "the composer is shown");
+  box.value = "Whole document note";
+  box.dispatchEvent(new w.Event("input", { bubbles: true }));
+  button(panel, "Comment").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+
+  await waitFor(() => store.length === 1);
+  const record = store[0];
+  assert.equal(record.general, true);
+  assert.equal(record.quote, "");
+  assert.equal(ctrl.calls.setComment.length, before, "no marker was attempted");
+  await waitFor(() => panel.textContent.includes("Whole document note"));
+  assert.ok(panel.querySelector(".comment-item.general"), "rendered as a general note");
+  assert.ok(!panel.querySelector(".comment-item.detached"), "a general note is not detached");
+  assert.ok(!button(panel, "Re-anchor"), "no Re-anchor for a general note");
+  assert.ok(!button(panel, "Re-anchor all"), "a general note is not counted as a lost anchor");
 });
 
 await check("a reply for a document the pane has left is not applied", async () => {

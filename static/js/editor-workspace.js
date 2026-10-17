@@ -698,7 +698,8 @@ function wireGrammarResults(pane, ctrl) {
 }
 
 // The ribbon's Comment button and Ctrl+Alt+M land here: capture the focused
-// pane's selection and hand it to that pane's comments panel.
+// pane's selection and hand it to that pane's comments panel. With no selection
+// it opens a general (document-level) note instead of anchoring to text.
 export function startComment() {
   const pane = activePane();
   if (!pane || !pane.ctrl || !pane.commentsPanel) {
@@ -708,7 +709,7 @@ export function startComment() {
   const editor = pane.ctrl.editor;
   const { from, to } = editor.state.selection;
   if (from === to) {
-    toast("Select some text to comment on", "info");
+    pane.commentsPanel.beginComment({ general: true });
     return;
   }
   const $from = editor.state.doc.resolve(from);

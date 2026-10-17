@@ -154,7 +154,8 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     if (!body) return;
     const id = docId();
     const controller = ctrl();
-    if (!id || !controller) return;
+    const general = !!composing.general;
+    if (!id || (!general && !controller)) return;
     busy = true;
     const selection = composing;
     let record;
@@ -162,7 +163,8 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
       record = await api.comments.create(projectId, {
         docId: id,
         body,
-        quote: selection.quote,
+        quote: general ? "" : selection.quote,
+        general,
       });
     } catch (err) {
       toast(err.message, "error");
@@ -176,6 +178,12 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     // anchoring now would mark text in the wrong one. The note is kept (with no
     // marker) so it can be re-anchored when that document is next opened.
     if (docId() !== id) return;
+    // A general note is document-level: no marker to write and nothing to undo
+    // if it could not be anchored.
+    if (general) {
+      await reload();
+      return;
+    }
     const anchored = wrapMarker(record.id, selection);
     if (!anchored) {
       // Never leave a body with no marker behind: the server-side annotate path
@@ -217,7 +225,9 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   }
 
   function openComments() {
-    return sorted(items.filter((c) => !c.resolved));
+    // Review stepping selects anchored text, so document-level general notes
+    // (which have nothing to reveal) stay out of the queue.
+    return sorted(items.filter((c) => !c.resolved && !c.general));
   }
 
   function nextOpenId(afterId) {
@@ -371,6 +381,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     for (const comment of items) {
       const controller = ctrl();
       if (!controller) break;
+      if (comment.general) continue;
       if (controller.getCommentRanges().some((r) => r.cid === comment.id)) continue;
       const target = locate(comment);
       if (!target) continue;
@@ -417,7 +428,9 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
       }
     });
     return el("div", { class: "comment-composer-wrap" }, [
-      el("div", { class: "comment-quote" }, quoteExcerpt(composing && composing.quote) || "(selection)"),
+      el("div", { class: "comment-quote" }, composing && composing.general
+        ? "General note — whole document"
+        : quoteExcerpt(composing && composing.quote) || "(selection)"),
       box,
       el("div", { class: "composer-actions" }, [
         el("button", { class: "mini-btn", onclick: cancelComposer }, "Cancel"),
@@ -439,14 +452,16 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
   }
 
   function itemEl(comment, range) {
+    const general = !!comment.general;
     const classes = ["comment-item"];
     if (comment.resolved) classes.push("resolved");
     if (pane.activeCommentId === comment.id) classes.push("active");
-    if (!range) classes.push("detached");
+    if (general) classes.push("general");
+    else if (!range) classes.push("detached");
     const meta = [
       comment.author || "you",
       formatTime(comment.updatedAt || comment.createdAt),
-      range ? "" : "text changed — anchor lost",
+      !general && !range ? "text changed — anchor lost" : "",
     ].filter(Boolean).join(" · ");
     return el("div", {
       class: classes.join(" "),
@@ -454,13 +469,15 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
         if (!event.target.closest("button, textarea")) reveal(comment);
       },
     }, [
-      el("div", { class: "comment-quote" }, quoteExcerpt(comment.quote) || quoteExcerpt(range && range.text) || "(no quote)"),
+      el("div", { class: "comment-quote" }, general
+        ? "General note"
+        : quoteExcerpt(comment.quote) || quoteExcerpt(range && range.text) || "(no quote)"),
       editingId === comment.id ? editBox(comment) : el("div", { class: "comment-body" }, comment.body),
       el("div", { class: "comment-meta" }, meta),
       el("div", { class: "comment-actions" }, [
         el("button", { class: "mini-btn", onclick: () => toggleResolved(comment) }, comment.resolved ? "Reopen" : "Resolve"),
         el("button", { class: "mini-btn", onclick: () => { editingId = comment.id; render(); } }, "Edit"),
-        !range
+        !range && !general
           ? el("button", { class: "mini-btn", onclick: () => reanchor(comment) }, "Re-anchor")
           : null,
         el("button", { class: "mini-btn danger", onclick: () => removeComment(comment) }, "Delete"),
@@ -473,9 +490,16 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     const openCount = items.filter((c) => !c.resolved).length;
     const hasResolved = items.some((c) => c.resolved);
     const hasAi = items.some((c) => String(c.author || "").toLowerCase() === "lain");
-    const detached = items.filter((c) => !anchored.get(c.id));
+    const detached = items.filter((c) => !c.general && !anchored.get(c.id));
     const head = el("div", { class: "panel-head" }, [
       el("span", { class: "panel-title" }, items.length ? `Comments · ${openCount} open` : "Comments"),
+      docId()
+        ? el("button", {
+            class: "mini-btn",
+            title: "Add a general note about the whole document",
+            onclick: () => panel.beginComment({ general: true }),
+          }, "+ Add note")
+        : null,
       el("span", { class: "panel-head-spacer" }),
       detached.length
         ? el("button", {
@@ -524,7 +548,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
         itemEl(comment, anchored.get(comment.id) || null)
       )));
     } else if (docId()) {
-      children.push(el("p", { class: "empty-hint" }, "No comments yet. Select text and press Comment."));
+      children.push(el("p", { class: "empty-hint" }, "No comments yet. Select text and press Comment, or add a general note."));
     }
 
     // Markers with no sidecar body (a hand-edited or externally changed file).

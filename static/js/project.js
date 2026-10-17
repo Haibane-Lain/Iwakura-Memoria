@@ -2078,7 +2078,7 @@ const RIBBON = [
     rows: [
       [
         { cmd: "linkNote", label: "[[ ]]", text: "Link", title: "Link to a note" },
-        { cmd: "comment", label: "💬", text: "Comment", title: "Comment on the selected text (Ctrl+Alt+M)" },
+        { cmd: "comment", label: "💬", text: "Comment", title: "Comment on the selected text, or add a general note (Ctrl+Alt+M)" },
       ],
       [
         { cmd: "image", label: "🖼", text: "Image", title: "Insert an image (or drag & drop / paste one)" },

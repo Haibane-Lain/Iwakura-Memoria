@@ -50,6 +50,7 @@ PUBLIC_KEYS = (
     "resolved",
     "resolvedAt",
     "quote",
+    "general",
 )
 
 
@@ -201,11 +202,15 @@ def create(
     *,
     quote: str = "",
     author: str = "you",
+    general: bool = False,
 ) -> dict[str, Any]:
     """Add a comment and return its record.
 
     The caller (the editor) is responsible for writing the matching
-    ``data-cid`` marker into the document; this only stores the body.
+    ``data-cid`` marker into the document; this only stores the body. A
+    ``general`` note is document-level: it has no quote and no marker, and the
+    ``general`` flag distinguishes it from an anchored note whose anchor was
+    later lost.
     """
     _require_project(project_id)
     if not doc_id:
@@ -223,6 +228,8 @@ def create(
         "resolvedAt": None,
         "quote": _clean_quote(quote),
     }
+    if general:
+        comment["general"] = True
     comments = _read_doc(project_id, doc_id)
     comments.append(comment)
     _write_doc(project_id, doc_id, comments)

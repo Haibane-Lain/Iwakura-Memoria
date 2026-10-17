@@ -25,6 +25,7 @@ class CommentCreate(BaseModel):
     body: str
     quote: str = ""
     author: str = "you"
+    general: bool = False
 
 
 class CommentUpdate(BaseModel):
@@ -62,6 +63,7 @@ def create_comment(project_id: str, payload: CommentCreate):
             payload.body,
             quote=payload.quote,
             author=payload.author,
+            general=payload.general,
         )
     except (FileNotFoundError, ValueError) as exc:
         raise _http_error(exc) from exc

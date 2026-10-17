@@ -2296,6 +2296,12 @@ a {
   border-left-color: var(--warn);
 }
 
+/* A document-level note: no anchor, so a quiet marker rather than the warning
+   colour a lost anchor gets. */
+.comment-item.general {
+  border-left-color: var(--text-faint);
+}
+
 .comment-quote {
   font-style: italic;
   color: var(--text-dim);
