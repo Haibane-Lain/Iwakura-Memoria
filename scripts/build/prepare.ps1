@@ -310,6 +310,33 @@ function Assert-JavaVersion([string]$JavaExe, [int]$MinMajor) {
     Write-Ok "bundled Java $major at $JavaExe"
 }
 
+function Stop-StaleBuildProcesses {
+    # A previous run's output can still be alive: a PyInstaller onefile server
+    # spawns a child that survives a parent kill, and either the server or a
+    # running packaged app then locks win-unpacked, making electron-builder
+    # fail with EPERM while replacing it. Only processes whose image lives
+    # under THIS repo's build output are stopped, so a dev instance (or an
+    # installed copy elsewhere) is never touched.
+    $prefixes = @(
+        (Join-Path $RepoRoot "dist"),
+        (Join-Path $RepoRoot "scripts\build\_bundle")
+    )
+    $names = @("Iwakura-Memoria-server", "Iwakura Memoria")
+    foreach ($proc in (Get-Process -ErrorAction SilentlyContinue)) {
+        if ($names -notcontains $proc.ProcessName) { continue }
+        $image = $null
+        try { $image = $proc.Path } catch { continue }
+        if (-not $image) { continue }
+        foreach ($prefix in $prefixes) {
+            if ($image.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                Write-Warn "stopping stale build process $($proc.ProcessName) (pid $($proc.Id))"
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                break
+            }
+        }
+    }
+}
+
 # --- run --------------------------------------------------------------------
 
 $allSteps = @("python", "node", "languagetool", "wordnet", "jre")
@@ -322,6 +349,7 @@ $unknown = @($wanted | Where-Object { $allSteps -notcontains $_ })
 if ($unknown.Count -gt 0) { Fail "-Only has unknown step(s): $($unknown -join ', ')" }
 
 Write-Info "preparing build dependencies in $RepoRoot"
+Stop-StaleBuildProcesses
 if ($wanted -contains "python") { Ensure-Python }
 if ($wanted -contains "node") { Ensure-Node }
 if ($wanted -contains "languagetool") {
