@@ -198,3 +198,61 @@ export function setCommentPreserving(editor, cid) {
   editor.view.dispatch(tr);
   return true;
 }
+
+// First live anchor run per comment id, in document order.
+function firstRunsByCid(doc) {
+  const byId = new Map();
+  for (const run of collectCommentRanges(doc)) {
+    if (!byId.has(run.cid)) byId.set(run.cid, run);
+  }
+  return byId;
+}
+
+// Apply suggested rewrites in one transaction: swap each anchor's text for its
+// replacement and strip that comment's mark, so accepting a suggestion leaves
+// no stale ``data-cid`` span behind. Applied in reverse document order so the
+// earlier targets' positions stay valid as the later ones change length.
+// Returns the number of suggestions applied — a suggestion whose anchor is gone
+// is skipped.
+export function applyCommentReplacements(editor, suggestions) {
+  if (!editor || editor.isDestroyed) return 0;
+  const markType = editor.schema.marks.comment;
+  if (!markType) return 0;
+  const byId = firstRunsByCid(editor.state.doc);
+  const targets = [];
+  for (const item of suggestions || []) {
+    const cid = item && item.cid;
+    const run = cid ? byId.get(cid) : null;
+    if (!run) continue;
+    targets.push({ ...run, replacement: String(item.replacement ?? "") });
+  }
+  if (!targets.length) return 0;
+  targets.sort((a, b) => b.from - a.from);
+  const accepted = new Set(targets.map((t) => t.cid));
+  const tr = editor.state.tr;
+  for (const target of targets) {
+    // ``insertText`` inherits marks across the replaced range, so the comment
+    // mark would ride onto the accepted text; the cleanup pass below strips it.
+    tr.insertText(target.replacement, target.from, target.to);
+  }
+  // Strip the anchor from the accepted notes wherever it survives — the
+  // rewritten span plus any other runs of the same note, so accepting never
+  // leaves an unlinked ``data-cid`` behind.
+  const residual = [];
+  tr.doc.descendants((node, pos) => {
+    if (!node.isText) return;
+    const mark = node.marks.find((m) => m.type.name === "comment");
+    if (mark && accepted.has(mark.attrs && mark.attrs.cid)) {
+      residual.push([pos, pos + node.nodeSize]);
+    }
+  });
+  for (const [start, end] of residual) tr.removeMark(start, end, markType);
+  editor.view.dispatch(tr);
+  return targets.length;
+}
+
+// Replace a single suggestion's anchored text. Returns false when the note has
+// no live anchor.
+export function applyCommentReplacement(editor, cid, replacement) {
+  return applyCommentReplacements(editor, [{ cid, replacement }]) > 0;
+}

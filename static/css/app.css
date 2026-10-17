@@ -2314,6 +2314,31 @@ a {
   overflow-wrap: anywhere;
 }
 
+/* A suggested rewrite sits under the note that motivates it, on its own tint
+   so an "Accept change" button is unmistakably about the text below. */
+.comment-suggestion {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  overflow-wrap: anywhere;
+}
+
+.suggestion-label {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.suggestion-text {
+  white-space: pre-wrap;
+}
+
 .comment-meta {
   margin-top: 6px;
   font-size: 11.5px;

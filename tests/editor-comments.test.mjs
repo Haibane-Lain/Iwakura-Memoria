@@ -134,6 +134,43 @@ await check("removing several anchors at once keeps the plain text", () => {
   s.close();
 });
 
+await check("acceptSuggestion swaps the anchored text and clears the mark", () => {
+  const s = open(`Alpha <span data-cid="${CID}">bravo</span> charlie.`);
+  assert.equal(s.ctrl.acceptSuggestion(CID, "bravo indeed"), true);
+  assert.equal(s.ctrl.getMarkdown(), "Alpha bravo indeed charlie.");
+  assert.deepEqual([...s.ctrl.getCommentRanges().map((r) => r.cid)], []);
+  s.close();
+});
+
+await check("acceptSuggestion reports false when the anchor is gone", () => {
+  const s = open("Alpha charlie.");
+  assert.equal(s.ctrl.acceptSuggestion(CID, "x"), false);
+  assert.equal(s.ctrl.getMarkdown(), "Alpha charlie.");
+  s.close();
+});
+
+await check("acceptSuggestions applies every rewrite in one transaction", () => {
+  const s = open(
+    'A <span data-cid="c_aaa">one</span> B <span data-cid="c_bbb">two</span>.'
+  );
+  const applied = s.ctrl.acceptSuggestions([
+    { cid: "c_aaa", replacement: "ONE" },
+    { cid: "c_bbb", replacement: "TWO indeed" },
+  ]);
+  assert.equal(applied, 2);
+  assert.equal(s.ctrl.getMarkdown(), "A ONE B TWO indeed.");
+  assert.equal(s.ctrl.getCommentRanges().length, 0);
+  s.close();
+});
+
+await check("accepting a note anchored in disjoint runs clears every marker", () => {
+  const s = open('A <span data-cid="c_x">one</span> B <span data-cid="c_x">two</span>.');
+  assert.equal(s.ctrl.acceptSuggestion("c_x", "ONE"), true);
+  assert.equal(s.ctrl.getMarkdown(), "A ONE B two.");
+  assert.equal(s.ctrl.getCommentRanges().length, 0);
+  s.close();
+});
+
 await check("commenting over an existing anchor keeps the inner anchor", () => {
   const s = open('A <span data-cid="c_aaa">one</span> two three.');
   // Select the whole paragraph, which contains the c_aaa anchor.

@@ -178,9 +178,10 @@ def system_prompt(
                 "Access is PLAN: read and answer from the provided material only, and do not try "
                 "to edit the prose. You MAY attach review notes with add_comment when the user asks "
                 "for a critique — quote a short span of the provided text verbatim and keep the note "
-                "concise; the user confirms each note before it is anchored. When you spot a prose "
-                "change worth making, describe it and tell the user to switch Access to Write to "
-                "apply it."
+                "concise; put the corrected wording in the optional 'replacement' field when the fix "
+                "is a rewrite, so the user can accept it with one click. The user confirms each note "
+                "before it is anchored. When you spot a prose change worth making that is larger "
+                "than one span, describe it and tell the user to switch Access to Write to apply it."
             )
         else:
             lines.append(
@@ -191,11 +192,13 @@ def system_prompt(
     elif access == "plan":
         lines.append(
             "Access is PLAN: you may read and annotate, but you cannot edit the prose. Use "
-            "add_comment to attach a review note to an exact, verbatim quote from an entry; the "
-            "user confirms each note before it is anchored. You cannot create, edit, rename, move, "
-            "or delete entries or folders right now. When you spot a prose change worth making, do "
-            "not attempt it — lay out the exact plan as text instead: which entries, which sections, "
-            "the proposed content, and why. Then tell the user to switch Access to Write to apply it."
+            "add_comment to attach a review note to an exact, verbatim quote from an entry, and put "
+            "the corrected wording in its optional 'replacement' field when the fix is a rewrite of "
+            "that span; the user confirms each note, then may accept the replacement with one "
+            "click. You cannot create, edit, rename, move, or delete entries or folders right now. "
+            "When you spot a prose change that is larger than a single span, do not attempt it — lay "
+            "out the exact plan as text instead: which entries, which sections, the proposed "
+            "content, and why. Then tell the user to switch Access to Write to apply it."
         )
     if attachments and mode == "simple":
         names = ", ".join(a["name"] for a in attachments)

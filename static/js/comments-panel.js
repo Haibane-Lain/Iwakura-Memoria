@@ -299,6 +299,61 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     await reload();
   }
 
+  // Every suggestion in this document whose anchor is live, so it can be
+  // accepted here and now. A detached suggestion cannot be applied.
+  function pendingSuggestions() {
+    const anchored = anchoredMap();
+    return items.filter((c) => c.replacement && anchored.get(c.id));
+  }
+
+  // Accept one suggested rewrite: swap the anchored text for the replacement,
+  // then delete the note (it is consumed). The editor transaction is what marks
+  // the pane dirty, so the new text saves through the normal pipeline.
+  async function acceptChange(comment) {
+    const controller = ctrl();
+    if (!controller || !comment.replacement) return;
+    const id = docId();
+    if (!controller.acceptSuggestion(comment.id, comment.replacement)) {
+      toast("That suggestion's text moved or is gone — re-anchor it, then accept.", "info");
+      render();
+      return;
+    }
+    try {
+      await api.comments.remove(projectId, comment.id, id);
+    } catch (err) {
+      toast(err.message, "error");
+    }
+    if (docId() !== id) return;
+    const nextId = reviewing ? nextOpenId(comment.id) : null;
+    await reload();
+    if (nextId && docId() === id) revealById(nextId);
+  }
+
+  async function acceptAllChanges() {
+    const controller = ctrl();
+    if (!controller) return;
+    const pending = pendingSuggestions();
+    if (!pending.length) return;
+    const applied = controller.acceptSuggestions(
+      pending.map((c) => ({ cid: c.id, replacement: c.replacement }))
+    );
+    if (!applied) {
+      toast("Could not apply the suggested changes.", "error");
+      return;
+    }
+    const id = docId();
+    for (const comment of pending) {
+      try {
+        await api.comments.remove(projectId, comment.id, id);
+      } catch {
+        /* the note stays; without its anchor it reads as detached */
+      }
+    }
+    if (docId() !== id) return;
+    await reload();
+    toast(`Accepted ${applied} change${applied === 1 ? "" : "s"}.`);
+  }
+
   async function clearResolved() {
     const id = docId();
     const resolved = items.filter((c) => c.resolved).map((c) => c.id);
@@ -458,6 +513,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     if (pane.activeCommentId === comment.id) classes.push("active");
     if (general) classes.push("general");
     else if (!range) classes.push("detached");
+    if (comment.replacement) classes.push("suggestion");
     const meta = [
       comment.author || "you",
       formatTime(comment.updatedAt || comment.createdAt),
@@ -473,8 +529,21 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
         ? "General note"
         : quoteExcerpt(comment.quote) || quoteExcerpt(range && range.text) || "(no quote)"),
       editingId === comment.id ? editBox(comment) : el("div", { class: "comment-body" }, comment.body),
+      comment.replacement
+        ? el("div", { class: "comment-suggestion" }, [
+            el("span", { class: "suggestion-label" }, "Suggested"),
+            el("span", { class: "suggestion-text" }, comment.replacement),
+          ])
+        : null,
       el("div", { class: "comment-meta" }, meta),
       el("div", { class: "comment-actions" }, [
+        comment.replacement && range
+          ? el("button", {
+              class: "mini-btn primary",
+              title: "Replace the anchored text with this suggestion",
+              onclick: () => acceptChange(comment),
+            }, "Accept change")
+          : null,
         el("button", { class: "mini-btn", onclick: () => toggleResolved(comment) }, comment.resolved ? "Reopen" : "Resolve"),
         el("button", { class: "mini-btn", onclick: () => { editingId = comment.id; render(); } }, "Edit"),
         !range && !general
@@ -491,6 +560,7 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
     const hasResolved = items.some((c) => c.resolved);
     const hasAi = items.some((c) => String(c.author || "").toLowerCase() === "lain");
     const detached = items.filter((c) => !c.general && !anchored.get(c.id));
+    const suggestions = items.filter((c) => c.replacement && anchored.get(c.id)).length;
     const head = el("div", { class: "panel-head" }, [
       el("span", { class: "panel-title" }, items.length ? `Comments · ${openCount} open` : "Comments"),
       docId()
@@ -501,6 +571,13 @@ export function commentsPanel({ projectId, pane, syncComments, onCount }) {
           }, "+ Add note")
         : null,
       el("span", { class: "panel-head-spacer" }),
+      suggestions
+        ? el("button", {
+            class: "mini-btn primary",
+            title: "Replace every anchored span with Lain's suggestion",
+            onclick: acceptAllChanges,
+          }, `Accept all changes (${suggestions})`)
+        : null,
       detached.length
         ? el("button", {
             class: "mini-btn",

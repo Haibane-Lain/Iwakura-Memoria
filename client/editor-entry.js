@@ -47,6 +47,8 @@ import {
   setFindRanges,
 } from "./find-highlight.js";
 import {
+  applyCommentReplacement,
+  applyCommentReplacements,
   applyCommentsMeta,
   collectCommentRanges,
   makeCommentsExtension,
@@ -1329,6 +1331,15 @@ window.LainEditor = {
         const range = collectCommentRanges(editor.state.doc).find((r) => r.cid === cid);
         if (!range) return false;
         return this.revealRange(range.from, range.to, { focus: true });
+      },
+      // Accept a suggested rewrite: swap the anchored text for `replacement` and
+      // drop the marker, so the note is consumed. A normal transaction, so the
+      // swap is undoable and rides the regular save pipeline.
+      acceptSuggestion(cid, replacement) {
+        return applyCommentReplacement(editor, cid, replacement);
+      },
+      acceptSuggestions(suggestions) {
+        return applyCommentReplacements(editor, suggestions);
       },
       /* ---------------- find in document ---------------- */
       // The find panel drives these: it finds the matches, paints them, and

@@ -82,6 +82,27 @@ def test_general_comment_has_no_quote_or_flag_on_anchored(data_dir, make_project
     assert "general" not in anchored
 
 
+def test_replacement_is_stored_and_public(data_dir, make_project):
+    """A suggested rewrite rides the note; a plain note carries no key."""
+    make_project("proj")
+    doc = _doc()
+    suggestion = comments_service.create(
+        "proj", doc["id"], "Tighter", quote="hello world", replacement="hi world"
+    )
+    assert suggestion["replacement"] == "hi world"
+
+    listed = comments_service.list_doc("proj", doc["id"])
+    assert listed[0]["replacement"] == "hi world"
+
+    # Whitespace is trimmed; an empty/omitted replacement stores no key.
+    plain = comments_service.create("proj", doc["id"], "Just a note", quote="hello")
+    assert "replacement" not in plain
+    blank = comments_service.create(
+        "proj", doc["id"], "Note", quote="world", replacement="   "
+    )
+    assert "replacement" not in blank
+
+
 def test_update_unknown_comment_raises(data_dir, make_project):
     make_project("proj")
     try:
@@ -286,11 +307,34 @@ def test_comment_routes(tmp_path, monkeypatch):
     assert made.status_code == 201
     comment_id = made.json()["id"]
 
+    suggested = client.post(
+        "/api/projects/demo/comments",
+        json={
+            "docId": doc_id,
+            "body": "Suggested",
+            "quote": "hello",
+            "replacement": "hi",
+        },
+        headers=headers,
+    )
+    assert suggested.status_code == 201
+    assert suggested.json()["replacement"] == "hi"
+    suggested_id = suggested.json()["id"]
+
     listed = client.get(
         f"/api/projects/demo/comments?docId={doc_id}", headers=headers
     )
     assert listed.status_code == 200
-    assert len(listed.json()) == 1
+    assert len(listed.json()) == 2
+
+    # Drop the suggestion so the rest of the flow sees only the first note.
+    assert (
+        client.delete(
+            f"/api/projects/demo/comments/{suggested_id}?docId={doc_id}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
 
     updated = client.put(
         f"/api/projects/demo/comments/{comment_id}",

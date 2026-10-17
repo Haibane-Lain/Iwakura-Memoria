@@ -39,6 +39,8 @@ _COMMENT_ID_RE = re.compile(r"^c_[0-9a-f]{12}$")
 _MAX_BODY = 4000
 _MAX_QUOTE = 500
 _MAX_AUTHOR = 40
+# A suggested rewrite may be longer than the note that motivates it.
+_MAX_REPLACEMENT = 2000
 
 PUBLIC_KEYS = (
     "id",
@@ -50,6 +52,7 @@ PUBLIC_KEYS = (
     "resolved",
     "resolvedAt",
     "quote",
+    "replacement",
     "general",
 )
 
@@ -100,6 +103,10 @@ def _clean_body(body: str) -> str:
 
 def _clean_quote(quote: str) -> str:
     return str(quote or "").strip()[: _MAX_QUOTE]
+
+
+def _clean_replacement(replacement: str) -> str:
+    return str(replacement or "").strip()[: _MAX_REPLACEMENT]
 
 
 def _clean_author(author: str) -> str:
@@ -203,6 +210,7 @@ def create(
     quote: str = "",
     author: str = "you",
     general: bool = False,
+    replacement: str = "",
 ) -> dict[str, Any]:
     """Add a comment and return its record.
 
@@ -211,6 +219,11 @@ def create(
     ``general`` note is document-level: it has no quote and no marker, and the
     ``general`` flag distinguishes it from an anchored note whose anchor was
     later lost.
+
+    ``replacement`` optionally carries a proposed rewrite of the quoted span.
+    Lain sets it for a line-edit suggestion; the panel offers an Accept button
+    that swaps the anchored text for it. The stored note never edits the prose
+    itself, so this keeps ``add_comment`` an annotate-only tool.
     """
     _require_project(project_id)
     if not doc_id:
@@ -228,6 +241,9 @@ def create(
         "resolvedAt": None,
         "quote": _clean_quote(quote),
     }
+    suggested = _clean_replacement(replacement)
+    if suggested:
+        comment["replacement"] = suggested
     if general:
         comment["general"] = True
     comments = _read_doc(project_id, doc_id)

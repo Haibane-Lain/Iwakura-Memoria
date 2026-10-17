@@ -166,6 +166,63 @@ def test_add_comment_confirm_creates_body_and_marker(make_project):
     assert f'<span data-cid="{note["id"]}">bravo</span>' in body
 
 
+def test_add_comment_carries_a_suggested_replacement(make_project):
+    from app.services import comments as comments_service
+    from app.services import documents as documents_service
+
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Scene", content="Alpha bravo charlie.")
+    plan = tools.dispatch(
+        "add_comment",
+        {
+            "entryId": doc["id"],
+            "quote": "bravo",
+            "body": "Punchier",
+            "replacement": "bravo!",
+        },
+        "proj",
+        [""],
+    )
+    assert isinstance(plan, tools.PendingAction)
+    assert plan.payload["details"]["replacement"] == "bravo!"
+    assert "Suggest a change" in plan.payload["summary"]
+
+    _result, action = tools.dispatch(
+        "add_comment",
+        {
+            "entryId": doc["id"],
+            "quote": "bravo",
+            "body": "Punchier",
+            "replacement": "bravo!",
+        },
+        "proj",
+        [""],
+        confirmed=True,
+    )
+    assert action["tool"] == "add_comment"
+    note = comments_service.list_doc("proj", doc["id"])[0]
+    assert note["replacement"] == "bravo!"
+
+
+def test_add_comment_rejects_an_oversized_replacement(make_project):
+    from app.services import documents as documents_service
+
+    make_project("proj")
+    doc = documents_service.create_document("proj", "Scene", content="Alpha bravo charlie.")
+    with pytest.raises(tools.ToolError):
+        tools.dispatch(
+            "add_comment",
+            {
+                "entryId": doc["id"],
+                "quote": "bravo",
+                "body": "x",
+                "replacement": "y" * 5000,
+            },
+            "proj",
+            [""],
+        )
+
+
 def test_add_comment_rejects_a_missing_quote(make_project):
     from app.services import documents as documents_service
 

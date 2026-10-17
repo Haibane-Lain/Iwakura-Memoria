@@ -173,6 +173,17 @@ automatically. Deliberate choices worth remembering:
   reply), so the user gets one click and a toast instead of a card per note.
   `Clear AI notes` remains the undo. The server-side contract is unchanged:
   `dispatch` still plans the call and `agent.confirm` still executes it.
+- **A note can carry a suggested rewrite.** `add_comment` gained an optional
+  `replacement` field (`app/ai/tools.py`); the line-edit brief asks for it
+  whenever the fix is a rewrite of the quoted span, and omits it for changes
+  larger than one span. The comments panel shows the suggestion with **Accept
+  change** (swap the anchored text for the replacement, strip the marker, delete
+  the consumed note) and **Accept all changes** for the open document
+  (`static/js/comments-panel.js` → `client/comments.js::applyCommentReplacements`).
+  Accepting is an ordinary editor transaction — undoable, and saved through the
+  normal pipeline — and the note is deleted rather than merely resolved, since
+  its quote no longer exists. This keeps the tool annotate-only: Lain proposes,
+  the human accepts, so the Plan/Write contract is unchanged.
 - **Annotate is not a prose write.** `ANNOTATE_TOOLS` is exposed in Plan access
   too, and `dispatch` refuses it in neither Plan nor Simple+Plan (it is checked
   against `ENTRY_WRITE_TOOLS`, so Simple may only annotate a picked entry).

@@ -421,20 +421,29 @@ def _plan_add_comment(project_id: str, args: dict[str, Any]) -> dict[str, Any]:
         raise ToolError("A comment needs some text")
     if len(body) > comments_service._MAX_BODY:
         raise ToolError(f"Keep the comment under {comments_service._MAX_BODY} characters")
+    replacement = str(args.get("replacement") or "").strip()
+    if len(replacement) > comments_service._MAX_REPLACEMENT:
+        raise ToolError(
+            f"Keep the suggested replacement under {comments_service._MAX_REPLACEMENT} characters"
+        )
     if comments_service.find_anchor_span(doc.get("content", ""), quote) is None:
         raise ToolError(
             f'That exact text is not present (or is already commented) in "{doc["title"]}". '
             "Quote a short, contiguous span of the entry's plain text."
         )
+    details = {
+        "entryId": entry_id,
+        "title": doc["title"],
+        "quote": quote,
+        "body": body,
+    }
+    if replacement:
+        details["replacement"] = replacement
+    verb = "Suggest a change to" if replacement else "Comment on"
     return {
         "tool": "add_comment",
-        "summary": f'Comment on "{doc["title"]}": “{_short_quote(quote)}”',
-        "details": {
-            "entryId": entry_id,
-            "title": doc["title"],
-            "quote": quote,
-            "body": body,
-        },
+        "summary": f'{verb} "{doc["title"]}": “{_short_quote(quote)}”',
+        "details": details,
     }
 
 
@@ -597,6 +606,7 @@ def _exec_add_comment(project_id: str, args: dict[str, Any]) -> tuple[str, dict[
     entry_id = str(args.get("entryId") or "")
     quote = str(args.get("quote") or "").strip()
     body = str(args.get("body") or "").strip()
+    replacement = str(args.get("replacement") or "").strip()
     try:
         doc = documents_service.get_document(project_id, entry_id)
     except (FileNotFoundError, ValueError) as exc:
@@ -610,7 +620,12 @@ def _exec_add_comment(project_id: str, args: dict[str, Any]) -> tuple[str, dict[
         )
     try:
         record = comments_service.create(
-            project_id, entry_id, body, quote=quote, author="Lain"
+            project_id,
+            entry_id,
+            body,
+            quote=quote,
+            author="Lain",
+            replacement=replacement,
         )
     except (FileNotFoundError, ValueError) as exc:
         raise ToolError(str(exc)) from exc
@@ -629,9 +644,10 @@ def _exec_add_comment(project_id: str, args: dict[str, Any]) -> tuple[str, dict[
     except Exception as exc:  # noqa: BLE001 — never leave a bodyless anchor behind
         comments_service.delete(project_id, entry_id, record["id"])
         raise ToolError(f"Could not save the anchored comment: {exc}") from exc
+    verb = "Suggested a change to" if replacement else "Commented on"
     action = {
         "tool": "add_comment",
-        "summary": f'Commented on "{doc["title"]}": “{_short_quote(quote)}”',
+        "summary": f'{verb} "{doc["title"]}": “{_short_quote(quote)}”',
         "id": entry_id,
         "ok": True,
     }
@@ -795,13 +811,19 @@ _SCHEMAS: list[dict[str, Any]] = [
         "add_comment",
         "Attach a review comment to an exact span of an entry's text. 'quote' must be a short, "
         "contiguous run of the entry's plain text copied verbatim (no Markdown markers), and 'body' "
-        "is the note. Multiple calls in one reply are encouraged for a critique pass. The app will "
-        "show each proposed note and ask the user to confirm before it is anchored; this never edits "
-        "the prose, so it is available in Plan access too.",
+        "is the note. When the fix is a rewrite of that span, put the corrected text in "
+        "'replacement' so the user can accept it with one click; otherwise omit 'replacement' and "
+        "describe the change in 'body'. Multiple calls in one reply are encouraged for a critique "
+        "pass. The app will show each proposed note and ask the user to confirm before it is "
+        "anchored; this never edits the prose, so it is available in Plan access too.",
         {
             "entryId": {"type": "string", "description": "Entry id the quote comes from"},
             "quote": {"type": "string", "description": "Exact, contiguous plain-text span to comment on"},
             "body": {"type": "string", "description": "The review note"},
+            "replacement": {
+                "type": "string",
+                "description": "Optional corrected text to replace the quoted span (a one-click suggestion)",
+            },
         },
         ["entryId", "quote", "body"],
     ),

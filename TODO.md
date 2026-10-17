@@ -84,11 +84,17 @@ Legend for hooks: where the work would plug into the current code.
   notes. Bodies are kept in backups; exports strip the anchors. Deferred pieces
   are tracked separately below.
 
-- [ ] **Suggested edits / track changes** `P3` `M`
-  - Extend a comment with a proposed replacement for its anchored range and an
-    Accept (replace range, resolve, unwrap) / Reject flow in the comments panel.
-  - Hooks: a `suggestion` field in `app/services/comments.py`; the accept
-    command in `client/comments.js` / `static/js/comments-panel.js`.
+- [x] **Suggested edits / track changes** `P3` `M` — shipped: a review note
+  may carry a proposed `replacement` for its anchored span
+  (`app/services/comments.py`, `app/routes/comments.py`). Lain sets it from the
+  Critique pass via the optional `add_comment` field, and the comments panel
+  shows the suggestion with an **Accept change** button (swap the anchored text,
+  drop the marker, delete the consumed note) plus **Accept all changes** for the
+  open document. The line-edit brief (`static/js/critique-run.js`) now asks for a
+  replacement whenever the fix is a rewrite of the quoted span. Accepting is a
+  normal editor transaction, so it is undoable and rides the save pipeline; the
+  accept command lives in `client/comments.js` (`applyCommentReplacements`) and
+  is driven from `static/js/comments-panel.js`.
 
 - [x] **Lain critique pass** `P3` `M` — shipped: the **Review → Critique**
   button reviews the entry on screen in one click; **Review → Entries…** opens

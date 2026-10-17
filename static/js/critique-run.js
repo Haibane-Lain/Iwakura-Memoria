@@ -18,9 +18,13 @@ export const CRITIQUE_PROMPT =
   "flow into one another. Stay off plot, characters and story ideas.\n\n" +
   "Use the add_comment tool: for each issue, quote a short, exact, contiguous " +
   "span of the entry's plain text (copied verbatim, without formatting markers) " +
-  "and give a concise note that names the problem and suggests the fix. Aim for " +
-  "3-8 notes per entry, most important first. Do not rewrite the prose — " +
-  "describe the change in the note.";
+  "and give a concise note that names the problem. When the fix is a rewrite of " +
+  "that quoted span, put the corrected wording in the 'replacement' field so the " +
+  "user can accept it with one click; make the replacement read naturally in " +
+  "context and keep the author's voice. When the fix needs more than the span " +
+  "(a whole paragraph or a structural change), leave 'replacement' out and " +
+  "describe the change in the note instead. Aim for 3-8 notes per entry, most " +
+  "important first.";
 
 // The most confirm rounds one pass may take. Each round accepts the pending
 // note plus every note deferred from the same model reply, so a normal run

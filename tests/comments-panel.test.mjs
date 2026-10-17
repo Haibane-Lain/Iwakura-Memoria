@@ -82,6 +82,7 @@ globalThis.fetch = async (url, opts = {}) => {
       resolved: false,
       resolvedAt: null,
     };
+    if (payload.replacement) record.replacement = payload.replacement;
     store.push(record);
     return jsonResponse(record, 201);
   }
@@ -126,7 +127,7 @@ const doc = {
 };
 
 function makeCtrl(rangesRef) {
-  const calls = { setComment: [], removeComment: [], removeComments: [], reveal: [] };
+  const calls = { setComment: [], removeComment: [], removeComments: [], reveal: [], acceptSuggestion: [], acceptSuggestions: [] };
   const chain = {
     focus() {
       return chain;
@@ -150,6 +151,20 @@ function makeCtrl(rangesRef) {
     },
     removeComment: (cid) => calls.removeComment.push(cid),
     removeComments: (cids) => calls.removeComments.push(...cids),
+    // Accepting a suggestion consumes its anchor, so the fake drops it from the
+    // live range list; the return tells the panel whether the swap landed.
+    acceptSuggestion: (cid, replacement) => {
+      const had = rangesRef.value.some((r) => r.cid === cid);
+      calls.acceptSuggestion.push([cid, replacement]);
+      rangesRef.value = rangesRef.value.filter((r) => r.cid !== cid);
+      return had;
+    },
+    acceptSuggestions: (suggestions) => {
+      const ids = new Set(suggestions.map((s) => s.cid));
+      calls.acceptSuggestions.push(...suggestions);
+      rangesRef.value = rangesRef.value.filter((r) => !ids.has(r.cid));
+      return suggestions.length;
+    },
     revealComment: (cid) => {
       calls.reveal.push(cid);
       return true;
@@ -456,6 +471,76 @@ await check("a general note is created without anchoring anything", async () => 
   assert.ok(!panel.querySelector(".comment-item.detached"), "a general note is not detached");
   assert.ok(!button(panel, "Re-anchor"), "no Re-anchor for a general note");
   assert.ok(!button(panel, "Re-anchor all"), "a general note is not counted as a lost anchor");
+});
+
+await check("Accept change swaps the text and consumes the note", async () => {
+  store = [
+    {
+      id: "c_repl000001",
+      docId: "01-scene",
+      body: "Tighter",
+      quote: "bravo",
+      replacement: "bravo!",
+      author: "Lain",
+      resolved: false,
+    },
+  ];
+  rangesRef.value = [{ cid: "c_repl000001", from: 7, to: 12, text: "bravo" }];
+  pane.ctrl = ctrl;
+  await panel._reload();
+
+  const item = panel.querySelector(".comment-item.suggestion");
+  assert.ok(item, "the suggestion is marked");
+  assert.match(item.textContent, /Suggested/);
+  assert.match(item.textContent, /bravo!/);
+  button(item, "Accept change").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+
+  await waitFor(() => ctrl.calls.acceptSuggestion.length === 1);
+  assert.deepEqual(ctrl.calls.acceptSuggestion[0], ["c_repl000001", "bravo!"]);
+  await waitFor(() => store.length === 0);
+  await waitFor(() => !panel.querySelector(".comment-item.suggestion"));
+  assert.ok(!panel.querySelector(".comment-item.suggestion"), "the note is gone");
+});
+
+await check("Accept all changes applies every suggestion and leaves plain notes", async () => {
+  store = [
+    { id: "c_ra000001", docId: "01-scene", body: "a", quote: "one", replacement: "ONE", resolved: false },
+    { id: "c_ra000002", docId: "01-scene", body: "b", quote: "two", replacement: "TWO", resolved: false },
+    { id: "c_ra000003", docId: "01-scene", body: "plain", quote: "three", resolved: false },
+  ];
+  rangesRef.value = [
+    { cid: "c_ra000001", from: 1, to: 4, text: "one" },
+    { cid: "c_ra000002", from: 5, to: 8, text: "two" },
+    { cid: "c_ra000003", from: 9, to: 14, text: "three" },
+  ];
+  pane.ctrl = ctrl;
+  await panel._reload();
+
+  const before = ctrl.calls.acceptSuggestions.length;
+  button(panel, "Accept all changes (2)").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await waitFor(() => ctrl.calls.acceptSuggestions.length > before);
+  assert.deepEqual(
+    ctrl.calls.acceptSuggestions.slice(before).map((s) => s.cid).sort(),
+    ["c_ra000001", "c_ra000002"],
+    "only the suggestions are applied"
+  );
+  await waitFor(() => store.length === 1);
+  assert.equal(store[0].id, "c_ra000003");
+});
+
+await check("a detached suggestion offers Re-anchor, not Accept", async () => {
+  store = [
+    { id: "c_det000001", docId: "01-scene", body: "x", quote: "gone", replacement: "y", resolved: false },
+  ];
+  rangesRef.value = [];
+  pane.ctrl = ctrl;
+  await panel._reload();
+
+  const item = panel.querySelector(".comment-item.detached");
+  assert.ok(item, "the note reads as detached");
+  assert.ok(!button(item, "Accept change"), "no Accept without an anchor");
+  assert.ok(button(item, "Re-anchor"), "Re-anchor is offered instead");
+  assert.ok(!button(panel, "Accept all changes (1)"), "it is not counted toward Accept all");
 });
 
 await check("a reply for a document the pane has left is not applied", async () => {
