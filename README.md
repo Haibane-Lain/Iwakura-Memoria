@@ -49,6 +49,11 @@ install; see [Lookup](#lookup).
   server as a child process, frameless with a custom-themed title bar,
   maximize/restore/fullscreen, and a single-instance lock. The legacy
   pywebview path is kept behind `run.bat --pywebview`.
+- **Automatic updates** — installed builds check GitHub Releases, download a
+  new version in the background, and offer **Restart & update** from **About**.
+  Open documents are saved first, and the library can be backed up as part of
+  the restart. Projects, settings and chat history live outside the install
+  folder, so updates and uninstalls leave them untouched.
 - **Worlds library** — The landing page is a shelf of **worlds**. A world holds
   **series** (big containers that grow to fit their books) and an **Unsorted**
   shelf; a **book** is a project you open in the editor directly. Create,
@@ -328,7 +333,9 @@ floating right.
 `%LOCALAPPDATA%\IwakuraMemoria\backups\` (Settings → Import & export → *Back
 up everything now*). Each is a timestamped zip of the whole `data/` layout —
 extracting one over the data folder restores everything. The 10 newest are
-kept automatically; older ones are deleted.
+kept automatically; older ones are deleted. The shell and updater also write a
+rotating `main.log` to `%LOCALAPPDATA%\IwakuraMemoria\logs\`; it is diagnostic
+only and is never part of a backup.
 
 ## Grammar checking
 
@@ -548,7 +555,10 @@ instead bundles a frozen server — see **Distribution** below); the close butto
 tree-kills the Python process so the LanguageTool Java child is never orphaned; a
 single-instance lock focuses the existing window instead of launching twice;
 the renderer's edge resize handles are inert no-ops because frameless windows
-resize natively. The legacy `run.bat --pywebview` path is kept for reference.
+resize natively. Packaged builds auto-update from GitHub Releases through
+`electron-updater` (see **Distribution → Updating**); dev builds show update
+controls as unavailable. The legacy `run.bat --pywebview` path is kept for
+reference.
 
 ## Distribution (installer .exe)
 
@@ -585,7 +595,14 @@ Then `build.bat` finishes the job:
    `wordnet/dict/` into the installer. The shell passes their paths to the
    server via `IWAKURA_LT_DIR` / `IWAKURA_JRE_DIR` / `IWAKURA_DICT_DIR`.
 
-The installer lands at `dist/electron/Iwakura Memoria Setup*.exe`.
+The installer lands at
+`dist/electron/Iwakura-Memoria-Setup-<version>.exe`. It is a **one-click,
+per-user** installer: no elevation, a Start Menu entry, a desktop shortcut, and
+the app launches when installation finishes. It is deliberately configured with
+`deleteAppDataOnUninstall: false`, so uninstalling the app never removes writing.
+The installer is unsigned, so Windows SmartScreen shows an *"unrecognized app"*
+prompt on the first manual download; that's expected without a code-signing
+certificate. The [tester guide](docs/testers.md) walks testers through it.
 
 Flags: **`--force`** re-downloads and re-extracts every artifact, **`--no-download`**
 never touches the network (it fails, naming what is missing), **`--only a,b`**
@@ -600,9 +617,74 @@ system Java), the LanguageTool standalone zip at `LanguageTool 6.8/`, and the
 WordNet tarball at `WordNet-3.0/`; the script then skips those downloads. The
 first `electron-builder` run downloads its toolchain (~100 MB, one-time). A real
 `electron/build/icon.ico` gives the installer/app an icon — without one the
-default Electron icon is used. The installer is unsigned, so Windows SmartScreen
-shows a *"unrecognized app"* prompt on first run; that's expected without a
-code-signing certificate.
+default Electron icon is used.
+
+### Updating
+
+Installed builds auto-update from the public GitHub Releases page. The feed is
+the canonical repository's latest release:
+
+```
+https://github.com/Haibane-Lain/Iwakura-Memoria/releases/latest/download
+```
+
+`electron-updater` checks shortly after launch and every four hours, downloads a
+new version in the background, and then offers **Restart & update** in **About**
+(the button is in both the library and project top bars). Restarting flushes
+every open document first, optionally creates a full library backup, and only
+then runs the installer. Closing the app normally does **not** silently install
+a pending update. The About panel also exposes the version, platform, data /
+backup / log folders, "Check for updates", "Download latest installer", and
+"Copy diagnostics".
+
+The packaging pieces are in `electron/package.json`:
+
+- `build.publish` is the generic feed above; electron-builder writes it into the
+  packaged `resources/app-update.yml`.
+- `build.nsis` is one-click/per-user and keeps app data on uninstall.
+- `build.artifactName` keeps spaces out of release URLs.
+- `latest.yml` and the `.exe.blockmap` are generated next to the installer; both
+  must be uploaded with the `.exe` for auto-updates (and differential downloads)
+  to work.
+
+For local end-to-end testing of the updater, point an installed build at a
+folder serving `latest.yml` with `IWAKURA_UPDATE_FEED=http://127.0.0.1:9000/feed`
+(or set `IWAKURA_DISABLE_UPDATES=1` to turn checks off). A feature release needs
+a version bump: **`electron/package.json` is the version source of truth**, and
+the release workflow refuses a tag that doesn't match it. The updater writes the
+version and the bytes actually downloaded to
+`%LOCALAPPDATA%\IwakuraMemoria\logs\main.log`, so the first 0.2.0 → 0.2.1 update
+can be measured before deciding whether the bundled JRE/LanguageTool need
+trimming.
+
+**Existing 0.1.0 installs** predate the updater. Close the old app, then install
+an updater-enabled build once by hand; every release after that is automatic.
+If the old 0.1.0 build was installed to a custom folder, uninstall it first
+(your writing data is kept either way). Projects live at
+`%LOCALAPPDATA%\IwakuraMemoria\data` and are untouched by either path.
+
+### Releasing
+
+For testers, the routine is one tag:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release.ps1 -Version 0.2.1 -Push
+```
+
+That bumps both package manifests, commits, tags `v0.2.1`, and pushes. The
+[release workflow](.github/workflows/release.yml) then runs the full lint/test
+gate on Windows, builds the installer, verifies `latest.yml` and
+`app-update.yml`, writes `SHA256SUMS.txt`, and creates a **draft** GitHub
+release with the installer, blockmap, `latest.yml`, and checksums. Download the
+draft installer, smoke-test it on a clean Windows VM, then publish the release.
+Publishing moves `releases/latest/download` to the new version, so existing
+installs pick it up on their next check.
+
+`scripts\release.ps1` without `-Push` leaves the commit and tag local for review.
+The release notes are generated from the commits; add anything testers need to
+know in the GitHub release before publishing. Builds can always be made locally
+with `scripts\build\build.bat`, and the resulting installer is the same one CI
+produces.
 
 A frozen `--server-only` server can be smoked out on its own:
 
@@ -611,7 +693,9 @@ scripts\build\_bundle\server\Iwakura-Memoria-server.exe --server-only --port 800
 ```
 
 Installed apps store data the same way as dev (`%LOCALAPPDATA%\IwakuraMemoria`),
-so upgrading from a dev install keeps your projects.
+so upgrading from a dev install keeps your projects. The recipient-facing
+instructions are in [docs/testers.md](docs/testers.md); third-party licenses are
+recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Backend layout
 

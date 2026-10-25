@@ -24,6 +24,9 @@ const REQUEST_TIMEOUT_MS = 15000;
 // Applying a confirmed batch (`confirm_all`) writes every proposed note or edit
 // in a single request, so it can legitimately run well past the normal cap.
 const AI_ACTION_TIMEOUT_MS = 120000;
+// A full-library backup zips every project, asset and chat session; on a large
+// library that can take minutes. Don't let the generic 15s cap abort it.
+const BACKUP_TIMEOUT_MS = 300000;
 
 async function request(method, url, body, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -423,7 +426,7 @@ export const api = {
 
   backups: {
     list: () => api.get("/api/backups"),
-    create: () => api.post("/api/backups", {}),
+    create: () => api.post("/api/backups", {}, BACKUP_TIMEOUT_MS),
     remove: (name) => api.del(`/api/backups/${encodePath(name)}`),
   },
 };

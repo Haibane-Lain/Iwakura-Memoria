@@ -62,6 +62,8 @@ import {
   showModal,
   formatNumber,
 } from "./ui.js";
+import { openAboutDialog } from "./about.js";
+import { registerSaveFlush } from "./save-hooks.js";
 
 // The workspace owns the editing surface, but the shell still calls into it by
 // name (openDocument, flushSave, renderEditorView, …), so bind those locally.
@@ -95,6 +97,10 @@ const {
   startComment,
   toggleRevisionMode,
 } = workspace;
+
+// The About/update panel asks before replacing the app; it must wait for any
+// unsaved pane to reach the server first. No project open = an empty no-op.
+registerSaveFlush(flushSave);
 
 // Folders the current sidebar search render must show expanded. Display-only:
 // searching never edits state.expanded / state.wikiExpanded.
@@ -621,6 +627,11 @@ function topbar() {
       },
     }, "Lain"),
     theme.themeSelect(),
+    el("button", {
+      class: "icon-btn",
+      title: "About & updates",
+      onclick: () => openAboutDialog(),
+    }, "About"),
   ]);
 }
 

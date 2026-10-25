@@ -4,6 +4,7 @@ import * as theme from "./themes.js";
 import { renderImportDialog } from "./import-dialog.js";
 import { el, toast, promptDialog, confirmDialog, formatNumber } from "./ui.js";
 import { enableDragOrder, reorderById } from "./drag-order.js";
+import { openAboutDialog } from "./about.js";
 
 let worlds = [];
 
@@ -202,6 +203,11 @@ async function render() {
       ]),
       el("div", { class: "topbar-spacer" }),
       theme.themeSelect(),
+      el("button", {
+        class: "icon-btn",
+        title: "About & updates",
+        onclick: () => openAboutDialog(),
+      }, "About"),
     ]),
     el("div", { class: "library" }, [
       el("div", { class: "library-header" }, [

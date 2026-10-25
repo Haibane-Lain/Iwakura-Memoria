@@ -76,3 +76,14 @@ def test_electron_window_and_bridge_are_hardened():
     assert "nodeIntegration: false" in main
     assert "sandbox: true" in main
     assert 'exposeInMainWorld("pywebview"' in preload
+
+
+def test_desktop_bridge_is_separate_and_uses_a_folder_allowlist():
+    main = (ROOT / "electron" / "main.js").read_text(encoding="utf-8")
+    preload = (ROOT / "electron" / "preload.js").read_text(encoding="utf-8")
+    assert 'exposeInMainWorld("desktop"' in preload
+    assert 'ipcRenderer.invoke("app:open-path", "data")' in preload
+    # The main process must map a small set of names, never accept a raw path.
+    assert 'ipcMain.handle("app:open-path"' in main
+    assert 'const target = { data: info.dataDir' in main
+    assert "shell.openPath(target)" in main

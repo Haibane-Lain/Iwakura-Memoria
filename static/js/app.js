@@ -3,6 +3,7 @@ import * as router from "./router.js";
 import * as library from "./library.js";
 import * as world from "./world.js";
 import * as project from "./project.js";
+import * as about from "./about.js";
 import { toast } from "./ui.js";
 
 window.addEventListener("error", function (e) {
@@ -21,6 +22,7 @@ async function boot() {
   library.init();
   world.init();
   project.register();
+  about.initUpdateNotifications();
   router.start();
   setupTitleBar();
 }

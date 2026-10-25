@@ -1,0 +1,125 @@
+name: Release
+
+# Tag-driven release: push a vX.Y.Z tag (scripts\release.ps1 does this) and CI
+# builds the Windows installer, runs the full test gate, and creates a DRAFT
+# GitHub release with every asset electron-updater needs. Download and smoke
+# test the draft installer, then publish the release; the app's update feed
+# points at the latest published release.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Create the build virtualenv
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python.exe -m pip install --upgrade pip
+          .venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check tag matches the app version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = (Get-Content electron/package.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne "v$version") {
+            throw "Tag $tag does not match electron/package.json version $version"
+          }
+
+      - name: Lint and test
+        run: |
+          .venv\Scripts\python.exe -m ruff check .
+          .venv\Scripts\python.exe -m pytest tests/ -q
+          npm run lint
+          npm run test:js
+
+      - name: Cache pinned LanguageTool / WordNet / JRE archives
+        uses: actions/cache@v4
+        with:
+          path: scripts/build/_cache
+          key: toolchain-${{ hashFiles('scripts/build/toolchain.json') }}
+          restore-keys: toolchain-
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/electron-builder/Cache
+          key: electron-builder-${{ hashFiles('electron/package-lock.json') }}
+          restore-keys: electron-builder-
+
+      - name: Build the installer
+        run: cmd /c scripts\build\build.bat --nopause
+
+      - name: Verify update assets
+        shell: pwsh
+        run: |
+          $version = (Get-Content electron/package.json -Raw | ConvertFrom-Json).version
+          $exe = "dist\electron\Iwakura-Memoria-Setup-$version.exe"
+          $appUpdate = "dist\electron\win-unpacked\resources\app-update.yml"
+          if (-not (Test-Path $exe)) { throw "Installer not found: $exe" }
+          if (-not (Test-Path "dist\electron\latest.yml")) { throw "latest.yml was not generated" }
+          if (-not (Test-Path $appUpdate)) { throw "app-update.yml was not bundled" }
+          Write-Host "--- app-update.yml ---"
+          Get-Content $appUpdate
+          Write-Host "--- latest.yml ---"
+          Get-Content "dist\electron\latest.yml"
+
+      - name: Write SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem dist\electron\*.exe | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content -LiteralPath dist\electron\SHA256SUMS.txt -Encoding ascii
+          Get-Content dist\electron\SHA256SUMS.txt
+
+      - name: Create the draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: false
+          generate_release_notes: true
+          name: Iwakura Memoria ${{ github.ref_name }}
+          files: |
+            dist/electron/*.exe
+            dist/electron/*.blockmap
+            dist/electron/latest.yml
+            dist/electron/SHA256SUMS.txt
+
+      - name: Upload the build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: scripts/build/build-run.log
+          if-no-files-found: ignore

@@ -12,17 +12,54 @@
 //            and electron-builder ships it (plus LanguageTool + JRE) as
 //            extraResources; the server exe is located under
 //            resources/server/ and LanguageTool/JRE via the env the child is
-//            given here. Auto-update and code signing remain out of scope.
+//            given here. Packaged builds auto-update from GitHub Releases via
+//            electron-updater (see updater.js); code signing is still out of
+//            scope, so the first manual download is unsigned.
 
 "use strict";
 
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const http = require("http");
+const os = require("os");
 const path = require("path");
 
+// The packaged executable is "Iwakura Memoria", but Electron's default app name
+// comes from package.json. Don't rely on that for anything the user sees: logs
+// live beside the writing data, and the About panel reads that same path.
+const { RELEASES_URL, resolveBackupsDir, resolveDataDir } = require("./update-utils");
+const APP_DATA_ROOT = path.dirname(resolveDataDir(process.env, process.platform, os.homedir()));
+let LOG_DIR = path.join(APP_DATA_ROOT, "logs");
+try {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+} catch {
+  // A read-only data location must not stop the app from opening. Fall back to
+  // the temp folder; if that also fails electron-log will complain on the
+  // console and the rest of the app keeps running.
+  LOG_DIR = path.join(os.tmpdir(), "IwakuraMemoria-logs");
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  } catch {
+    /* file logging will be unavailable */
+  }
+}
+
+const log = require("electron-log/main");
 const { BASE_PORT, pickFreePort, killTree } = require("./lifecycle");
+const { createUpdater } = require("./updater");
+
+// One log file for both the shell and the updater; support can ask a tester for
+// it without needing a dev console. 5 MB is plenty for a session and keeps the
+// folder small. electron-log rotates the previous file automatically.
+log.transports.file.level = "info";
+log.transports.console.level = "info";
+log.transports.file.maxSize = 5 * 1024 * 1024;
+log.transports.file.resolvePathFn = () => path.join(LOG_DIR, "main.log");
+// The renderer has its own console and does not need electron-log's injected
+// preload; keep the bridge surface to our own preload.js.
+log.initialize({ preload: false });
+
 
 // Repo root in dev; under a packaged build the server exe + LanguageTool/JRE
 // are shipped as extraResources into process.resourcesPath (see package.json).
@@ -45,6 +82,56 @@ const PYTHON = resolvePythonExe();
 let serverProc = null;
 let serverPort = BASE_PORT;
 let win = null;
+let updater = null;
+
+function appInfo() {
+  const dataDir = resolveDataDir(process.env, process.platform, os.homedir());
+  return {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    platform: process.platform,
+    arch: process.arch,
+    packaged: app.isPackaged,
+    dataDir,
+    backupsDir: resolveBackupsDir(dataDir),
+    logsDir: LOG_DIR,
+    releasesUrl: RELEASES_URL,
+  };
+}
+
+function startUpdater() {
+  try {
+    updater = createUpdater({ app, log, isPackaged: app.isPackaged, env: process.env });
+    updater.events.on("status", (status) => {
+      if (win && !win.isDestroyed()) win.webContents.send("update:status", status);
+    });
+    updater.init();
+  } catch (err) {
+    log.warn(`[updater] initialization failed: ${(err && err.message) || err}`);
+    if (updater) {
+      try {
+        updater.destroy();
+      } catch {
+        /* best effort */
+      }
+    }
+    updater = null;
+  }
+}
+
+function fallbackUpdateStatus() {
+  return {
+    state: "disabled",
+    currentVersion: app.getVersion(),
+    message: "Updates are not available yet.",
+    update: null,
+    progress: null,
+    error: "",
+    checkedAt: null,
+  };
+}
+
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -99,8 +186,12 @@ async function startServer() {
   });
 
   serverProc.stdout.on("data", (d) => process.stdout.write("[server] " + d));
-  serverProc.stderr.on("data", (d) => process.stderr.write("[server] " + d));
+  serverProc.stderr.on("data", (d) => {
+    process.stderr.write("[server] " + d);
+    log.warn("[server] " + String(d).trim());
+  });
   serverProc.on("error", (err) => {
+    log.error(`[server] failed to spawn: ${err.message}`);
     console.error("[server] failed to spawn:", err.message);
     serverProc = null;
   });
@@ -136,6 +227,12 @@ async function createWindow(port) {
     },
   });
   win.loadURL(`http://127.0.0.1:${port}`);
+  win.webContents.on("did-finish-load", () => {
+    // A reload loses the renderer's last status; give it the current one.
+    if (updater && win && !win.isDestroyed()) {
+      win.webContents.send("update:status", updater.getStatus());
+    }
+  });
   win.on("closed", () => {
     win = null;
   });
@@ -183,6 +280,47 @@ ipcMain.handle("export:with-dialog", async (_evt, { projectId, fmt, folders }) =
   }
 });
 
+// --- app info / About -------------------------------------------------------
+
+ipcMain.handle("app:info", () => appInfo());
+
+ipcMain.handle("app:open-path", async (_evt, which) => {
+  const info = appInfo();
+  const target = { data: info.dataDir, backups: info.backupsDir, logs: info.logsDir }[which];
+  if (!target) return { ok: false, error: "Unknown folder." };
+  try {
+    fs.mkdirSync(target, { recursive: true });
+    const err = await shell.openPath(target);
+    return err ? { ok: false, error: err } : { ok: true };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+ipcMain.handle("app:open-releases", async () => {
+  try {
+    await shell.openExternal(RELEASES_URL);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
+// --- updates ----------------------------------------------------------------
+
+ipcMain.handle("update:get-status", () => (updater ? updater.getStatus() : fallbackUpdateStatus()));
+
+ipcMain.handle("update:check", async () => {
+  if (!updater) return fallbackUpdateStatus();
+  return updater.check({ manual: true });
+});
+
+ipcMain.handle("update:install", () => {
+  if (!updater) return { ok: false, error: "Updates are not available in this build." };
+  return updater.install();
+});
+
+
 // --- lifecycle -------------------------------------------------------------
 
 const gotLock = app.requestSingleInstanceLock();
@@ -195,15 +333,27 @@ if (!gotLock) {
       win.focus();
     }
   });
-  app.on("before-quit", killServer);
+  app.on("before-quit", () => {
+    try {
+      if (updater) updater.destroy();
+    } finally {
+      killServer();
+    }
+  });
   app.on("window-all-closed", () => app.quit());
 
   app.whenReady().then(async () => {
+    log.info(`[app] starting Iwakura Memoria ${app.getVersion()} (${app.isPackaged ? "packaged" : "dev"})`);
     try {
       serverPort = await startServer();
+      // Create the updater before the window loads so a status event that
+      // arrives early is kept and replayed on did-finish-load.
+      startUpdater();
       await createWindow(serverPort);
     } catch (err) {
+      log.error(`[app] failed to start: ${(err && err.message) || err}`);
       killServer();
+      if (updater) updater.destroy();
       dialog.showErrorBox("Iwakura Memoria", `Failed to start: ${err.message}`);
       app.quit();
     }

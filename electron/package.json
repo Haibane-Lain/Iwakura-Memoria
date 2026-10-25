@@ -1,13 +1,13 @@
 {
   "name": "iwakura-memoria-shell",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Electron shell (sidecar) for Iwakura Memoria",
   "author": "Lain",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder --publish never"
   },
   "devDependencies": {
     "electron": "^44.0.0",
@@ -16,16 +16,25 @@
   "build": {
     "appId": "com.lain.iwakuramemoria",
     "productName": "Iwakura Memoria",
+    "artifactName": "Iwakura-Memoria-Setup-${version}.${ext}",
     "files": [
       "main.js",
       "preload.js",
       "lifecycle.js",
+      "updater.js",
+      "update-utils.js",
       "package.json"
     ],
     "directories": {
       "output": "../dist/electron",
       "buildResources": "build"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/Haibane-Lain/Iwakura-Memoria/releases/latest/download"
+      }
+    ],
     "extraResources": [
       {
         "from": "../scripts/build/_bundle/server",
@@ -48,18 +57,27 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Iwakura Memoria"
+      "shortcutName": "Iwakura Memoria",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": true
     }
+  },
+  "dependencies": {
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.11"
   }
 }
