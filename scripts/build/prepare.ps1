@@ -108,9 +108,27 @@ function Invoke-Download([string]$Url, [string]$Destination) {
     if (-not (Test-Path -LiteralPath $Destination)) { throw "download produced no file: $Url" }
 }
 
+# Get-FileHash is not available in every CI PowerShell (the GitHub Windows
+# runner used by the release workflow lacked it). The .NET hash API is part of
+# the runtime and streams large archives without loading them into memory.
+function Get-Sha256Hex([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            $bytes = $sha.ComputeHash($stream)
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha.Dispose()
+    }
+    return -join ($bytes | ForEach-Object { $_.ToString("x2") })
+}
+
 function Test-Sha256([string]$Path, [string]$Expected) {
     if ([string]::IsNullOrWhiteSpace($Expected)) { return $true }
-    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-Sha256Hex $Path
     return $actual -eq $Expected.ToLowerInvariant()
 }
 

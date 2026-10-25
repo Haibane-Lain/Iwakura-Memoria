@@ -117,8 +117,12 @@ def test_plan_access_job_defers_and_apply_is_refused(client, monkeypatch):
     sid = _new_session(client)  # default access is plan
     job = _create_job(client, sid).json()
     url = f"/api/projects/proj/ai/sessions/{sid}/jobs/{job['jobId']}/stream"
-    with client.stream("POST", url):
-        pass
+    # The SSE response is what drives the job; consuming it to the end is the
+    # same thing the UI does. Closing the context without reading raced the
+    # assertion below on slower CI machines (the job was still pending).
+    with client.stream("POST", url) as resp:
+        assert resp.status_code == 200
+        "".join(resp.iter_text())
     after = client.get(f"/api/projects/proj/ai/sessions/{sid}/jobs/{job['jobId']}").json()
     assert after["reduce"]["status"] == "done"
     assert after["output"]["status"] == "pending_access"

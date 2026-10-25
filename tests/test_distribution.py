@@ -60,6 +60,16 @@ def test_updater_is_packaged_and_publishing_is_left_to_ci() -> None:
     assert "update-utils.js" in files
 
 
+def test_checksums_do_not_depend_on_get_filehash() -> None:
+    """The GitHub Windows runner lacked Get-FileHash; both hash paths use .NET."""
+    prepare = (ROOT / "scripts" / "build" / "prepare.ps1").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "Get-FileHash -LiteralPath" not in prepare
+    assert "Get-FileHash -LiteralPath" not in workflow
+    assert "System.Security.Cryptography.SHA256" in prepare
+    assert "System.Security.Cryptography.SHA256" in workflow
+
+
 def test_release_workflow_builds_on_windows_from_a_tag() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "tags:" in workflow and '"v*"' in workflow

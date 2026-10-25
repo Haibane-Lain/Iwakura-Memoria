@@ -97,9 +97,22 @@ jobs:
       - name: Write SHA256 checksums
         shell: pwsh
         run: |
+          function Get-Sha256Hex([string]$Path) {
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            try {
+              $stream = [System.IO.File]::OpenRead($Path)
+              try {
+                $bytes = $sha.ComputeHash($stream)
+              } finally {
+                $stream.Dispose()
+              }
+            } finally {
+              $sha.Dispose()
+            }
+            -join ($bytes | ForEach-Object { $_.ToString("x2") })
+          }
           Get-ChildItem dist\electron\*.exe | ForEach-Object {
-            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash  $($_.Name)"
+            "$(Get-Sha256Hex $_.FullName)  $($_.Name)"
           } | Set-Content -LiteralPath dist\electron\SHA256SUMS.txt -Encoding ascii
           Get-Content dist\electron\SHA256SUMS.txt
 
