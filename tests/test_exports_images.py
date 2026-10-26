@@ -207,5 +207,5 @@ def test_zip_includes_pictures_even_for_a_filtered_export(make_project):
 
     archive = zipfile.ZipFile(io.BytesIO(projects_service.export_zip("p1", ["."])))
     names = archive.namelist()
-    assert "chapter-one.md" in names
+    assert "01-chapter-one.md" in names
     assert any(name.endswith(path.split("/")[-1]) for name in names), names

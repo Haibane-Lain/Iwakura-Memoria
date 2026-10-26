@@ -420,6 +420,9 @@ The **Export** button in the top bar opens a dialog where you can:
 - In desktop mode, a native save-as dialog opens so you pick the destination.
 - In browser mode, the file downloads directly.
 
+The ZIP keeps the project's internal `NN-` ordering prefixes, so exporting and
+importing it back preserves the folder and chapter order.
+
 PDF export uses platform-specific serif/mono fonts (Georgia on
 Windows/macOS, DejaVu on Linux).
 

@@ -118,9 +118,19 @@ def _doc_kind(meta: dict[str, Any], fallback: str) -> str:
 
 
 def _sort_key(path: str) -> tuple:
-    name = path.split("/")[-1].lower()
-    match = re.match(r"^(\d+)", name)
-    return (0, int(match.group(1)), name) if match else (1, 0, name)
+    """Order by every path segment, using the tree's numeric-prefix rule.
+
+    A leaf-only key would let a file deep inside ``03-Act Two/`` sort before
+    a root-level ``02-Interlude.md`` whenever their leaf names differ, which
+    recreates those folders earlier than they belong. Applying the project's
+    own ordering key to each segment keeps a folder's subtree together and
+    preserves the exported tree's interleaved order.
+    """
+    return tuple(
+        documents_service._sort_key(part)
+        for part in path.split("/")
+        if part
+    )
 
 
 def pack_zip(raw: bytes) -> list[tuple[str, bytes]]:
@@ -254,9 +264,10 @@ def build_outline(
     """Read a bundle into an outline: ``(root, flat_documents)``.
 
     ``root`` is a folder node whose children mirror the bundle's directory
-    structure (a flat bundle becomes a root with document children). Document
-    order follows the bundle's numeric ``NN-`` prefixes, then file name — the
-    same ordering the tree itself uses.
+    structure (a flat bundle becomes a root with document children). Order
+    follows the numeric ``NN-`` prefix of every path segment, then the file
+    name — the same ordering the tree itself uses, so folders and root-level
+    documents stay interleaved.
 
     ``flat_documents`` is every document in creation order, so the caller can
     report counts without walking the tree.

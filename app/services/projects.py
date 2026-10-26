@@ -320,9 +320,9 @@ def update_dictionary(project_id: str, words: list[str]) -> dict[str, Any]:
 def export_zip(project_id: str, folder_ids: list[str] | None = None) -> bytes:
     """Return the project folder (Markdown files + metadata) as a zip archive.
 
-    The hidden ``NN-`` order prefixes are stripped from file/folder names in
-    the archive; if two entries would collide after stripping, the later one
-    gets a ``-2``/``-3``… suffix so nothing is overwritten.
+    Archive paths are the project-relative paths unchanged, including the
+    hidden ``NN-`` order prefixes. Keeping them is what lets an exported
+    project be imported again with its folder/document order intact.
 
     If *folder_ids* is a non-empty list only files inside those folders (or
     project-level files when ``"."`` is included) are included.  Core metadata
@@ -360,23 +360,16 @@ def export_zip(project_id: str, folder_ids: list[str] | None = None) -> bytes:
                     included.add(p)
 
     buffer = io.BytesIO()
-    used: set[str] = set()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(folder.rglob("*")):
             if not path.is_file() or ".reorder-tmp" in path.parts:
                 continue
             if included is not None and path not in included:
                 continue
-            parts = path.relative_to(folder).as_posix().split("/")
-            arcname = "/".join(documents_service._display_name(p) for p in parts)
-            if arcname in used:
-                dot = arcname.rfind(".")
-                base, ext = (arcname[:dot], arcname[dot:]) if dot > 0 else (arcname, "")
-                n = 2
-                while f"{base}-{n}{ext}" in used:
-                    n += 1
-                arcname = f"{base}-{n}{ext}"
-            used.add(arcname)
+            # Project-relative paths are unique, and keeping them verbatim
+            # preserves the NN- order prefixes an import needs to rebuild the
+            # tree. The display names are for the UI, not the archive.
+            arcname = path.relative_to(folder).as_posix()
             # Exports carry the prose, not the app's comment metadata.
             if path.suffix.lower() == ".md":
                 zf.writestr(arcname, strip_comment_markers(path.read_text(encoding="utf-8")))

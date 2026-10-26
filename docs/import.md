@@ -20,8 +20,9 @@ folder, and re-importing the same bundle gives `Act One`, `Act One-2`, …
 ## What a bundle becomes
 
 - Folders become folders, files become documents.
-- Order follows the numeric `NN-` prefixes, then the file name — the same rule
-  the tree itself uses.
+- Order follows the numeric `NN-` prefix of each folder/document name at every
+  level, then the file name — the same rule the tree itself uses. Folders and
+  root-level documents therefore keep the interleaved order they had.
 - A document's title is its frontmatter `title`, else its file name
   (`03-the-old-house.md` → “The Old House”).
 - Frontmatter `type: note|chapter` and `tags` are carried over; otherwise the
